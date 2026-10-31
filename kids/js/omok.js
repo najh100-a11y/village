@@ -8,7 +8,7 @@ const DIRS = [[1, 0], [0, 1], [1, 1], [1, -1]];
 const idx = (x, y) => y * N + x;
 const inside = (x, y) => x >= 0 && y >= 0 && x < N && y < N;
 
-function lineAt(board, x, y, c) {
+export function lineAt(board, x, y, c) {
   for (const [dx, dy] of DIRS) {
     const cells = [[x, y]];
     for (const s of [1, -1]) {

@@ -40,7 +40,7 @@ function floodFill(ctx, x, y, hex) {
   return true;
 }
 
-export function createArt({ rpc, getToken, onSessionLost, onCelebrate, onShared }) {
+export function createArt({ rpc, getToken, onSessionLost, onCelebrate, onShared, onSaved }) {
   let view = 'draw';
   let paper = null, pctx = null, undo = [], used = false;
   let tool = { color: COLORS[2], size: 12, mode: 'pen' };
@@ -131,10 +131,12 @@ export function createArt({ rpc, getToken, onSessionLost, onCelebrate, onShared 
       if (!used) { toast('먼저 그림을 그려 볼까요?'); return; }
       save.disabled = true;
       save.textContent = '거는 중…';
+      let savedB64 = null;
       try {
         const big = toJpeg(paper, { maxSide: 800, quality: 0.85, maxBytes: 300000 });
         const small = toJpeg(paper, { maxSide: 240, quality: 0.75, maxBytes: 28000 });
         await rpc('kids_art_save', { p_token: getToken(), p_title: title.value, p_image: big.b64, p_thumb: small.b64, p_shared: share.checked });
+        savedB64 = big.b64;
       } catch (e) {
         save.disabled = false;
         save.textContent = '다 그렸어요!';
@@ -146,6 +148,7 @@ export function createArt({ rpc, getToken, onSessionLost, onCelebrate, onShared 
       onCelebrate();
       toast(share.checked ? '마을 전시관에 그림을 걸었어요!' : '내 그림에 넣어 두었어요');
       if (share.checked && onShared) onShared();
+      if (onSaved) onSaved(savedB64);
       newPaper();
       draft.title = '';
       go(share.checked ? 'gallery' : 'mine');
@@ -222,8 +225,8 @@ export function createArt({ rpc, getToken, onSessionLost, onCelebrate, onShared 
       list.length ? h('div', { class: 'art-grid' }, list.map((it) => card(it, { mine: true, onChange: mine }))) : h('p', { class: 'fb-empty' }, '아직 그린 그림이 없어요.')));
   }
 
-  function open(start = 'draw') {
-    modal.open('그림 공방', h('div'), { cls: 'game-sheet' });
+  function open(start = 'draw', { onClose = null } = {}) {
+    modal.open('그림 공방', h('div'), { cls: 'game-sheet', onClose });
     go(start);
   }
   return { open };

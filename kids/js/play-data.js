@@ -3,21 +3,23 @@
 // 서버 kids_fish_kinds 표와 같은 순서·같은 값 (체험판도 이 표로 뽑는다)
 // rarity: -1 물건, 0 흔함, 1 가끔, 2 드묾, 3 아주 드묾
 export const FISH = [
-  { id: 'medaka', name: '송사리', weight: 22, min: 2, max: 4, rarity: 0, body: '#B9C7C9', fin: '#8FA3A6' },
-  { id: 'minnow', name: '피라미', weight: 20, min: 8, max: 15, rarity: 0, body: '#C9D6E0', fin: '#E98D8D' },
-  { id: 'crucian', name: '붕어', weight: 18, min: 10, max: 30, rarity: 0, body: '#B59A5E', fin: '#8C7440' },
-  { id: 'loach', name: '미꾸라지', weight: 14, min: 10, max: 20, rarity: 0, body: '#9C8661', fin: '#7A6646', long: true },
-  { id: 'smelt', name: '빙어', weight: 10, min: 8, max: 15, rarity: 1, body: '#DDEBF2', fin: '#A9C6D6' },
-  { id: 'carp', name: '잉어', weight: 8, min: 30, max: 70, rarity: 1, body: '#8E7A55', fin: '#C27A46' },
-  { id: 'catfish', name: '메기', weight: 6, min: 30, max: 60, rarity: 1, body: '#5F5A52', fin: '#46423C', whisker: true },
-  { id: 'trout', name: '무지개송어', weight: 5, min: 25, max: 50, rarity: 2, body: '#9FB7A8', fin: '#E6837A', stripe: '#F2A0A8' },
-  { id: 'mandarin', name: '쏘가리', weight: 3, min: 20, max: 45, rarity: 2, body: '#C9B26A', fin: '#8B7A3E', spots: '#6B5A2E' },
-  { id: 'goldfish', name: '금붕어', weight: 3, min: 5, max: 15, rarity: 2, body: '#F28A3C', fin: '#F6B26B' },
-  { id: 'golden', name: '황금잉어', weight: 1, min: 40, max: 70, rarity: 3, body: '#F4C542', fin: '#E39B2D' },
-  { id: 'boot', name: '낡은 장화', weight: 6, min: 0, max: 0, rarity: -1 },
-  { id: 'can', name: '빈 깡통', weight: 5, min: 0, max: 0, rarity: -1 },
+  { id: 'medaka', shadow: 'tiny', name: '송사리', weight: 22, min: 2, max: 4, rarity: 0, body: '#B9C7C9', fin: '#8FA3A6' },
+  { id: 'minnow', shadow: 'small', name: '피라미', weight: 20, min: 8, max: 15, rarity: 0, body: '#C9D6E0', fin: '#E98D8D' },
+  { id: 'crucian', shadow: 'small', name: '붕어', weight: 18, min: 10, max: 30, rarity: 0, body: '#B59A5E', fin: '#8C7440' },
+  { id: 'loach', shadow: 'small', name: '미꾸라지', weight: 14, min: 10, max: 20, rarity: 0, body: '#9C8661', fin: '#7A6646', long: true },
+  { id: 'smelt', shadow: 'small', name: '빙어', weight: 10, min: 8, max: 15, rarity: 1, body: '#DDEBF2', fin: '#A9C6D6' },
+  { id: 'carp', shadow: 'large', name: '잉어', weight: 8, min: 30, max: 70, rarity: 1, body: '#8E7A55', fin: '#C27A46' },
+  { id: 'catfish', shadow: 'large', name: '메기', weight: 6, min: 30, max: 60, rarity: 1, body: '#5F5A52', fin: '#46423C', whisker: true },
+  { id: 'trout', shadow: 'medium', name: '무지개송어', weight: 5, min: 25, max: 50, rarity: 2, body: '#9FB7A8', fin: '#E6837A', stripe: '#F2A0A8' },
+  { id: 'mandarin', shadow: 'medium', name: '쏘가리', weight: 3, min: 20, max: 45, rarity: 2, body: '#C9B26A', fin: '#8B7A3E', spots: '#6B5A2E' },
+  { id: 'goldfish', shadow: 'small', name: '금붕어', weight: 3, min: 5, max: 15, rarity: 2, body: '#F28A3C', fin: '#F6B26B' },
+  { id: 'golden', shadow: 'large', name: '황금잉어', weight: 1, min: 40, max: 70, rarity: 3, body: '#F4C542', fin: '#E39B2D' },
+  { id: 'boot', shadow: 'medium', name: '낡은 장화', weight: 6, min: 0, max: 0, rarity: -1 },
+  { id: 'can', shadow: 'medium', name: '빈 깡통', weight: 5, min: 0, max: 0, rarity: -1 },
 ];
 export const fishById = (id) => FISH.find((f) => f.id === id);
+// 물속 그림자 길이 (마을 단위)
+export const SHADOW_LEN = { tiny: 0.2, small: 0.32, medium: 0.48, large: 0.68 };
 export const RARITY = { '-1': '물건', 0: '흔해요', 1: '가끔 나와요', 2: '드물어요', 3: '아주 드물어요' };
 
 // 요리: 성경 이야기는 개역한글판 본문을 확인해 쉬운 말로 풀었다. 요리법은 놀이로 꾸민 것이다.

@@ -7,11 +7,9 @@ import { createQt } from './qt.js';
 import { createCopy } from './copy.js';
 import { createNet, PHRASES, EMOTES, clean } from './net.js';
 import { createPlayHub } from './play.js';
-import { createOmok } from './omok.js';
-import { createFishing } from './fishing.js';
 import { createArt } from './art.js';
-import { createCook } from './cook.js';
-import { ACT_ICON, fishById } from './play-data.js';
+import { createPlay3D } from './play3d.js';
+import { ACT_ICON, fishById, recipeById, RECIPES } from './play-data.js';
 import { initSound, startMusic, stopMusic, setScene, sfx, cycleSound, soundMode } from './sound.js';
 import { h, modal, toast, confetti, josa } from './ui.js';
 import { drawFaceIcon, normalizeAvatar, defaultAvatar } from './face.js';
@@ -24,7 +22,7 @@ let memory = null;
 let qt = null;
 let copy = null;
 let net = null;
-let hub = null, omok = null, fishing = null, art = null, cook = null;
+let hub = null, art = null, play3d = null;
 const online = new Set();
 let hintShown = false;
 
@@ -70,7 +68,7 @@ async function boot() {
   }
   $('#loading').hidden = true;
   window.kvInfo = () => ({ ...village.renderer.info.render, programs: village.renderer.info.programs.length });
-  if (DEMO) { window.kvEnter = (id) => village.enter(id); window.kvVillage = village; window.kvGames = () => ({ omok }); }
+  if (DEMO) { window.kvEnter = (id) => village.enter(id); window.kvVillage = village; window.kvGames = () => ({ play3d }); }
   maker = new Maker();
   const common = {
     rpc, getToken: token,
@@ -94,10 +92,15 @@ async function boot() {
     },
     onAccept: (kind, session) => openGameWith(kind, session),
   });
-  omok = createOmok({ hub, onlineFriends, onCelebrate: () => village.celebrate() });
-  fishing = createFishing({ ...common, onRare: (f) => { if (net) net.send('fish', { f }); } });
-  art = createArt({ ...common, onShared: () => { if (net) net.send('art', {}); refreshWall(); } });
-  cook = createCook({ ...common, hub, onlineFriends });
+  art = createArt({ ...common, onShared: () => { if (net) net.send('art', {}); refreshWall(); }, onSaved: (b64) => { if (play3d) play3d.artSaved(b64); } });
+  // 놀이는 창을 띄우지 않고 마을 안 그 자리에서 3D로 한다
+  play3d = createPlay3D({
+    village, rpc, getToken: token, onSessionLost: sessionLost, onCelebrate: () => village.celebrate(),
+    setActivity, setScene, hub, onlineFriends,
+    onRare: (f) => { if (net) net.send('fish', { f }); },
+    openArt: (start, onClose) => art.open(start, { onClose }),
+  });
+  village.decorateRemote = (r, act, hint) => play3d.decorateRemote(r, act, hint);
   bindUi();
   if (state.token) {
     try {
@@ -253,6 +256,7 @@ async function join() {
 }
 
 function showLogin() {
+  if (play3d) play3d.stop();
   stopNet();
   stopMusic();
   rpc('kids_signup_open').then((open) => { $('#joinOpen').hidden = !open; }).catch(() => { $('#joinOpen').hidden = true; });
@@ -278,11 +282,13 @@ async function refreshToday() {
 
 // 놀이 마당: 그날 암송·묵상·필사 가운데 하나라도 마쳐야 열린다
 const playOpen = () => !!(state.today && state.today.cleared);
-const GAMES = { fish: () => fishing.open(), omok: () => omok.open(), cook: () => cook.open(), art: () => art.open() };
+const GAMES = { fish: () => play3d.fishing(), omok: () => play3d.omokMenu(), cook: () => play3d.cookMenu(), art: () => play3d.easel() };
 async function openGame(id) {
   if (!playOpen()) await refreshToday();
   if (!playOpen()) return showLocked();
-  openHouse(GAMES[id], id);
+  hideHint();
+  $('#sayPanel').hidden = true;
+  GAMES[id]();
 }
 function showLocked() {
   const go = (where) => { modal.close(); village.walkTo(where); };
@@ -394,7 +400,7 @@ async function startNet() {
       } else if (type === 'inv' || type === 'invr') {
         hub.onMsg(type, id, p);
       } else if (type === 'act') {
-        village.setRemoteActivity(id, ACT_ICON[p.a] || '');
+        village.setRemoteActivity(id, ACT_ICON[p.a] || '', p.a || '');
       } else if (type === 'fish') {
         const f = fishById(p.f);
         if (f && f.rarity >= 2) {
@@ -486,7 +492,10 @@ function openHouse(fn, act = '') {
 // 친구의 놀이 초대를 받았을 때
 function openGameWith(kind, session) {
   if (modal.isOpen) modal.close();
-  openHouse(() => (kind === 'omok' ? omok.openWith(session) : cook.openWith(session)), kind);
+  hideHint();
+  $('#sayPanel').hidden = true;
+  if (kind === 'omok') play3d.omok({ session });
+  else play3d.cook({ recipe: recipeById(session.extra) || RECIPES[0], session });
 }
 
 function onEnter(id) {

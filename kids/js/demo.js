@@ -444,6 +444,34 @@ export class DemoBackend {
     this.db.fish.push({ child: me, fish: k.id, size, at: nowIso() });
     return { fish: k.id, name: k.name, rarity: k.rarity, size, first, best, today: mine.filter((f) => f.at >= startOfToday()).length + 1 };
   }
+  // 3D 낚시: 다가오는 물고기를 먼저 정하고(hook), 제때 당기면 잡는다(land)
+  kids_fish_hook({ p_token }) {
+    const me = this.session(p_token, 'child');
+    this.gate(me);
+    this.fishPending = this.fishPending || {};
+    const pnd = this.fishPending[me];
+    if (pnd && Date.now() - pnd.t < 2000) fail('TOO_FAST');
+    if (this.db.fish.filter((f) => f.child === me && f.at >= startOfToday()).length >= 80) fail('FISH_TIRED');
+    const total = FISH.reduce((a, f) => a + f.weight, 0);
+    let r = Math.floor(Math.random() * total), k = FISH[0];
+    for (const f of FISH) { if (r < f.weight) { k = f; break; } r -= f.weight; }
+    const size = k.rarity < 0 ? 0 : Math.round((k.min + Math.random() * (k.max - k.min)) * 10) / 10;
+    this.fishPending[me] = { fish: k.id, size, t: Date.now() };
+    return { fish: k.id, size, rarity: k.rarity };
+  }
+  kids_fish_land({ p_token }) {
+    const me = this.session(p_token, 'child');
+    const pnd = this.fishPending && this.fishPending[me];
+    if (!pnd || Date.now() - pnd.t > 60000) { if (this.fishPending) delete this.fishPending[me]; fail('NO_FISH'); }
+    delete this.fishPending[me];
+    const k = FISH.find((f) => f.id === pnd.fish);
+    const mine = this.db.fish.filter((f) => f.child === me);
+    const same = mine.filter((f) => f.fish === k.id);
+    const first = !same.length;
+    const best = k.rarity >= 0 && !first && pnd.size > Math.max(...same.map((f) => f.size));
+    this.db.fish.push({ child: me, fish: k.id, size: pnd.size, at: nowIso() });
+    return { fish: k.id, name: k.name, rarity: k.rarity, size: pnd.size, first, best, today: mine.filter((f) => f.at >= startOfToday()).length + 1 };
+  }
   kids_fish_book({ p_token }) {
     const me = this.session(p_token, 'child');
     const mine = {};

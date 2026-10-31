@@ -638,6 +638,8 @@ export class Village {
 
   // ---------- 놀이 마당: 낚시터, 오목 탁자, 숲속 부엌, 그림 공방 ----------
   spot(id, name, group, { x, z, rot = 0, door, hw = 0, hd = 0 }) {
+    this.spots = this.spots || {};
+    this.spots[id] = { x, z, rot, group };
     group.position.set(x, 0, z);
     group.rotation.y = rot;
     group.userData.pick = { type: 'building', id };
@@ -665,9 +667,6 @@ export class Village {
       for (const [dx, dz] of [[-0.6, -2.2], [0.6, -2.2], [-0.6, 0.1], [0.6, 0.1]]) g.add(cyl(0.08, 0.08, 0.55, dark, dx, -0.05, dz, 6));
       g.add(cyl(0.22, 0.17, 0.36, toon('#7EC8F2'), 0.85, 0.18, 0.55, 12));
       g.add(cyl(0.2, 0.2, 0.02, toon('#5FB0D8'), 0.85, 0.37, 0.55, 12));
-      const rod = cyl(0.025, 0.03, 2.4, dark, -0.55, 0.75, -1.4, 6);
-      rod.rotation.x = -1.05;
-      g.add(rod);
       const sign = this.postSign('낚시터', 1.4);
       sign.position.set(-1.1, 0, 0.5);
       sign.rotation.y = -Math.PI / 2;
@@ -752,8 +751,13 @@ export class Village {
       for (const [lx, rz] of [[-0.35, 0.12], [0.35, -0.12]]) { const leg = box(0.08, 1.9, 0.08, dark, lx, 0.95, 0.15); leg.rotation.z = rz; e.add(leg); }
       e.add(box(0.08, 1.8, 0.08, dark, 0, 0.9, -0.3));
       e.add(box(1.0, 0.75, 0.05, cream, 0, 1.35, 0.2));
+      this.easelMat = new THREE.MeshToonMaterial({ gradientMap: toonGradient(), map: canvasTexture(64, 48, (ctx, w, hh) => { ctx.fillStyle = '#FFFDF7'; ctx.fillRect(0, 0, w, hh); }) });
+      const pic = m(new THREE.PlaneGeometry(0.9, 0.66), this.easelMat, 0, 1.35, 0.23, false);
+      pic.userData.noMerge = true;
+      e.add(pic);
       e.add(box(0.9, 0.06, 0.12, dark, 0, 0.95, 0.24));
-      for (let i = 0; i < 4; i++) e.add(ball(0.06, toon(['#EF6461', '#F6D55C', '#5DB760', '#7EC8F2'][i]), -0.3 + i * 0.2, 1.4 - (i % 2) * 0.15, 0.24, 8));
+      // 받침대 위 물감 통 (그림판은 아이 그림이 걸리도록 비워 둔다)
+      for (let i = 0; i < 4; i++) e.add(cyl(0.045, 0.04, 0.06, toon(['#EF6461', '#F6D55C', '#5DB760', '#7EC8F2'][i]), -0.3 + i * 0.2, 1.01, 0.26, 10));
       e.position.set(3.7, 0, 0.6);
       e.rotation.y = -0.4;
       g.add(e);
@@ -788,6 +792,21 @@ export class Village {
         ctx.fillText(label, w / 2, 266);
       }
     });
+  }
+
+  // 이젤에 방금 그린 그림을 올려 둔다
+  async setEasel(b64) {
+    if (!this.easelMat || !b64) return;
+    try {
+      const img = new Image();
+      img.src = `data:image/jpeg;base64,${b64}`;
+      await img.decode();
+      const t = canvasTexture(320, 240, (ctx, w, hh) => ctx.drawImage(img, 0, 0, w, hh));
+      const old = this.easelMat.map;
+      this.easelMat.map = t;
+      this.easelMat.needsUpdate = true;
+      if (old) old.dispose();
+    } catch (e) { /* 그대로 둔다 */ }
   }
 
   // items: [{name, title, thumb(base64 jpeg)}] 최근 3장
@@ -1031,11 +1050,29 @@ export class Village {
     return r;
   }
   drawRemoteTag(r) { r.tag.textContent = r.act ? `${r.act} ${r.name}` : r.name; }
-  setRemoteActivity(id, icon) {
+  setRemoteActivity(id, icon, act = '') {
     const r = this.remotes.get(id);
     if (!r) return;
     r.act = icon || '';
+    r.actName = act || '';
     this.drawRemoteTag(r);
+    if (this.decorateRemote) this.decorateRemote(r, r.actName);
+  }
+  pinRemote(id, pin) {
+    const r = this.remotes.get(id);
+    if (!r) return null;
+    r.pin = pin;
+    if (pin && pin.pose !== undefined) r.av.pose = pin.pose;
+    return r.av;
+  }
+  unpinRemote(id) {
+    const r = this.remotes.get(id);
+    if (!r || !r.pin) return;
+    r.pin = null;
+    r.av.pose = null;
+    r.av.drop();
+    r.av.root.position.y = 0;
+    this.resolve(r.av.root.position);
   }
   removeRemote(id) {
     const r = this.remotes.get(id);
@@ -1064,6 +1101,8 @@ export class Village {
     if (Math.hypot(pos.x - p.x, pos.z - p.z) > 0.6) r.target = new THREE.Vector3(p.x, 0, p.z);
     else r.target = null;
     r.seen = true;
+    // 놀이 중인 친구가 자리를 옮기면 그 자리(의자, 낚시터)에 다시 앉힌다
+    if (r.actName && this.decorateRemote) this.decorateRemote(r, r.actName, { x: p.x, z: p.z });
   }
   remoteCelebrate(id) { const r = this.remotes.get(id); if (r) r.av.celebrate(); }
   say(id, text) {
@@ -1099,7 +1138,12 @@ export class Village {
     for (const r of this.remotes.values()) {
       const pos = r.av.root.position;
       let moving = false;
-      if (r.target) {
+      if (r.pin) {
+        // 놀이 중인 친구는 내 화면에서 정해진 자리(맞은편 의자 등)에 둔다
+        pos.set(r.pin.x, r.pin.y || 0, r.pin.z);
+        r.av.root.rotation.y = r.pin.rot;
+        r.target = null;
+      } else if (r.target) {
         const dx = r.target.x - pos.x, dz = r.target.z - pos.z;
         const d = Math.hypot(dx, dz);
         if (d < 0.2) r.target = null; else {
@@ -1153,7 +1197,10 @@ export class Village {
     const el = this.canvas;
     const pointers = new Map();
     let down = null, pinch = null;
+    const toGame = (type, e) => { if (this.mode === 'game' && this.game && this.game.onPointer) this.game.onPointer(type, e.clientX, e.clientY, e); };
     el.addEventListener('pointerdown', (e) => {
+      toGame('down', e);
+      if (this.mode === 'game') el.setPointerCapture(e.pointerId);
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pointers.size === 1) down = { x: e.clientX, y: e.clientY, t: performance.now() };
       if (pointers.size === 2) {
@@ -1164,14 +1211,16 @@ export class Village {
     });
     el.addEventListener('pointermove', (e) => {
       if (!pointers.has(e.pointerId)) return;
+      toGame('move', e);
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pinch && pointers.size === 2) {
         const [a, b] = [...pointers.values()];
         const d = Math.hypot(a.x - b.x, a.y - b.y);
-        this.zoom = THREE.MathUtils.clamp(pinch.z * (pinch.d / d), 0.62, 1.35);
+        if (this.mode !== 'game') this.zoom = THREE.MathUtils.clamp(pinch.z * (pinch.d / d), 0.62, 1.35);
       }
     });
     const up = (e) => {
+      toGame('up', e);
       pointers.delete(e.pointerId);
       if (pointers.size < 2) pinch = null;
       if (down && e.type === 'pointerup') {
@@ -1197,12 +1246,21 @@ export class Village {
     window.addEventListener('blur', () => this.keys.clear());
   }
 
-  tap(cx, cy) {
-    if (this.mode !== 'play' || this.paused || !this.player) return;
+  rayAt(cx, cy) {
     const rect = this.canvas.getBoundingClientRect();
     const ndc = new THREE.Vector2(((cx - rect.left) / rect.width) * 2 - 1, -((cy - rect.top) / rect.height) * 2 + 1);
     const ray = new THREE.Raycaster();
     ray.setFromCamera(ndc, this.camera);
+    return ray;
+  }
+
+  tap(cx, cy) {
+    if (this.mode === 'game' && !this.paused) {
+      if (this.game && this.game.onTap) this.game.onTap(this.rayAt(cx, cy), cx, cy);
+      return;
+    }
+    if (this.mode !== 'play' || this.paused || !this.player) return;
+    const ray = this.rayAt(cx, cy);
     const hits = ray.intersectObjects(this.pickRoots, true);
     for (const h of hits) {
       let o = h.object;
@@ -1311,6 +1369,39 @@ export class Village {
     this.camera.updateProjectionMatrix();
   }
 
+  // ---------- 3D 놀이 ----------
+  // ctrl: { cam: {pos: Vector3, look: Vector3}, update(dt, t), onTap(ray, x, y), stop() }
+  enterGame(ctrl) {
+    if (this.game && this.game !== ctrl && this.game.stop) this.game.stop();
+    this.game = ctrl;
+    this.mode = 'game';
+    this.target = null;
+    this.keys.clear();
+    this.nearDoor = null;
+    if (this.on.onNearDoor) this.on.onNearDoor(null);
+    if (this.net.moving) this.reportStop();
+  }
+  exitGame() {
+    const g = this.game;
+    this.game = null;
+    if (this.mode === 'game') this.mode = 'play';
+    if (this.player) {
+      this.player.pose = null;
+      this.player.drop();
+      this.player.root.position.y = 0;
+      this.resolve(this.player.root.position);
+      this.reportStop();
+    }
+    return g;
+  }
+  // 놀이 중 내 주민을 정해진 자리에 세운다 (친구들에게도 알린다)
+  placePlayer(x, z, rotY, y = 0) {
+    const p = this.player.root.position;
+    p.set(x, y, z);
+    this.player.root.rotation.y = rotY;
+    if (this.on.onLocalStop) this.on.onLocalStop({ x: +x.toFixed(2), z: +z.toFixed(2) });
+  }
+
   setMode(mode) {
     this.mode = mode;
     if (mode === 'play' && this.player) {
@@ -1363,9 +1454,14 @@ export class Village {
     // 내 주민
     if (this.player && this.mode === 'play') this.updatePlayer(dt);
     else if (this.player) this.player.update(dt, false);
+    if (this.mode === 'game' && this.game && this.game.update) this.game.update(dt, t);
 
     // 카메라
-    if (this.mode === 'play' && this.player) {
+    if (this.mode === 'game' && this.game && this.game.cam) {
+      const k = 1 - Math.exp(-dt * (this.game.camSpeed || 3));
+      this.camPos.lerp(this.game.cam.pos, k);
+      this.camLook.lerp(this.game.cam.look, k);
+    } else if (this.mode === 'play' && this.player) {
       const p = this.player.root.position;
       const z = this.zoom * (this.camera.aspect < 1 ? 1.25 : 1);
       const want = new THREE.Vector3(p.x, 16 * z, p.z + 15 * z);
@@ -1378,7 +1474,7 @@ export class Village {
     }
     this.camera.position.copy(this.camPos);
     this.camera.lookAt(this.camLook);
-    const focus = this.mode === 'play' && this.player ? this.player.root.position : this.camLook;
+    const focus = (this.mode === 'play' || this.mode === 'game') && this.player ? this.player.root.position : this.camLook;
     this.sun.position.set(focus.x + 14, 28, focus.z + 12);
     this.sun.target.position.set(focus.x, 0, focus.z);
 

@@ -231,35 +231,37 @@ export function createFishing({ rpc, getToken, onSessionLost, onCelebrate, onRar
     if (tabs) loadBook(tabs);
   }
 
-  async function loadBook(box) {
-    let b;
-    try { b = await rpc('kids_fish_book', { p_token: getToken() }); } catch (e) {
-      if (e.code === 'SESSION') { modal.close(); return onSessionLost(); }
-      return;
-    }
-    const fishes = FISH.filter((f) => f.rarity >= 0);
-    const got = fishes.filter((f) => b.mine[f.id]).length;
-    const book = h('div', { class: 'fish-book' }, FISH.map((f) => {
-      const m = b.mine[f.id];
-      return h('div', { class: 'fb-cell' + (m ? '' : ' unknown') },
-        fishCanvas(f, 84, 48, { silhouette: !m }),
-        h('b', {}, m ? f.name : '?'),
-        h('span', {}, m ? (f.rarity < 0 ? `${m.count}번` : `최고 ${m.best}cm · ${m.count}마리`) : RARITY[f.rarity]));
-    }));
-    const top = b.today_top.length ? h('ol', { class: 'fish-top' }, b.today_top.map((t, i) => {
-      const cv = h('canvas', { width: 80, height: 80, class: 'fb-face', 'aria-hidden': 'true' });
-      drawFaceIcon(cv, normalizeAvatar(t.avatar));
-      return h('li', { class: t.me ? 'me' : '' }, h('span', { class: `fb-rank r${i + 1}` }, String(i + 1)), cv,
-        h('b', {}, t.name), h('span', {}, `${(fishById(t.fish) || {}).name || ''} ${t.size}cm`));
-    })) : h('p', { class: 'fb-empty' }, '오늘은 아직 아무도 물고기를 낚지 않았어요.');
-    box.replaceChildren(
-      h('section', { class: 'fboard' }, h('div', { class: 'sub-head' }, h('h3', {}, '오늘의 큰 물고기'), h('p', {}, '마을 친구들 기록')), top),
-      h('section', { class: 'fboard' }, h('div', { class: 'sub-head' }, h('h3', {}, '내 물고기 도감'), h('p', {}, `${got} / ${fishes.length}`)), book));
-  }
+  const loadBook = (box) => renderFishBook(box, { rpc, getToken, onSessionLost });
 
   function open() {
     modal.open('반짝 연못 낚시터', h('div'), { cls: 'game-sheet', onClose: stop });
     scene();
   }
   return { open };
+}
+
+export async function renderFishBook(box, { rpc, getToken, onSessionLost }) {
+  let b;
+  try { b = await rpc('kids_fish_book', { p_token: getToken() }); } catch (e) {
+    if (e.code === 'SESSION') { modal.close(); return onSessionLost(); }
+    return;
+  }
+  const fishes = FISH.filter((f) => f.rarity >= 0);
+  const got = fishes.filter((f) => b.mine[f.id]).length;
+  const book = h('div', { class: 'fish-book' }, FISH.map((f) => {
+    const m = b.mine[f.id];
+    return h('div', { class: 'fb-cell' + (m ? '' : ' unknown') },
+      fishCanvas(f, 84, 48, { silhouette: !m }),
+      h('b', {}, m ? f.name : '?'),
+      h('span', {}, m ? (f.rarity < 0 ? `${m.count}번` : `최고 ${m.best}cm · ${m.count}마리`) : RARITY[f.rarity]));
+  }));
+  const top = b.today_top.length ? h('ol', { class: 'fish-top' }, b.today_top.map((t, i) => {
+    const cv = h('canvas', { width: 80, height: 80, class: 'fb-face', 'aria-hidden': 'true' });
+    drawFaceIcon(cv, normalizeAvatar(t.avatar));
+    return h('li', { class: t.me ? 'me' : '' }, h('span', { class: `fb-rank r${i + 1}` }, String(i + 1)), cv,
+      h('b', {}, t.name), h('span', {}, `${(fishById(t.fish) || {}).name || ''} ${t.size}cm`));
+  })) : h('p', { class: 'fb-empty' }, '오늘은 아직 아무도 물고기를 낚지 않았어요.');
+  box.replaceChildren(
+    h('section', { class: 'fboard' }, h('div', { class: 'sub-head' }, h('h3', {}, '오늘의 큰 물고기'), h('p', {}, '마을 친구들 기록')), top),
+    h('section', { class: 'fboard' }, h('div', { class: 'sub-head' }, h('h3', {}, '내 물고기 도감'), h('p', {}, `${got} / ${fishes.length}`)), book));
 }

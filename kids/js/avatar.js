@@ -465,15 +465,20 @@ export class Avatar {
     this.nextBlink = 1 + Math.random() * 3;
     this.blinkLeft = 0;
     this.hop = 0;
+    this.pose = null; // (avatar, dt, t) => 매 프레임 기본 동작 뒤에 자세를 덮어쓴다 (낚시, 앉기 등)
+    this.held = null;
     this.ownTextures = [];
     this.ownMaterials = [];
     this.setData(data);
   }
 
   setData(data) {
+    const held = this.held;
+    this.drop(); // 들고 있던 물건은 지우지 않고 새 팔에 다시 쥐여 준다
     this.data = normalizeAvatar(data);
     this.clear();
     this.build();
+    if (held) this.hold(held.obj, held.arm);
   }
 
   clear() {
@@ -613,6 +618,18 @@ export class Avatar {
 
   celebrate() { this.hop = 1; }
 
+  // 손에 물건 들기 (낚싯대, 물고기, 접시). arm 1은 화면에서 볼 때 오른쪽 팔
+  hold(obj, arm = 1) {
+    this.drop();
+    if (!obj) return;
+    obj.position.set(0, -0.44, 0.02);
+    this.arms[arm].add(obj);
+    this.held = { obj, arm };
+  }
+  drop() {
+    if (this.held) { this.held.obj.removeFromParent(); this.held = null; }
+  }
+
   update(dt, moving = false, speed = 1) {
     this.time += dt;
     const t = this.time;
@@ -642,9 +659,13 @@ export class Avatar {
     if (blink) this.blinkLeft -= dt;
     const want = this.faceTex[blink ? 1 : 0];
     if (this.faceMat.map !== want) this.faceMat.map = want;
+    this.arms[0].rotation.z = -0.2;
+    this.arms[1].rotation.z = 0.2;
+    if (this.pose) this.pose(this, dt, t);
   }
 
   dispose() {
+    this.drop();
     this.clear();
   }
 }
