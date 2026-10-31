@@ -169,6 +169,8 @@ async function sendChat() {
     const t = cleanChat(r && r.text);
     if (!t) return;
     input.value = '';
+    input.blur();
+    $('#sayPanel').hidden = true; // 보내면 말하기 판을 닫는다
     village.say('me', t);
     sfx.pop();
     logLine(state.me.village_name, t, true);
