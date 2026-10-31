@@ -617,6 +617,8 @@ export class Avatar {
   }
 
   celebrate() { this.hop = 1; }
+  // 폴짝 뛰기: 몸이 높이 올라가고 팔을 번쩍 든다
+  jump() { this.jumpT = 1; }
 
   // 손에 물건 들기 (낚싯대, 물고기, 접시). arm 1은 화면에서 볼 때 오른쪽 팔
   hold(obj, arm = 1) {
@@ -646,6 +648,14 @@ export class Avatar {
       this.hop = Math.max(0, this.hop - dt * 2.2);
       y += Math.sin((1 - this.hop) * Math.PI) * 0.45;
     }
+    let jmp = 0;
+    if (this.jumpT > 0) {
+      this.jumpT = Math.max(0, this.jumpT - dt / 0.62);
+      jmp = Math.sin((1 - this.jumpT) * Math.PI);
+      y += jmp * 1.05;
+      this.legs[0].rotation.x = -0.6 * jmp;
+      this.legs[1].rotation.x = 0.35 * jmp;
+    }
     this.body.position.y = y;
     this.body.rotation.x = moving ? 0.06 : 0;
     this.head.rotation.z = moving ? 0 : Math.sin(t * 0.9) * 0.03;
@@ -661,6 +671,11 @@ export class Avatar {
     if (this.faceMat.map !== want) this.faceMat.map = want;
     this.arms[0].rotation.z = -0.2;
     this.arms[1].rotation.z = 0.2;
+    if (jmp > 0) {
+      this.arms[0].rotation.x = this.arms[1].rotation.x = -2.7 * jmp;
+      this.arms[0].rotation.z = -0.2 - 0.25 * jmp;
+      this.arms[1].rotation.z = 0.2 + 0.25 * jmp;
+    }
     if (this.pose) this.pose(this, dt, t);
   }
 

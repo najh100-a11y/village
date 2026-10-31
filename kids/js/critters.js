@@ -61,7 +61,7 @@ const backAndForth = (pts) => [...pts, ...pts.slice(1, -1).reverse()];
 const PETS = [
   { kind: 'dog', name: '누렁이', coat: '#E3B26B', ear: '#B9803D', collar: '#EF6461', route: circle(0, -2.5, 4.75, 32), speed: 1.0, ph: 0 },
   { kind: 'cat', name: '나비', coat: '#F4A65C', ear: '#E08A3C', route: backAndForth([[0.3, 3.5], [0.3, 10.3], [-3, 11.7], [-4.8, 12.5]]), speed: 0.8, ph: 7 },
-  { kind: 'dog', name: '흰둥이', coat: '#FFF6E6', ear: '#C9A27A', collar: '#5FA9E0', route: circle(0, 20.6, 3.55, 30), speed: 1.15, ph: 3 },
+  { kind: 'dog', name: '흰둥이', coat: '#FFF6E6', ear: '#C9A27A', collar: '#5FA9E0', route: circle(0, 52.5, 3.6, 30), speed: 1.15, ph: 3 },
   { kind: 'cat', name: '회색이', coat: '#A9AEB6', ear: '#8A8F98', route: backAndForth([[0.35, -7.4], [0.35, -17.0]]), speed: 0.75, ph: 11 },
 ];
 const CYCLE = 15, WALK = 10; // 15초마다 10초 걷고 5초 쉰다

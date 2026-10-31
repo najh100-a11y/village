@@ -4,6 +4,7 @@
 import * as THREE from './three.module.min.js';
 import { toon, toonGradient } from './avatar.js';
 import { mergeStatic, mergeColored } from './merge.js';
+import { POOL } from './pool.js';
 
 // 설명은 어린이용으로 짧게 쓴 일반적인 사실이다
 export const BUGS = [
@@ -284,7 +285,7 @@ export class Bugs {
       if (x > -8.6 && Math.abs(z - 12.9) < 1.6) continue; // 낚시 데크
       if (free(x, z, 0.3)) water.push([x, z]);
     }
-    for (const [x, z] of [[-3, -1.5], [2, 1.5], [-1, 0.5], [3.5, -1.2]]) water.push([21.6 + x, -8.6 + z]); // 수영장 위
+    for (const [x, z] of [[-3, -1.5], [2, 1.5], [-1, 0.5], [3.5, -1.2]]) water.push([POOL.x + x, POOL.z + z]); // 수영장 섬 수영장 위
     return { flower, grass, tree, water };
   }
 

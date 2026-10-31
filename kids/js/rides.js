@@ -41,7 +41,7 @@ export function createRides({ v, ui, begin, stopAll, portrait, shout }) {
     const st = { wave: 0 };
     const P = V(), Q = new THREE.Quaternion(), F = V(), U = V();
     const far = () => (portrait() ? 1.3 : 1);
-    const game = { cam: { pos: V(), look: V() }, camSpeed: 7 };
+    const game = { cam: { pos: V(), look: V(), map: true }, camSpeed: 7 };
     const C = RIDES[kind];
     let lastSay = '', topSeen = false;
     const follow = () => {
@@ -51,19 +51,19 @@ export function createRides({ v, ui, begin, stopAll, portrait, shout }) {
       pl.root.quaternion.copy(Q);
       const k = far();
       if (kind === 'ferris') {
-        // 곤돌라 앞(남쪽) 조금 옆에서 아이 얼굴과 뒤쪽 마을을 함께 본다
-        game.cam.look.set(P.x, P.y + 1.15, P.z);
-        game.cam.pos.set(P.x + 2.4 * k, P.y + 2.1 * k, P.z + 8.2 * k);
+        // 곤돌라 앞(남쪽) 조금 옆에서 아이와 관람차, 둘레 바다를 함께 본다
+        game.cam.look.set(P.x, P.y + 1.0, P.z);
+        game.cam.pos.set(P.x + 4.0 * k, P.y + 3.6 * k, P.z + 15.5 * k);
       } else if (kind === 'viking') {
         // 바이킹 앞에서 배 전체가 흔들리는 모습을 본다
         game.cam.look.set(C.x + (P.x - C.x) * 0.3, 2.9 + (P.y - 2.6) * 0.25, C.z);
-        game.cam.pos.set(C.x + (P.x - C.x) * 0.15, 5.2 * k, C.z + 13.8 * k);
+        game.cam.pos.set(C.x + (P.x - C.x) * 0.15, 7.2 * k, C.z + 18 * k);
       } else {
         // 회전목마: 바깥에서 지붕 아래로 들여다보며 말과 함께 돈다
         F.set(0, 0, 1).applyQuaternion(Q);
         U.set(P.x - C.x, 0, P.z - C.z).normalize();
-        game.cam.look.set(P.x, P.y + 1.25, P.z);
-        game.cam.pos.set(P.x + (U.x * 4.0 + F.x * 2.4) * k, P.y + 0.8, P.z + (U.z * 4.0 + F.z * 2.4) * k);
+        game.cam.look.set(P.x, P.y + 1.15, P.z);
+        game.cam.pos.set(P.x + (U.x * 9.5 + F.x * 3.5) * k, P.y + 2.4 * k, P.z + (U.z * 9.5 + F.z * 3.5) * k);
       }
     };
     game.update = (dt) => {
@@ -130,7 +130,7 @@ export function createRides({ v, ui, begin, stopAll, portrait, shout }) {
     window.addEventListener('keyup', ku);
     const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -A.y);
     const ground = (x, y) => { const p = V(); return v.rayAt(x, y).ray.intersectPlane(plane, p) ? p : null; };
-    const game = { cam: { pos: V(), look: V() }, camSpeed: 5, ownsDrag: () => true };
+    const game = { cam: { pos: V(), look: V(), map: true }, camSpeed: 5, ownsDrag: () => true };
     game.onPointer = (type, x, y) => {
       if (type === 'down' || (type === 'move' && held)) { const p = ground(x, y); if (p) { aim.copy(p); held = true; } }
       else if (type === 'up') held = false;
@@ -217,7 +217,7 @@ export function createRides({ v, ui, begin, stopAll, portrait, shout }) {
       shake = Math.max(0, shake - dt);
       const sx = shake ? (Math.random() - 0.5) * shake : 0, sy = shake ? (Math.random() - 0.5) * shake : 0;
       game.cam.look.set(B.x + (pos.x - B.x) * 0.55 + sx, 0.4 + sy, B.z + (pos.z - B.z) * 0.45);
-      game.cam.pos.set(B.x + (pos.x - B.x) * 0.3, 7.4 * k, B.z + 7.6 * k);
+      game.cam.pos.set(B.x + (pos.x - B.x) * 0.3, 9.5 * k, B.z + 10.5 * k);
       for (let i = pops.length - 1; i >= 0; i--) {
         const q = pops[i];
         q.life -= dt;
@@ -228,6 +228,8 @@ export function createRides({ v, ui, begin, stopAll, portrait, shout }) {
       }
     };
     game.stop = () => {
+      document.body.classList.remove('pad-game');
+      v.noFade = null;
       window.removeEventListener('keydown', kd);
       window.removeEventListener('keyup', ku);
       for (const q of pops) q.el.remove();
@@ -240,8 +242,10 @@ export function createRides({ v, ui, begin, stopAll, portrait, shout }) {
     pl.root.rotation.set(0, heading, 0);
     game.update(0);
     begin('bumper', '범퍼카', game, [], -1);
+    document.body.classList.add('pad-game'); // 휴대폰에서는 방향 단추로도 몬다
+    v.noFade = park.fade.bumper; // 범퍼카 장은 흐리게 하지 않는다
     const fine = matchMedia('(pointer: fine)').matches;
-    ui.say(fine ? '화면을 누르고 있거나 화살표 자판을 누르면 그쪽으로 달려요. 다른 차에 쿵! 부딪혀 봐요.' : '화면을 누르고 있으면 그쪽으로 달려요. 다른 차에 쿵! 부딪혀 봐요.');
+    ui.say(fine ? '화면을 누르고 있거나 화살표 자판을 누르면 그쪽으로 달려요. 다른 차에 쿵! 부딪혀 봐요.' : '화면을 누르고 있거나 방향 단추를 누르면 그쪽으로 달려요. 다른 차에 쿵! 부딪혀 봐요.');
     ui.setMain('빵빵!', { onClick: honk });
     sfx.open();
   }

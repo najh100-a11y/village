@@ -62,7 +62,21 @@ async function boot() {
     placePrompt: (x, y) => { $('#prompt').style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`; },
     onMove: () => hideHint(),
     onLocalMove: (p) => net && net.send('mv', p),
-    onViewChange: (changed) => { $('#btnView').hidden = !changed; },
+    onViewChange: (changed, canMap, isMap) => {
+      $('#btnView').hidden = !changed;
+      $('#btnMap').hidden = !canMap;
+      $('#btnMap').setAttribute('aria-pressed', isMap ? 'true' : 'false');
+      // 지도 보기에서는 방향 단추를 접고, 단추들이 가리지 않는 칸에 섬을 맞춘다
+      document.body.classList.toggle('map-view', !!isMap);
+      if (isMap) village.setSafe(measureSafe());
+    },
+    // 점프: 소리, 친구 화면에서도 폴짝 (너무 자주 보내지 않게)
+    onJump: () => {
+      sfx.jump();
+      hideHint();
+      const now = performance.now();
+      if (net && now - jumpSent > 800) { jumpSent = now; net.send('jp', {}); }
+    },
     onLocalStop: (p) => net && net.send('st', p),
     // 벤치에 앉기 (seat: 자리 번호, 일어나면 null)
     onSit: (seat) => {
@@ -167,6 +181,10 @@ function bindUi() {
   $('#btnOut').addEventListener('click', askLogout);
   $('#btnSay').addEventListener('click', toggleSay);
   $('#btnView').addEventListener('click', () => village.resetView());
+  $('#btnZoomIn').addEventListener('click', () => village.zoomStep(-1));
+  $('#btnZoomOut').addEventListener('click', () => village.zoomStep(1));
+  $('#btnMap').addEventListener('click', () => village.toggleMap());
+  setupPad();
   $('#onlineCount').addEventListener('click', () => openFriends());
   $('#btnSound').addEventListener('click', () => { cycleSound(); drawSoundBtn(); toast({ all: '음악과 효과음을 켰어요', sfx: '음악은 끄고 효과음만 들려요', off: '소리를 모두 껐어요' }[soundMode()]); });
   $('#modalClose').addEventListener('click', () => modal.close());
@@ -370,7 +388,75 @@ const GAMES = {
   fish: () => play3d.fishing(), omok: () => play3d.omokMenu(), cook: () => play3d.cookMenu(), art: () => play3d.easel(),
   ferris: () => play3d.ride('ferris'), viking: () => play3d.ride('viking'), carousel: () => play3d.ride('carousel'), bumper: () => play3d.ride('bumper'),
 };
-let benchTold = false, munchSaid = false;
+let benchTold = false, munchSaid = false, jumpSent = 0;
+
+// 화면 가장자리에서 단추들이 차지한 너비 (지도 보기에서 섬을 그 안쪽에 맞춘다)
+function measureSafe() {
+  const W = innerWidth, H = innerHeight;
+  const s = { top: 12, bottom: 12, left: 12, right: 12 };
+  const seen = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return r.width && r.height ? r : null; };
+  for (const sel of ['#hud .plate', '#hud .hud-btns', '#gameUi .g-top', '#gameUi .g-bottom']) {
+    for (const el of document.querySelectorAll(sel)) {
+      const r = seen(el);
+      if (!r) continue;
+      if (r.bottom < H * 0.45) s.top = Math.max(s.top, r.bottom + 8);
+      else if (r.top > H * 0.55) s.bottom = Math.max(s.bottom, H - r.top + 8);
+    }
+  }
+  const ctl = seen($('#viewCtl'));
+  if (ctl) s.right = Math.max(s.right, W - ctl.left + 8);
+  return s;
+}
+
+// ---------- 휴대폰·태블릿: 방향 단추(8방향)와 점프 ----------
+// 방향 단추는 화살표 자판을 누른 것처럼 알린다. 그래서 마을 걷기와 범퍼카가 같은 단추로 움직인다.
+function setupPad() {
+  const touch = matchMedia('(pointer: coarse)').matches;
+  document.documentElement.classList.toggle('touch', touch);
+  const pad = $('#pad');
+  const CODE = { u: 'ArrowUp', d: 'ArrowDown', l: 'ArrowLeft', r: 'ArrowRight' };
+  const OCT = { 0: 'r', 1: 'rd', 2: 'd', 3: 'dl', 4: 'l', '-4': 'l', '-3': 'lu', '-2': 'u', '-1': 'ur' };
+  let held = new Set(), pid = null;
+  const send = (type, code) => window.dispatchEvent(new KeyboardEvent(type, { code, key: code, bubbles: true, cancelable: true }));
+  const setDirs = (next) => {
+    for (const k of held) if (!next.has(k)) send('keyup', CODE[k]);
+    for (const k of next) if (!held.has(k)) send('keydown', CODE[k]);
+    held = next;
+    for (const b of pad.querySelectorAll('[data-d]')) b.classList.toggle('on', held.has(b.dataset.d));
+  };
+  const dirsAt = (e) => {
+    const r = pad.getBoundingClientRect();
+    const x = (e.clientX - (r.left + r.width / 2)) / (r.width / 2), y = (e.clientY - (r.top + r.height / 2)) / (r.height / 2);
+    if (Math.hypot(x, y) < 0.2) return new Set(); // 가운데는 멈춤
+    return new Set(OCT[Math.round(Math.atan2(y, x) / (Math.PI / 4))]);
+  };
+  pad.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    pid = e.pointerId;
+    try { pad.setPointerCapture(pid); } catch (err) { /* 그대로 */ }
+    setDirs(dirsAt(e));
+  });
+  pad.addEventListener('pointermove', (e) => { if (e.pointerId === pid) setDirs(dirsAt(e)); });
+  const release = (e) => { if (!e || e.pointerId === pid) { pid = null; setDirs(new Set()); } };
+  pad.addEventListener('pointerup', release);
+  pad.addEventListener('pointercancel', release);
+  pad.addEventListener('lostpointercapture', release);
+  pad.addEventListener('contextmenu', (e) => e.preventDefault());
+  window.addEventListener('blur', () => release());
+  window.addEventListener('resize', () => { if (document.body.classList.contains('map-view')) village.setSafe(measureSafe()); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) release(); });
+  const jump = $('#btnJump');
+  jump.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    jump.classList.add('on');
+    village.jump();
+  });
+  const up = () => jump.classList.remove('on');
+  jump.addEventListener('pointerup', up);
+  jump.addEventListener('pointercancel', up);
+  jump.addEventListener('pointerleave', up);
+  jump.addEventListener('contextmenu', (e) => e.preventDefault());
+}
 async function openGame(id) {
   if (!playOpen()) await refreshToday();
   if (!playOpen()) return showLocked();
@@ -402,6 +488,7 @@ async function enterVillage(greet) {
   updateHud();
   $('#hud').hidden = false;
   if (greet) {
+    if (document.documentElement.classList.contains('touch')) $('#hint').textContent = '방향 단추로 걷고, 점프로 폴짝! · 가고 싶은 곳을 눌러도 가요';
     $('#hint').hidden = false;
     $('#hint').classList.remove('gone');
     hintShown = true;
@@ -526,6 +613,8 @@ async function startNet() {
         if (village.bugs) village.bugs.markCaught(p.s, p.w);
         const b = bugById(p.b);
         if (b && b.rarity >= 1) { toast(`${josa(person.name, '이가', '가')} ${josa(b.name, '을', '를')} 잡았어요!`, 3000); logLine(person.name, `🦋 ${b.name}`, false); }
+      } else if (type === 'jp') {
+        village.remoteJump(id);
       } else if (type === 'dish') {
         dishAt = 0;
         refreshDishes();
@@ -964,12 +1053,12 @@ function onNpc() {
   if (me.is_birthday) lines.push(`${name}, 생일 축하해! 오늘은 마을이 더 반짝이는 것 같아.`);
   else lines.push(`안녕, ${name}!${t.theme ? ` 이번 주 주제는 '${t.theme}'이야.` : ''}`);
   let go = null;
-  if (!playOpen()) lines.push('말씀 활동을 하나 마치면 남쪽 놀이 마당과 놀이동산이 열려. 낚시도 하고 바이킹도 탈 수 있어!');
+  if (!playOpen()) lines.push('말씀 활동을 하나 마치면 놀이 마당과 놀이동산 섬이 열려. 낚시도 하고 바이킹도 탈 수 있어!');
   if (t.qt && !t.qt.done) { lines.push(`오늘 묵상은 '${t.qt.title}'이야. 묵상의 숲에 가 볼래?`); go = ['묵상의 숲으로', 'qt']; }
   else if (cur && !cur.practiced_today && !cur.passed) { lines.push(`이번 주 말씀은 ${cur.ref}이야. 암송의 집에서 연습해 볼까?`); go = ['암송의 집으로', 'memory']; }
   else if (t.copy && !t.copy.done) { lines.push(`이번 주 필사는 ${t.copy.ref}이야. 필사 도서관에서 따라 써 볼래?`); go = ['필사 도서관으로', 'library']; }
-  else if (t.qt || cur) { lines.push('오늘 할 일을 벌써 다 했구나. 정말 멋지다! 친구들 글에 응원도 보내 봐.'); lines.push('남쪽 길 끝 놀이동산에서 친구랑 회전목마나 바이킹을 타도 좋아. 오목을 두거나 낚시를 해도 좋고!'); }
-  else lines.push('마을을 천천히 둘러보렴. 남쪽 길 끝에는 놀이동산이 있고, 열매가 달린 나무를 누르면 열매를 따 먹을 수 있어.');
+  else if (t.qt || cur) { lines.push('오늘 할 일을 벌써 다 했구나. 정말 멋지다! 친구들 글에 응원도 보내 봐.'); lines.push('남쪽 다리를 건너면 놀이동산 섬이야. 친구랑 회전목마나 바이킹을 타도 좋아. 동쪽 다리 건너 수영장 섬에서 헤엄쳐도 좋고!'); }
+  else lines.push('마을을 천천히 둘러보렴. 남쪽 다리를 건너면 놀이동산 섬, 동쪽 다리를 건너면 수영장 섬이야. 열매가 달린 나무를 누르면 열매를 따 먹을 수 있어.');
   openSheet('숲지기 솔', h('div', { class: 'talk' },
     lines.map((l) => h('p', { class: 'talk-line' }, l)),
     h('div', { class: 'row' },

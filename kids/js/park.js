@@ -3,24 +3,26 @@
 import * as THREE from './three.module.min.js';
 import { toon, toonGradient } from './avatar.js';
 import { mergeStatic, mergeColored } from './merge.js';
+import { PARK_ISLE, makeIsle, makeTree } from './isles.js';
 
-// 놀이동산 바닥(타원)과 입구
-export const PARK = { x: 0, z: 23.2, rx: 12.6, rz: 6.6 };
-export const GATE = { x: 0, z: 16.1 };
+// 놀이동산 섬: 마을 남쪽 다리 건너. 바닥(둥근 광장)과 입구
+export const PARK = { x: 0, z: 59, r: 14.2 };
+export const GATE = { x: 0, z: 45.0 };
 export const RIDES = {
-  carousel: { x: 0, z: 20.6, name: '회전목마', door: [0, 17.2] },
-  ferris: { x: -8.4, z: 22.6, name: '대관람차', door: [-8.4, 24.9] },
-  viking: { x: 9.4, z: 25.2, name: '바이킹', door: [8.6, 21.45] },
-  bumper: { x: 0, z: 27.0, name: '범퍼카', door: [0, 24.2] },
+  carousel: { x: 0, z: 52.5, name: '회전목마', door: [0, 49.0] },
+  ferris: { x: -10.5, z: 59.5, name: '대관람차', door: [-10.5, 61.8] },
+  viking: { x: 10.5, z: 60.5, name: '바이킹', door: [9.7, 56.7] },
+  bumper: { x: 0, z: 68.0, name: '범퍼카', door: [0, 65.1] },
 };
 export const RIDE_IDS = Object.keys(RIDES);
 // 범퍼카 장: 바닥 반너비, 반깊이, 차 반지름, 바닥 높이
 export const ARENA = { hw: 4.0, hd: 1.9, car: 0.62, y: 0.12 };
 export const CAR_SEAT = 0.39; // 차 바닥에서 앉은 아이 발밑(root)까지
-// 나무가 자라면 안 되는 곳 (대관람차 곤돌라와 바이킹 배가 지나가는 하늘 아래)
+// 놀이동산 섬에서 나무를 심지 않는 곳 (대관람차 곤돌라, 바이킹 배가 지나가는 하늘 아래와 입구)
 export const NO_TREE = [
-  { x: -8.4, z: 22.6, r: 6.4 },
-  { x: 9.4, z: 25.2, r: 7.2 },
+  { x: RIDES.ferris.x, z: RIDES.ferris.z, r: 6.6 },
+  { x: RIDES.viking.x, z: RIDES.viking.z, r: 7.4 },
+  { x: GATE.x, z: GATE.z, r: 4.5 },
 ];
 
 const EPOCH = Date.UTC(2026, 9, 1);
@@ -205,6 +207,7 @@ export class Park {
     this.fade = {};
     this.vik = vikingState(0);
     this.geo = {};
+    this.buildIsland();
     this.buildGate();
     this.buildCarousel();
     this.buildFerris();
@@ -240,6 +243,55 @@ export class Park {
     return g;
   }
 
+  // ---------- 섬: 둥근 광장 바닥과 둘레 나무 ----------
+  buildIsland() {
+    const I = PARK_ISLE;
+    makeIsle(this.scene, I, {
+      layer: 1,
+      draw: (ctx, px, u) => {
+        const cx = px(PARK.x - I.x), cz = px(PARK.z - I.z);
+        ctx.fillStyle = '#D9B48C';
+        ctx.beginPath(); ctx.arc(cx, cz, (PARK.r + 0.3) * u, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#F3DDBF';
+        ctx.beginPath(); ctx.arc(cx, cz, PARK.r * u, 0, Math.PI * 2); ctx.fill();
+        ctx.save();
+        ctx.beginPath(); ctx.arc(cx, cz, PARK.r * u, 0, Math.PI * 2); ctx.clip();
+        ctx.strokeStyle = 'rgba(205,165,125,.45)';
+        ctx.lineWidth = 2;
+        for (let g = -PARK.r; g <= PARK.r; g += 1.1) {
+          ctx.beginPath(); ctx.moveTo(px(g), 0); ctx.lineTo(px(g), 1024); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(0, cz + g * u); ctx.lineTo(1024, cz + g * u); ctx.stroke();
+        }
+        const conf = ['#F6A2C4', '#7EC8F2', '#F6D55C', '#A8E0B5'];
+        let sd = 11;
+        const rnd = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+        ctx.globalAlpha = 0.55;
+        for (let i = 0; i < 260; i++) {
+          ctx.fillStyle = conf[i % 4];
+          ctx.beginPath(); ctx.arc(cx + (rnd() - 0.5) * 2 * PARK.r * u, cz + (rnd() - 0.5) * 2 * PARK.r * u, 3 + rnd() * 3, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+        // 다리에서 입구까지 길
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#EAD7A8';
+        ctx.fillRect(px(-1.15), px(-I.r - 1), 2.3 * u, (I.r - PARK.r + 2) * u);
+      },
+    });
+    // 둘레에 나무
+    for (let k = 0; k < 18; k++) {
+      const a = (k / 18) * Math.PI * 2 + 0.1;
+      const x = I.x + Math.cos(a) * 15.7, z = I.z + Math.sin(a) * 15.7;
+      if (NO_TREE.some((c) => Math.hypot(x - c.x, z - c.z) < c.r)) continue;
+      if (z > I.z + 9) continue; // 남쪽은 비워 둔다: 놀이기구 카메라가 그쪽에서 본다
+      const t = makeTree('round', 0.85 + ((k * 7) % 5) * 0.08);
+      t.position.set(x, 0, z);
+      t.rotation.y = k;
+      this.scene.add(t);
+      this.v.addObstacleCircle(x, z, 0.35);
+      this.v.makeFadeable(t, x, z, 1.3);
+    }
+  }
+
   // ---------- 입구 ----------
   buildGate() {
     const g = new THREE.Group();
@@ -267,6 +319,7 @@ export class Park {
     this.scene.add(g);
     this.v.addObstacleCircle(GATE.x - 1.75, GATE.z, 0.25);
     this.v.addObstacleCircle(GATE.x + 1.75, GATE.z, 0.25);
+    this.v.makeFadeable(g, GATE.x, GATE.z, 2.2); // 바로 뒤에 선 친구가 가려지지 않게
   }
 
   // ---------- 회전목마 ----------
@@ -636,7 +689,7 @@ export class Park {
 
   // ---------- 가로등 ----------
   buildLamps() {
-    for (const [x, z] of [[-3.4, 17.0], [3.4, 17.0], [-5.6, 29.0], [5.0, 29.3]]) {
+    for (const [x, z] of [[-3.6, 46.8], [3.6, 46.8], [-6.5, 71.5], [6.5, 71.5]]) {
       const g = new THREE.Group();
       g.add(cyl(0.09, 0.12, 2.6, toon('#4A4A55'), 0, 1.3, 0, 8));
       g.add(ball(0.26, this.v.glow('#FFF4CF'), 0, 2.75, 0, 12));

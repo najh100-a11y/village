@@ -10,7 +10,7 @@ export const PHRASES = {
 export const EMOTES = { heart: '❤️', clap: '👏', smile: '😊', wave: '👋', pray: '🙏', star: '⭐' };
 // 놀이기구를 타며 외치는 말 (말하기 판에는 나오지 않는다)
 export const SHOUTS = { yay: '야호!', beep: '빵빵!', yum: '냠냠!' };
-const EVENTS = ['mv', 'st', 'say', 'chat', 'dm', 'done', 'av', 'inv', 'invr', 'act', 'fish', 'art', 'dish', 'ob', 'fw', 'ate', 'bug'];
+const EVENTS = ['mv', 'st', 'say', 'chat', 'dm', 'done', 'av', 'inv', 'invr', 'act', 'fish', 'art', 'dish', 'ob', 'fw', 'ate', 'bug', 'jp'];
 export const GAME_KINDS = ['omok', 'cook'];
 export const ACTS = ['', 'fish', 'omok', 'cook', 'art', 'memory', 'qt', 'copy', 'watch', 'ferris', 'viking', 'carousel', 'bumper', 'bench', 'eat', 'bug'];
 const ID_RE = /^[A-Za-z0-9-]{1,64}$/;
@@ -20,7 +20,7 @@ const WORD_RE = /^[a-z]{2,12}$/;
 // 받은 메시지를 믿을 수 있는 모양으로만 걸러 낸다
 export function clean(type, p) {
   if (!p || typeof p !== 'object') return null;
-  const num = (v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 45;
+  const num = (v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 100; // 섬 셋을 다 담는 넓이
   if (type === 'mv') return num(p.x) && num(p.z) && num(p.tx) && num(p.tz) ? { x: p.x, z: p.z, tx: p.tx, tz: p.tz } : null;
   if (type === 'st') return num(p.x) && num(p.z) ? { x: p.x, z: p.z } : null;
   if (type === 'say') return PHRASES[p.p] || EMOTES[p.p] || SHOUTS[p.p] ? { p: p.p } : null;
@@ -36,6 +36,7 @@ export function clean(type, p) {
   if (type === 'fish') return WORD_RE.test(p.f) ? { f: p.f } : null;
   if (type === 'art') return {};
   if (type === 'dish') return {};
+  if (type === 'jp') return {}; // 폴짝 뛰었다
   // 불꽃놀이: 종류와 쏜 자리
   if (type === 'fw') return ['fw_spark', 'fw_flower', 'fw_heart'].includes(p.k) && num(p.x) && num(p.z) ? { k: p.k, x: p.x, z: p.z } : null;
   // 마을 식탁 요리를 먹었다 (d: 요리 번호)
@@ -76,6 +77,7 @@ export class Outbox {
   push(ev, payload) {
     if (ev === 'inv' || ev === 'invr' || ev === 'dm') { if (this.peerCount() > 0) this.post(ev, payload); return; } // 초대·대답·둘이 대화는 바로
     if (ev === 'ob') this.queue = this.queue.filter((m) => m[0] !== 'ob'); // 오목 판은 가장 새 것만
+    if (ev === 'jp') this.queue = this.queue.filter((m) => m[0] !== 'jp'); // 점프는 하나만
     if (ev === 'mv' || ev === 'st') this.move = [ev, payload];
     else {
       if (ev === 'act') { this.queue = this.queue.filter((m) => m[0] !== 'act'); this.lastAct = payload; }

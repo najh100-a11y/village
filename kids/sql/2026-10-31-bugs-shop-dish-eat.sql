@@ -1,4 +1,4 @@
--- 진숲 어린이 마을: 마을 식탁 요리 먹기(누가 먹었는지), 곤충 채집 도감, 열매 상점(불꽃놀이)
+-- 진숲 어린이 마을: 마을 식탁 요리 먹기(누가 먹었는지), 곤충 채집 도감, 열매 상점(불꽃놀이), 그림 전시 벽 여섯 칸
 -- 다시 실행해도 된다.
 
 -- ---------- 마을 식탁 요리 먹기: 한 아이가 한 접시를 한 번 먹는다 ----------
@@ -196,4 +196,15 @@ begin
                  'price', l.price, 'fruits_left', c.fruits, 'at', l.created_at) as x, l.created_at as at
           from public.kids_shop_log l join public.kids_children c on c.id = l.child_id
          order by l.created_at desc limit 100) s), '[]'::jsonb));
+end $$;
+
+-- 그림 공방 전시 벽: 여섯 칸 (두 줄에 세 장씩)
+create or replace function public.kids_art_wall(p_token text)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare v_id uuid := public.kids__auth(p_token, 'child');
+begin
+  return coalesce((select jsonb_agg(jsonb_build_object('id', a.id, 'name', c.village_name, 'title', a.title,
+      'thumb', public.kids__b64(a.thumb)) order by a.created_at desc)
+    from (select * from public.kids_art x where x.shared and not x.hidden order by x.created_at desc limit 6) a
+    join public.kids_children c on c.id = a.child_id), '[]'::jsonb);
 end $$;

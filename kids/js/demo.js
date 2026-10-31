@@ -606,7 +606,7 @@ export class DemoBackend {
   }
   kids_art_wall({ p_token }) {
     this.session(p_token, 'child');
-    return this.db.art.filter((a) => a.shared && !a.hidden).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 3).map((a) => {
+    return this.db.art.filter((a) => a.shared && !a.hidden).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 6).map((a) => {
       const c = this.db.children.find((x) => x.id === a.child) || {};
       return { id: a.id, name: c.village_name, title: a.title, thumb: imgGet(a.thumb) };
     });

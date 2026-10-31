@@ -185,5 +185,7 @@ export const sfx = {
     noise({ dur: 0.45, vol: 0.14 * v, freq: 900, freq2: 200, q: 0.6, kind: 'lowpass' });
     for (let i = 0; i < 6; i++) noise({ dur: 0.04, vol: 0.05 * v, freq: rnd(3000, 6000), q: 2, kind: 'bandpass', delay: 0.25 + i * rnd(0.05, 0.12) });
   }),
+  // 폴짝 뛰기: 통 올라가는 소리
+  jump: play(() => { tone({ f: 330, f2: 760, type: 'triangle', dur: 0.14, vol: 0.1 }); tone({ f: 660, f2: 990, dur: 0.08, vol: 0.04, delay: 0.06 }); }),
   tweet: play(() => { [0, 0.13, 0.24].forEach((d, i) => tone({ f: 2600 + i * 300, f2: 3600 + i * 200, dur: 0.06, vol: 0.035, delay: d })); }),
 };

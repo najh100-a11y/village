@@ -3,8 +3,10 @@
 import * as THREE from './three.module.min.js';
 import { toon, toonGradient } from './avatar.js';
 import { mergeStatic, mergeColored } from './merge.js';
+import { POOL_ISLE, makeIsle, makeTree } from './isles.js';
 
-export const POOL = { x: 21.6, z: -8.6, hw: 5.5, hd: 3.0, deck: 1.0 };
+// 수영장 섬(마을 동쪽 다리 건너) 한가운데의 커다란 수영장
+export const POOL = { x: 56, z: -3.6, hw: 6.5, hd: 3.4, deck: 1.3 };
 export const SWIM_Y = -0.95; // 헤엄칠 때 발밑 높이 (머리와 어깨만 물 위)
 const WATER_Y = 0.07;
 const TAU = Math.PI * 2;
@@ -65,7 +67,51 @@ export class Pool {
     this.build();
   }
 
+  // 모래섬: 둘레 바닥과 물빛 타일 바닥을 땅 그림에 그리고, 야자나무를 심는다
+  buildIsland() {
+    const v = this.v, P = POOL, I = POOL_ISLE;
+    makeIsle(v.scene, I, {
+      ground: '#EDCF92',
+      layer: 2,
+      draw: (ctx, px, u) => {
+        const ox = P.x - I.x, oz = P.z - I.z;
+        const dx = P.hw + P.deck, dz = P.hd + P.deck;
+        ctx.fillStyle = '#CFC6B4';
+        ctx.beginPath(); ctx.roundRect(px(ox - dx - 0.15), px(oz - dz - 0.15), (dx + 0.15) * 2 * u, (dz + 0.15) * 2 * u, 0.6 * u); ctx.fill();
+        ctx.fillStyle = '#ECE7DC';
+        ctx.beginPath(); ctx.roundRect(px(ox - dx), px(oz - dz), dx * 2 * u, dz * 2 * u, 0.5 * u); ctx.fill();
+        ctx.fillStyle = '#2E9BD0';
+        ctx.fillRect(px(ox - P.hw), px(oz - P.hd), P.hw * 2 * u, P.hd * 2 * u);
+        ctx.strokeStyle = 'rgba(140,215,245,.7)';
+        ctx.lineWidth = 2;
+        for (let g = -P.hw; g <= P.hw + 0.01; g += 0.55) { ctx.beginPath(); ctx.moveTo(px(ox + g), px(oz - P.hd)); ctx.lineTo(px(ox + g), px(oz + P.hd)); ctx.stroke(); }
+        for (let g = -P.hd; g <= P.hd + 0.01; g += 0.55) { ctx.beginPath(); ctx.moveTo(px(ox - P.hw), px(oz + g)); ctx.lineTo(px(ox + P.hw), px(oz + g)); ctx.stroke(); }
+        ctx.strokeStyle = '#1F6FA0';
+        ctx.lineWidth = 5;
+        for (const lz of [-1.7, 1.7]) { ctx.beginPath(); ctx.moveTo(px(ox - P.hw + 0.8), px(oz + lz)); ctx.lineTo(px(ox + P.hw - 0.8), px(oz + lz)); ctx.stroke(); }
+        // 다리에서 수영장까지 나무 길
+        ctx.fillStyle = '#C99862';
+        ctx.fillRect(px(-I.r - 1), px(-4 - I.z - 1.0), (I.r + ox - dx + 1.2) * u, 2.0 * u);
+        ctx.strokeStyle = 'rgba(110,70,40,.5)';
+        ctx.lineWidth = 2;
+        for (let g = -I.r - 1; g < ox - dx; g += 0.45) { ctx.beginPath(); ctx.moveTo(px(g), px(-4 - I.z - 1.0)); ctx.lineTo(px(g), px(-4 - I.z + 1.0)); ctx.stroke(); }
+      },
+    });
+    for (let k = 0; k < 12; k++) {
+      const a = (k / 12) * Math.PI * 2 + 0.2;
+      const x = I.x + Math.cos(a) * 11.3, z = I.z + Math.sin(a) * 11.3;
+      if (Math.cos(a) < -0.85) continue; // 다리 쪽은 비운다
+      const t = makeTree('palm', 0.95 + (k % 3) * 0.1);
+      t.position.set(x, 0, z);
+      t.rotation.y = a + Math.PI;
+      v.scene.add(t);
+      v.addObstacleCircle(x, z, 0.3);
+      v.makeFadeable(t, x, z, 1.4); // 앞에 서면 흐리게
+    }
+  }
+
   build() {
+    this.buildIsland();
     const v = this.v, P = POOL;
     const root = new THREE.Group();
     root.position.set(P.x, 0, P.z);
@@ -117,7 +163,7 @@ export class Pool {
     const deckZ = -P.hd - 0.62;
     const furn = new THREE.Group();
     const umbrella = new THREE.MeshToonMaterial({ map: stripeTex(['#EF6461', '#FFFDF7'], 10), gradientMap: toonGradient() });
-    for (const [x, col] of [[-3.4, '#F6D55C'], [0.2, '#7EC8F2'], [3.8, '#F6A2C4']]) {
+    for (const [x, col] of [[-4.4, '#F6D55C'], [0.2, '#7EC8F2'], [4.8, '#F6A2C4']]) {
       furn.add(cyl(0.04, 0.04, 2.3, toon('#8A8F98'), x - 0.9, 1.15, deckZ - 0.05, 6));
       const top = mesh(new THREE.ConeGeometry(1.05, 0.45, 20), umbrella, x - 0.9, 2.3, deckZ - 0.05);
       furn.add(top);
@@ -138,9 +184,9 @@ export class Pool {
     merge(furn);
     root.add(furn);
     const sg = v.postSign('진숲 수영장', 1.7);
-    sg.position.set(-P.hw - 0.75, 0, P.hd + 0.7);
+    sg.position.set(-P.hw - 0.9, 0, P.hd + 0.9);
     root.add(sg);
-    v.addObstacleCircle(P.x - P.hw - 0.75, P.z + P.hd + 0.7, 0.12);
+    v.addObstacleCircle(P.x - P.hw - 0.9, P.z + P.hd + 0.9, 0.12);
     v.scene.add(root);
     this.root = root;
     // 떠다니는 튜브 셋과 비치볼
@@ -151,7 +197,7 @@ export class Pool {
       const r = mesh(ringGeo, m, 0, 0, 0, false);
       r.rotation.x = -Math.PI / 2;
       root.add(r);
-      this.floats.push({ o: r, ph: i * 2.1, ax: 3.2 - i * 0.6, az: 1.6 - i * 0.35, sp: 0.07 + i * 0.02, y: WATER_Y + 0.05 });
+      this.floats.push({ o: r, ph: i * 2.1, ax: 4.0 - i * 0.7, az: 2.0 - i * 0.4, sp: 0.07 + i * 0.02, y: WATER_Y + 0.05 });
     });
     const ball = mesh(new THREE.SphereGeometry(0.3, 16, 12), new THREE.MeshToonMaterial({ map: stripeTex(['#EF6461', '#FFFDF7', '#5FA9E0', '#FFFDF7', '#F6D55C', '#FFFDF7'], 6), gradientMap: toonGradient() }), 0, 0, 0, false);
     root.add(ball);

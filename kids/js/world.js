@@ -3,14 +3,19 @@ import * as THREE from './three.module.min.js';
 import { Avatar, toon, toonGradient } from './avatar.js';
 import { randomAvatar, colorOf, shade } from './face.js';
 import { mergeStatic, Instancer } from './merge.js';
-import { Park, PARK, RIDE_IDS, NO_TREE, resetLimbs } from './park.js';
+import { Park, RIDE_IDS, resetLimbs } from './park.js';
 import { Critters } from './critters.js';
-import { Pool, POOL, inPool, nearPool, SWIM_Y, swimPose } from './pool.js';
+import { Pool, inPool, SWIM_Y, swimPose } from './pool.js';
+import { clampWalk, makeBridge, BRIDGES, WORLD_CENTER, WORLD_HALF, route, PARK_ISLE } from './isles.js';
+import { POOL } from './pool.js';
+// 줌: 1이 처음 시점. 마을은 1.6, 놀이기구는 2.0을 넘으면 지도 보기로 바뀌기 시작해 MAP_ZOOM에서 섬 전체가 보인다
+const MAP_ZOOM = 4;
+const mapFrom = (mode) => (mode === 'game' ? 2.0 : 1.6);
 import { Bugs, makeBug } from './bugs.js';
 import { Fireworks } from './fireworks.js';
 
-const WALK_R = 30.2;
 const PR = 0.42; // 사람 충돌 반지름
+const NO_OBS = [];
 const FONT = '"Maplestory Bold", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
 
 function rng(seed) {
@@ -176,7 +181,7 @@ function signMesh(text, width, opts) {
 
 // 길: 꺾은선 목록 (x, z)
 const PATHS = [
-  [[0, 16.9], [0, 6], [0, 1]], // 남쪽 끝은 놀이동산 입구
+  [[0, 32.5], [0, 6], [0, 1]], // 남쪽 끝은 놀이동산 섬 다리
   [[-2.5, -5.5], [-6.5, -7.8], [-9.3, -9.4]],
   [[2.5, -5.5], [6.5, -7.8], [9.3, -9.4]],
   [[0, -7], [0, -12], [0, -17.4]],
@@ -184,7 +189,7 @@ const PATHS = [
   [[4.5, -1.2], [9, 1.0], [13.7, 4.1]],
   [[0, 10.5], [-3, 11.7], [-5.4, 12.7]], // 연못 낚시터로
   [[0, 11], [5, 12.9], [9.4, 14.4]], // 놀이 마당으로
-  [[9, 1.0], [12.6, -2.4], [15.4, -4.9]], // 수영장으로
+  [[9, 1.0], [14, -4.5], [22, -5.5], [34, -4.0]], // 동쪽 끝은 수영장 섬 다리
 ];
 const PLAZA = { x: 0, z: -2.5, r: 5.4 };
 const YARD = { x: 11.2, z: 16.4, r: 3.4 }; // 놀이 마당
@@ -194,13 +199,8 @@ function distToSeg(px, pz, ax, az, bx, bz) {
   const t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / (dx * dx + dz * dz)));
   return Math.hypot(px - (ax + t * dx), pz - (az + t * dz));
 }
-function inPark(x, z, pad = 0) {
-  return ((x - PARK.x) / (PARK.rx + pad)) ** 2 + ((z - PARK.z) / (PARK.rz + pad)) ** 2 < 1;
-}
 function nearPath(x, z, pad) {
   if (Math.hypot(x - PLAZA.x, z - PLAZA.z) < PLAZA.r + pad) return true;
-  if (inPark(x, z, pad)) return true;
-  if (nearPool(x, z, pad)) return true;
   if (Math.hypot(x - YARD.x, z - YARD.z) < YARD.r + pad) return true;
   for (const p of PATHS) for (let i = 0; i < p.length - 1; i++) {
     if (distToSeg(x, z, p[i][0], p[i][1], p[i + 1][0], p[i + 1][1]) < 1.2 + pad) return true;
@@ -252,7 +252,7 @@ export class Village {
     this.benches = [];
     this.fruitTrees = [];
     this.fruits = [];
-    this.noTree = [...NO_TREE];
+    this.noTree = [];
     this.noFade = null;
     this.sitting = null;
     this.eating = null;
@@ -300,6 +300,16 @@ export class Village {
     this.buildBenches();
     this.park = new Park(this, { signMesh });
     this.pool = new Pool(this);
+    // 다리 둘과 갈림길 표지판
+    for (const b of BRIDGES) makeBridge(this.scene, b);
+    for (const [text, x, z, ry] of [['놀이동산 섬', 2.2, 27.5, 0], ['수영장 섬', 27.0, -1.6, -Math.PI / 2]]) {
+      const sg = this.postSign(text, 1.7);
+      sg.position.set(x, 0, z);
+      sg.rotation.y = ry;
+      mergeStatic(sg);
+      this.scene.add(sg);
+      this.addObstacleCircle(x, z, 0.15);
+    }
     this.buildNature();
     this.critters = new Critters(this);
     this.critters.onSound = (kind, soft) => this.on.onCritterSound && this.on.onCritterSound(kind, soft);
@@ -307,6 +317,7 @@ export class Village {
     this.fireworks = new Fireworks(this);
     this.fireworks.onBoom = (kind) => this.on.onBoom && this.on.onBoom(kind);
     this.buildNpcs();
+    this.buildRoads();
     this.applyTimeOfDay();
     this.bindInput();
     this.resize();
@@ -361,47 +372,6 @@ export class Village {
       };
       drawPaths(2.7, '#CDB27C');
       drawPaths(2.3, '#EAD7A8');
-      // 놀이동산 바닥: 따뜻한 빛깔 타일
-      const ex = px(PARK.x), ez = px(PARK.z);
-      ctx.fillStyle = '#D9B48C';
-      ctx.beginPath(); ctx.ellipse(ex, ez, (PARK.rx + 0.25) * u, (PARK.rz + 0.25) * u, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#F3DDBF';
-      ctx.beginPath(); ctx.ellipse(ex, ez, PARK.rx * u, PARK.rz * u, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.save();
-      ctx.beginPath(); ctx.ellipse(ex, ez, PARK.rx * u, PARK.rz * u, 0, 0, Math.PI * 2); ctx.clip();
-      ctx.strokeStyle = 'rgba(205,165,125,.45)';
-      ctx.lineWidth = 2;
-      for (let gx = -PARK.rx; gx <= PARK.rx; gx += 1.1) { ctx.beginPath(); ctx.moveTo(px(gx), px(PARK.z - PARK.rz)); ctx.lineTo(px(gx), px(PARK.z + PARK.rz)); ctx.stroke(); }
-      for (let gz = PARK.z - PARK.rz; gz <= PARK.z + PARK.rz; gz += 1.1) { ctx.beginPath(); ctx.moveTo(px(-PARK.rx), px(gz)); ctx.lineTo(px(PARK.rx), px(gz)); ctx.stroke(); }
-      // 색종이 같은 점
-      const conf = ['#F6A2C4', '#7EC8F2', '#F6D55C', '#A8E0B5'];
-      for (let i = 0; i < 220; i++) {
-        ctx.fillStyle = conf[i % 4];
-        ctx.globalAlpha = 0.55;
-        ctx.beginPath(); ctx.arc(px(PARK.x + (rnd() - 0.5) * 2 * PARK.rx), px(PARK.z + (rnd() - 0.5) * 2 * PARK.rz), 3 + rnd() * 3, 0, Math.PI * 2); ctx.fill();
-      }
-      ctx.globalAlpha = 1;
-      ctx.restore();
-      // 수영장: 둘레 바닥과 물빛 타일 바닥
-      {
-        const dx = POOL.hw + POOL.deck, dz = POOL.hd + POOL.deck;
-        ctx.fillStyle = '#CFC6B4';
-        ctx.beginPath(); ctx.roundRect(px(POOL.x - dx - 0.15), px(POOL.z - dz - 0.15), (dx + 0.15) * 2 * u, (dz + 0.15) * 2 * u, 0.6 * u); ctx.fill();
-        ctx.fillStyle = '#ECE7DC';
-        ctx.beginPath(); ctx.roundRect(px(POOL.x - dx), px(POOL.z - dz), dx * 2 * u, dz * 2 * u, 0.5 * u); ctx.fill();
-        ctx.fillStyle = '#2E9BD0';
-        ctx.fillRect(px(POOL.x - POOL.hw), px(POOL.z - POOL.hd), POOL.hw * 2 * u, POOL.hd * 2 * u);
-        ctx.strokeStyle = 'rgba(140,215,245,.7)';
-        ctx.lineWidth = 2;
-        for (let gx = -POOL.hw; gx <= POOL.hw + 0.01; gx += 0.55) { ctx.beginPath(); ctx.moveTo(px(POOL.x + gx), px(POOL.z - POOL.hd)); ctx.lineTo(px(POOL.x + gx), px(POOL.z + POOL.hd)); ctx.stroke(); }
-        for (let gz = -POOL.hd; gz <= POOL.hd + 0.01; gz += 0.55) { ctx.beginPath(); ctx.moveTo(px(POOL.x - POOL.hw), px(POOL.z + gz)); ctx.lineTo(px(POOL.x + POOL.hw), px(POOL.z + gz)); ctx.stroke(); }
-        ctx.strokeStyle = '#1F6FA0';
-        ctx.lineWidth = 5;
-        for (const lz of [-1.5, 1.5]) { ctx.beginPath(); ctx.moveTo(px(POOL.x - POOL.hw + 0.8), px(POOL.z + lz)); ctx.lineTo(px(POOL.x + POOL.hw - 0.8), px(POOL.z + lz)); ctx.stroke(); }
-      }
-      // 입구에서 들어오는 길
-      ctx.fillStyle = '#EAD7A8';
-      ctx.fillRect(px(-1.15), px(15), 2.3 * u, 2.4 * u);
       // 길 위 작은 돌
       for (let i = 0; i < 260; i++) {
         const x = (rnd() - 0.5) * 60, z = (rnd() - 0.5) * 60;
@@ -446,7 +416,7 @@ export class Village {
     sand.position.y = -0.95;
     sand.receiveShadow = true;
     this.scene.add(sand);
-    const sea = new THREE.Mesh(new THREE.CircleGeometry(220, 64), toon('#5FC3E6'));
+    const sea = new THREE.Mesh(new THREE.CircleGeometry(420, 72), toon("#5FC3E6"));
     sea.rotation.x = -Math.PI / 2;
     sea.position.y = -1.15;
     this.scene.add(sea);
@@ -463,8 +433,27 @@ export class Village {
   // ---------- 건물 ----------
   addObstacleBox(x, z, hw, hd, rot = 0) {
     this.obstacles.push({ t: 'b', x, z, hw, hd, c: Math.cos(rot), s: Math.sin(rot) });
+    this.obsGrid = null;
   }
-  addObstacleCircle(x, z, r) { this.obstacles.push({ t: 'c', x, z, r }); }
+  addObstacleCircle(x, z, r) { this.obstacles.push({ t: 'c', x, z, r }); this.obsGrid = null; }
+  // 길 찾기를 빠르게: 장애물을 4×4 칸에 나눠 둔다
+  obsNear(x, z) {
+    const C = 4;
+    if (!this.obsGrid) {
+      this.obsGrid = new Map();
+      for (const o of this.obstacles) {
+        const R = (o.t === 'c' ? o.r : Math.hypot(o.hw, o.hd)) + 1.0;
+        for (let cx = Math.floor((o.x - R) / C); cx <= Math.floor((o.x + R) / C); cx++) {
+          for (let cz = Math.floor((o.z - R) / C); cz <= Math.floor((o.z + R) / C); cz++) {
+            const k = (cx + 500) * 1000 + cz + 500;
+            if (!this.obsGrid.has(k)) this.obsGrid.set(k, []);
+            this.obsGrid.get(k).push(o);
+          }
+        }
+      }
+    }
+    return this.obsGrid.get((Math.floor(x / C) + 500) * 1000 + Math.floor(z / C) + 500) || NO_OBS;
+  }
 
   placeBuilding(id, group, { x, z, rot, hw, hd, doorZ, name, fade = 4.2 }) {
     group.position.set(x, 0, z);
@@ -890,23 +879,25 @@ export class Village {
     }
     // 그림 공방: 전시 벽과 이젤
     {
+      // 전시 벽: 두 줄에 세 장씩, 여섯 작품
       const g = new THREE.Group();
-      g.add(box(5.8, 2.6, 0.24, toon('#FFF3DA'), 0, 1.55, 0));
-      g.add(box(6.0, 0.2, 0.34, wood, 0, 2.9, 0));
-      g.add(box(6.0, 0.2, 0.34, wood, 0, 0.2, 0));
-      for (const sx of [-2.95, 2.95]) g.add(box(0.2, 2.9, 0.34, wood, sx, 1.45, 0));
-      const roof = prism(6.4, 0.7, 0.8, toon('#EC7A5C'));
-      roof.position.set(0, 3.0, 0);
+      g.add(box(6.5, 3.7, 0.24, toon('#FFF3DA'), 0, 2.1, 0));
+      g.add(box(6.7, 0.2, 0.34, wood, 0, 4.0, 0));
+      g.add(box(6.7, 0.2, 0.34, wood, 0, 0.2, 0));
+      g.add(box(6.5, 0.08, 0.3, wood, 0, 2.1, 0.06));
+      for (const sx of [-3.3, 3.3]) g.add(box(0.2, 4.0, 0.34, wood, sx, 2.0, 0));
+      const roof = prism(7.1, 0.75, 0.85, toon('#EC7A5C'));
+      roof.position.set(0, 4.1, 0);
       g.add(roof);
-      this.artFrames = [];
-      [-1.85, 0, 1.85].forEach((fx) => {
-        g.add(box(1.62, 1.42, 0.06, toon('#8B5E3C'), fx, 1.6, 0.14));
+      const pics = [];
+      for (const fy of [2.98, 1.22]) for (const fx of [-2.12, 0, 2.12]) {
+        g.add(box(1.86, 1.62, 0.06, toon('#8B5E3C'), fx, fy, 0.14));
         const mat = new THREE.MeshToonMaterial({ gradientMap: toonGradient(), map: this.artTexture(null) });
-        const pic = m(new THREE.PlaneGeometry(1.46, 1.26), mat, fx, 1.6, 0.18, false);
+        const pic = m(new THREE.PlaneGeometry(1.7, 1.46), mat, fx, fy, 0.18, false);
         pic.userData.noMerge = true;
         g.add(pic);
-        this.artFrames.push(mat);
-      });
+        pics.push(pic);
+      }
       // 이젤
       const e = new THREE.Group();
       for (const [lx, rz] of [[-0.35, 0.12], [0.35, -0.12]]) { const leg = box(0.08, 1.9, 0.08, dark, lx, 0.95, 0.15); leg.rotation.z = rz; e.add(leg); }
@@ -919,13 +910,16 @@ export class Village {
       e.add(box(0.9, 0.06, 0.12, dark, 0, 0.95, 0.24));
       // 받침대 위 물감 통 (그림판은 아이 그림이 걸리도록 비워 둔다)
       for (let i = 0; i < 4; i++) e.add(cyl(0.045, 0.04, 0.06, toon(['#EF6461', '#F6D55C', '#5DB760', '#7EC8F2'][i]), -0.3 + i * 0.2, 1.01, 0.26, 10));
-      e.position.set(3.7, 0, 0.6);
+      e.position.set(4.05, 0, 0.6);
       e.rotation.y = -0.4;
       g.add(e);
       const sign = this.postSign('그림 공방', 1.6);
-      sign.position.set(-3.6, 0, 0.6);
+      sign.position.set(-3.95, 0, 0.6);
       g.add(sign);
-      this.spot('art', '그림 공방', g, { x: 11.2, z: 11.5, rot: 0, door: 1.7, hw: 3.0, hd: 0.3 });
+      this.spot('art', '그림 공방', g, { x: 11.2, z: 11.5, rot: 0, door: 1.7, hw: 3.4, hd: 0.3 });
+      // 벽이 높으니 뒤에 있을 때는 흐리게 (흐리게 하려고 복사한 재료를 그림 칸으로 쓴다)
+      this.makeFadeable(g, 11.2, 11.5, 3.4);
+      this.artFrames = pics.map((pic) => pic.material);
     }
     // 마을 식탁: 아이들이 마음대로 만든 요리 네 접시를 올려 둔다
     {
@@ -1045,7 +1039,7 @@ export class Village {
     } catch (e) { /* 그대로 둔다 */ }
   }
 
-  // items: [{name, title, thumb(base64 jpeg)}] 최근 3장
+  // items: [{name, title, thumb(base64 jpeg)}] 최근 6장
   async setArtWall(items) {
     if (!this.artFrames) return;
     const loaded = await Promise.all(this.artFrames.map(async (mat, i) => {
@@ -1085,9 +1079,10 @@ export class Village {
   }
   buildBenches() {
     this.addBench(-6.9, 17.0, -2.565); // 연못을 보는 벤치
-    this.addBench(-4.0, 18.6, 1.107); // 놀이동산: 회전목마를 본다
-    this.addBench(4.0, 18.6, -1.107);
-    this.addBench(-6.0, 27.4, Math.PI / 2); // 범퍼카를 본다
+    this.addBench(-5.0, 50.0, 1.107); // 놀이동산 섬: 회전목마를 본다
+    this.addBench(5.0, 50.0, -1.107);
+    this.addBench(-6.8, 67.5, Math.PI / 2); // 범퍼카를 본다
+    this.addBench(6.8, 67.5, -Math.PI / 2);
     this.addBench(-2.7, -14.6, Math.PI / 2); // 내 집 가는 길
   }
   // 벤치 i의 왼쪽(0)·오른쪽(1) 자리: 앉았을 때 발밑 위치와 방향
@@ -1670,6 +1665,28 @@ export class Village {
     if (r.actName) this.applyAct(r, { x: p.x, z: p.z });
   }
   remoteCelebrate(id) { const r = this.remotes.get(id); if (r) r.av.celebrate(); }
+  remoteJump(id) {
+    const r = this.remotes.get(id);
+    if (!r || r.pin) return;
+    r.av.jump();
+    if (r.swim && this.pool) { const q = r.av.root.position; this.pool.splash(q.x, q.z); }
+  }
+  // 점프 단추: 앉아 있거나 먹고 있으면 먼저 일어난다. 뛰었으면 true
+  jump() {
+    if (this.mode !== 'play' || !this.player || this.paused) return false;
+    if (this.netting) return false;
+    if (this.sitting) { this.standUp(); return false; }
+    if (this.eating) this.cancelEat();
+    if (this.player.jumpT > 0.25) return false;
+    this.player.jump();
+    if (this.swim && this.pool) {
+      const q = this.player.root.position;
+      this.pool.splash(q.x, q.z);
+      if (this.on.onSplash) this.on.onSplash();
+    }
+    if (this.on.onJump) this.on.onJump();
+    return true;
+  }
   say(id, text) {
     const holder = id === 'me' ? this.player : this.remotes.get(id);
     if (!holder) return;
@@ -1731,9 +1748,12 @@ export class Village {
         pos.set(r.pin.x, r.pin.y || 0, r.pin.z);
         r.av.root.rotation.y = r.pin.rot;
       } else if (r.target) {
-        const dx = r.target.x - pos.x, dz = r.target.z - pos.z;
+        if (r.viaFor !== r.target) { r.viaFor = r.target; r.via = this.planRoute(pos, r.target); }
+        while (r.via.length && Math.hypot(r.via[0].x - pos.x, r.via[0].z - pos.z) < 0.6) r.via.shift();
+        const goal = r.via.length ? r.via[0] : r.target;
+        const dx = goal.x - pos.x, dz = goal.z - pos.z;
         const d = Math.hypot(dx, dz);
-        if (d < 0.2) r.target = null; else {
+        if (d < 0.2 && !r.via.length) r.target = null; else {
           const before = pos.clone();
           const step = Math.min(d, 5.2 * dt);
           pos.x += (dx / d) * step;
@@ -1859,10 +1879,12 @@ export class Village {
         if (e.code === 'KeyF') this.addElev(-0.08);
         if (e.code === 'Equal' || e.code === 'NumpadAdd') this.setZoom(v.zoom * 0.9);
         if (e.code === 'Minus' || e.code === 'NumpadSubtract') this.setZoom(v.zoom * 1.1);
+        if (e.code === 'KeyM') this.toggleMap();
       }
       if (this.mode !== 'play' || this.paused) return;
       if (map[e.code]) { this.keys.add(map[e.code]); this.target = null; e.preventDefault(); }
       if ((e.code === 'Enter' || e.code === 'Space') && this.nearDoor) { e.preventDefault(); this.enter(this.nearDoor.id); }
+      else if (e.code === 'Space' && this.mode === 'play' && !e.repeat) { e.preventDefault(); this.jump(); }
     });
     window.addEventListener('keyup', (e) => { if (map[e.code]) this.keys.delete(map[e.code]); });
     window.addEventListener('blur', () => this.keys.clear());
@@ -1870,11 +1892,43 @@ export class Village {
 
   // ---------- 시점 ----------
   viewNow() { return this.mode === 'play' ? this.view.play : this.mode === 'game' ? this.view.game : null; }
+  // 지도 보기: 줌이 MAP_FROM을 넘으면 점점 섬 전체를 내려다보고, MAP_ZOOM에서 섬 셋이 다 들어온다
+  canMap() { return this.mode === 'play' || (this.mode === 'game' && !!(this.game && this.game.cam && this.game.cam.map)); }
   setZoom(z) {
     const v = this.viewNow();
     if (!v) return;
-    v.zoom = THREE.MathUtils.clamp(z, this.mode === 'game' ? 0.45 : 0.35, this.mode === 'game' ? 2.4 : 1.6);
+    const hi = this.canMap() ? MAP_ZOOM : this.mode === 'game' ? 2.4 : 1.6;
+    v.zoom = THREE.MathUtils.clamp(z, this.mode === 'game' ? 0.45 : 0.35, hi);
     this.viewChanged();
+  }
+  zoomStep(dir) { const v = this.viewNow(); if (v) this.setZoom(v.zoom * (dir > 0 ? 1.25 : 0.8)); }
+  // 섬 전체 보기 ↔ 처음 시점
+  toggleMap() {
+    const v = this.viewNow();
+    if (!v || !this.canMap()) return;
+    if (v.zoom >= MAP_ZOOM - 0.05) { v.zoom = 1; v.elev = 0; } else v.zoom = MAP_ZOOM;
+    this.viewChanged();
+  }
+  isMapView() { const v = this.viewNow(); return !!v && this.canMap() && v.zoom > mapFrom(this.mode) + 0.2; }
+  // 섬 셋이 화면에 다 들어오는 거리 (화면 비율, 돌린 방향, 높이각에 따라)
+  // 화면 가장자리 단추들이 가리는 너비 (px). 지도 보기는 그 안쪽 칸에 섬 셋을 맞춘다
+  setSafe(s) { this.safe = s; }
+  safeRect() {
+    const el = this.renderer.domElement;
+    const W = el.clientWidth || 1, H = el.clientHeight || 1;
+    const s = this.safe || { top: 0, bottom: 0, left: 0, right: 0 };
+    const top = Math.min(s.top, H * 0.3), bottom = Math.min(s.bottom, H * 0.3), left = Math.min(s.left, W * 0.3), right = Math.min(s.right, W * 0.3);
+    return { W, H, top, bottom, left, right, w: W - left - right, h: H - top - bottom };
+  }
+  mapFit(yaw, el) {
+    const r = this.safeRect();
+    const tv0 = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * 0.95;
+    const tv = tv0 * (r.h / r.H);
+    const th = tv0 * this.camera.aspect * (r.w / r.W);
+    const c = Math.abs(Math.cos(yaw)), sn = Math.abs(Math.sin(yaw));
+    const hw = WORLD_HALF.w * c + WORLD_HALF.h * sn; // 화면 가로 방향 반 너비
+    const hh = WORLD_HALF.w * sn + WORLD_HALF.h * c; // 화면 안쪽 방향 반 길이
+    return Math.max(hh * (Math.sin(el) / tv + Math.cos(el)), hw / th + hh * Math.cos(el));
   }
   // 위아래 각도: 실제 높이각이 8도~84도 안에 있도록 더한다
   addElev(d) {
@@ -1887,7 +1941,7 @@ export class Village {
   isDefaultView(v = this.viewNow()) {
     return !v || (Math.abs(v.yaw) < 0.02 && Math.abs(v.elev) < 0.02 && Math.abs(v.zoom - 1) < 0.02);
   }
-  viewChanged() { if (this.on.onViewChange) this.on.onViewChange(!this.isDefaultView()); }
+  viewChanged() { if (this.on.onViewChange) this.on.onViewChange(!this.isDefaultView(), this.canMap(), this.isMapView()); }
   resetView() {
     const v = this.viewNow();
     if (!v) return;
@@ -1895,16 +1949,48 @@ export class Village {
     v.yaw = 0; v.elev = 0; v.zoom = 1;
     this.viewChanged();
   }
-  // look을 중심으로 base 위치를 시점(v)만큼 돌리고 당긴 카메라 위치
-  orbit(look, base, v, out) {
-    const ox = base.x - look.x, oy = base.y - look.y, oz = base.z - look.z;
+  // look을 중심으로 base 위치를 시점(v)만큼 돌리고 당긴 카메라 위치.
+  // lookOut을 주면 지도 보기가 된다: 많이 줄이면 바라보는 곳이 섬 가운데로 옮겨 가고 더 위에서 내려다본다.
+  orbit(look, base, v, out, lookOut = null) {
+    let lx = look.x, ly = look.y, lz = look.z;
+    const ox = base.x - lx, oy = base.y - ly, oz = base.z - lz;
     const len = Math.hypot(ox, oy, oz) || 1;
     const el0 = Math.atan2(oy, Math.hypot(ox, oz));
     this.baseElev = el0;
     const yaw = Math.atan2(ox, oz) + v.yaw;
-    const el = THREE.MathUtils.clamp(el0 + v.elev, 0.14, 1.47);
-    const d = len * v.zoom;
-    return out.set(look.x + Math.sin(yaw) * Math.cos(el) * d, look.y + Math.sin(el) * d, look.z + Math.cos(yaw) * Math.cos(el) * d);
+    let el = THREE.MathUtils.clamp(el0 + v.elev, 0.14, 1.47);
+    let d = len * v.zoom;
+    const from = mapFrom(this.mode);
+    let m = 0;
+    if (lookOut && v.zoom > from) {
+      m = THREE.MathUtils.smoothstep(v.zoom, from, MAP_ZOOM);
+      el += (Math.max(el, 1.2) - el) * m;
+      d = len * from + (Math.max(len * from, this.mapFit(yaw, el)) - len * from) * m;
+      lx += (WORLD_CENTER.x - lx) * m;
+      ly += (0 - ly) * m;
+      lz += (WORLD_CENTER.z - lz) * m;
+    }
+    if (lookOut) { lookOut.set(lx, ly, lz); this.mapT = m; }
+    return out.set(lx + Math.sin(yaw) * Math.cos(el) * d, ly + Math.sin(el) * d, lz + Math.cos(yaw) * Math.cos(el) * d);
+  }
+
+  // 멀리서 볼수록 안개, 그림자, 보이는 거리를 넓힌다
+  fitFar() {
+    const cd = this.camPos.distanceTo(this.camLook);
+    const extra = Math.max(0, cd - 30);
+    const fog = this.scene.fog;
+    fog.near = 55 + extra * 1.15;
+    fog.far = 120 + extra * 1.7;
+    const far = Math.max(300, cd * 2.2 + 120);
+    if (Math.abs(this.camera.far - far) > 10) { this.camera.far = far; this.camera.updateProjectionMatrix(); }
+    const ext = Math.min(72, 24 + extra * 0.42);
+    const sc = this.sun.shadow.camera;
+    if (Math.abs(sc.right - ext) > 0.5) {
+      this.shadowK = Math.min(3.2, 1 + extra / 50);
+      sc.left = -ext; sc.right = ext; sc.top = ext; sc.bottom = -ext;
+      sc.far = 90 * this.shadowK + ext;
+      sc.updateProjectionMatrix();
+    }
   }
 
   rayAt(cx, cy) {
@@ -2004,6 +2090,126 @@ export class Village {
   }
 
   // ---------- 충돌 ----------
+  // ---------- 길 찾기: 멀리 누른 곳까지 집과 놀이기구를 돌아서 간다 ----------
+  // (x, z)에 사람이 설 수 있는지 (장애물과 물을 피해서)
+  // soft: 나무·가로등처럼 작은 동그라미는 걸으면서 비켜 갈 수 있으니 보지 않는다
+  standable(x, z, pad = PR + 0.03, soft = false) {
+    for (const o of this.obsNear(x, z)) {
+      if (o.t === 'c') { if ((!soft || o.r > 0.7) && Math.hypot(x - o.x, z - o.z) < o.r + pad) return false; continue; }
+      const wx = x - o.x, wz = z - o.z;
+      const lx = wx * o.c - wz * o.s, lz = wx * o.s + wz * o.c;
+      if (Math.abs(lx) < o.hw + pad && Math.abs(lz) < o.hd + pad) return false;
+    }
+    const q = { x, z };
+    clampWalk(q);
+    return Math.hypot(q.x - x, q.z - z) < 0.01;
+  }
+  // a에서 b까지 곧게 걸어갈 수 있는지 (두 끝 바로 옆은 보지 않는다: 벽에 붙어 서 있어도 떠날 수 있게)
+  clearLine(a, b, soft = false) {
+    const d = Math.hypot(b.x - a.x, b.z - a.z);
+    const n = Math.max(1, Math.ceil(d / 0.3));
+    for (let i = 1; i < n; i++) {
+      const t = i / n;
+      if (t * d < 0.45 || (1 - t) * d < 0.45) continue;
+      if (!this.standable(a.x + (b.x - a.x) * t, a.z + (b.z - a.z) * t, PR + 0.03, soft)) return false;
+    }
+    return true;
+  }
+  // 길 그물: 마을 길의 점, 다리 끝, 작은 섬 둘레의 점 가운데 설 수 있는 곳을 잇는다
+  buildRoads() {
+    const nodes = [];
+    const add = (x, z) => {
+      for (let i = 0; i < nodes.length; i++) if (Math.hypot(nodes[i].x - x, nodes[i].z - z) < 0.7) return i;
+      if (!this.standable(x, z, PR * 0.6)) return -1;
+      nodes.push({ x, z, nb: [] });
+      return nodes.length - 1;
+    };
+    for (const path of PATHS) for (let k = 0; k < path.length; k++) {
+      add(path[k][0], path[k][1]);
+      if (k < path.length - 1) { // 긴 길은 중간 점도
+        const [x0, z0] = path[k], [x1, z1] = path[k + 1];
+        const m = Math.floor(Math.hypot(x1 - x0, z1 - z0) / 6);
+        for (let j = 1; j <= m; j++) add(x0 + ((x1 - x0) * j) / (m + 1), z0 + ((z1 - z0) * j) / (m + 1));
+      }
+    }
+    for (const [x, z] of [[0, 29.6], [0, 37], [0, 43.8], [29.6, -4], [37, -4], [44.4, -4]]) add(x, z);
+    // 큰 네모(집, 놀이기구) 모서리 바깥: 이 점들로 집 뒤를 돌아간다
+    for (const o of this.obstacles) {
+      if (o.t !== 'b' || Math.max(o.hw, o.hd) < 1.2) continue;
+      for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+        const lx = sx * (o.hw + PR + 0.25), lz = sz * (o.hd + PR + 0.25);
+        add(o.x + lx * o.c + lz * o.s, o.z - lx * o.s + lz * o.c);
+      }
+    }
+    // 놀이동산 섬: 세 겹 둘레
+    for (const [r, n] of [[6.5, 10], [12.2, 16], [14.8, 20]]) for (let k = 0; k < n; k++) {
+      const a = (k / n) * Math.PI * 2;
+      add(PARK_ISLE.x + Math.cos(a) * r, PARK_ISLE.z - 1 + Math.sin(a) * r);
+    }
+    // 수영장 섬: 수영장 둘레
+    const ox = POOL.hw + POOL.deck + 1.0, oz = POOL.hd + POOL.deck + 1.0;
+    for (const [fx, fz] of [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]]) add(POOL.x + fx * ox, POOL.z + fz * oz);
+    for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) {
+      const a = nodes[i], b = nodes[j];
+      const d = Math.hypot(a.x - b.x, a.z - b.z);
+      if (d < 13 && this.clearLine(a, b, true)) { a.nb.push([j, d]); b.nb.push([i, d]); }
+    }
+    this.roads = nodes;
+  }
+  // a에서 b까지 거쳐 갈 점들 (b는 빼고). 곧게 갈 수 있으면 빈 목록
+  planLeg(a, b) {
+    if (this.clearLine(a, b)) return [];
+    const N = this.roads || [];
+    // 곧게 보이는 점 → 나무만 비켜 가면 되는 점 → 그래도 없으면 가까운 점 셋
+    const see = (p) => {
+      const near = N.map((q, i) => [i, Math.hypot(q.x - p.x, q.z - p.z)]).filter(([, d]) => d < 20).sort((x, y) => x[1] - y[1]);
+      let v = near.filter(([i]) => this.clearLine(p, N[i]));
+      if (!v.length) v = near.filter(([i]) => this.clearLine(p, N[i], true));
+      if (!v.length) v = near.slice(0, 3);
+      return v;
+    };
+    const sa = see(a), sb = new Map(see(b));
+    if (!sa.length || !sb.size) return [];
+    const dist = new Array(N.length).fill(Infinity), prev = new Array(N.length).fill(-1), done = new Array(N.length).fill(false);
+    for (const [i, d] of sa) dist[i] = d;
+    let best = Infinity, bestI = -1;
+    for (;;) {
+      let u = -1;
+      for (let i = 0; i < N.length; i++) if (!done[i] && dist[i] < Infinity && (u < 0 || dist[i] < dist[u])) u = i;
+      if (u < 0 || dist[u] >= best) break;
+      done[u] = true;
+      if (sb.has(u) && dist[u] + sb.get(u) < best) { best = dist[u] + sb.get(u); bestI = u; }
+      for (const [w, d] of N[u].nb) if (dist[u] + d < dist[w]) { dist[w] = dist[u] + d; prev[w] = u; }
+    }
+    if (bestI < 0) return [];
+    const out = [];
+    for (let i = bestI; i >= 0; i = prev[i]) out.unshift({ x: N[i].x, z: N[i].z });
+    // 건너뛸 수 있는 점은 건너뛴다 (곧게 볼 수 있으면)
+    const pts = [a, ...out, b];
+    const slim = [];
+    let k = 0;
+    while (k < pts.length - 1) {
+      let j = pts.length - 1;
+      while (j > k + 1 && !this.clearLine(pts[k], pts[j])) j--;
+      if (j < pts.length - 1) slim.push(pts[j]);
+      k = j;
+    }
+    return slim;
+  }
+  // 다른 섬으로 갈 때는 다리 끝을 거쳐서, 섬 안에서는 길 그물로 돌아서
+  planRoute(from, to) {
+    const goal = { x: to.x, z: to.z };
+    this.resolve(goal); // 집이나 놀이기구 위를 눌렀으면 그 바로 앞까지
+    if (route(from.x, from.z, goal.x, goal.z).length === 0 && this.clearLine(from, goal)) return []; // 곧게 갈 수 있으면 바로
+    const pts = [{ x: from.x, z: from.z }, ...route(from.x, from.z, goal.x, goal.z), goal];
+    const out = [];
+    for (let i = 0; i < pts.length - 1; i++) {
+      out.push(...this.planLeg(pts[i], pts[i + 1]));
+      if (i < pts.length - 2) out.push(pts[i + 1]);
+    }
+    return out;
+  }
+
   resolve(p) {
     for (const o of this.obstacles) {
       if (o.t === 'c') {
@@ -2028,8 +2234,7 @@ export class Village {
         }
       }
     }
-    const rr = Math.hypot(p.x, p.z);
-    if (rr > WALK_R) { p.x *= WALK_R / rr; p.z *= WALK_R / rr; }
+    clampWalk(p); // 섬 셋과 다리 위에서만 걷는다
   }
 
   // ---------- 시간 ----------
@@ -2121,6 +2326,10 @@ export class Village {
     const dt = Math.min(0.05, this.clock.getDelta());
     this.time += dt;
     this.update(dt);
+    // 섬 전체를 볼 때는 그림자가 아주 작으니 네 번에 한 번만 다시 그린다 (휴대폰에서 덜 버겁게)
+    const sm = this.renderer.shadowMap;
+    if ((this.mapS || 0) > 0.9) { this.shadowTick = ((this.shadowTick || 0) + 1) % 4; sm.autoUpdate = false; sm.needsUpdate = this.shadowTick === 0; }
+    else sm.autoUpdate = true;
     this.renderer.render(this.scene, this.camera);
   }
 
@@ -2184,9 +2393,11 @@ export class Village {
     if (!this.wantPos) { this.wantPos = new THREE.Vector3(); this.wantLook = new THREE.Vector3(); }
     if (this.mode === 'game' && this.game && this.game.cam) {
       const k = 1 - Math.exp(-dt * (this.rotating ? 14 : this.game.camSpeed || 3));
-      this.orbit(this.game.cam.look, this.game.cam.pos, this.view.game, this.wantPos);
+      const map = !!this.game.cam.map;
+      this.orbit(this.game.cam.look, this.game.cam.pos, this.view.game, this.wantPos, map ? this.wantLook : null);
+      if (!map) this.mapT = 0;
       this.camPos.lerp(this.wantPos, k);
-      this.camLook.lerp(this.game.cam.look, k);
+      this.camLook.lerp(map ? this.wantLook : this.game.cam.look, k);
     } else if (this.mode === 'play' && this.player) {
       // 기본: 주민 뒤쪽 위(남쪽)에서 앞을 조금 넓게 내려다본다. 끌어서 돌리면 그 방향에서 본다.
       const p = this.player.root.position;
@@ -2201,19 +2412,29 @@ export class Village {
       this.wantLook.set(p.x - Math.sin(v.yaw) * ahead, 0.6 + (1 - near) * 0.9 + sky * 4.5, p.z - Math.cos(v.yaw) * ahead);
       const dist = 23.83 * (this.camera.aspect < 1 ? 1.25 : 1);
       const base = this.wantPos.set(this.wantLook.x, this.wantLook.y + 15.4 / 23.83 * dist, this.wantLook.z + 18.2 / 23.83 * dist);
-      this.orbit(this.wantLook, base.clone(), v, this.wantPos);
+      this.orbit(this.wantLook.clone(), base.clone(), v, this.wantPos, this.wantLook);
       const k = this.rotating ? 14 : 4;
       this.camPos.lerp(this.wantPos, 1 - Math.exp(-dt * k));
       this.camLook.lerp(this.wantLook, 1 - Math.exp(-dt * Math.max(6, k)));
     } else {
       const a = t * 0.05;
+      this.mapT = 0;
       this.camPos.set(Math.sin(a) * 30, 20, Math.cos(a) * 30 + 2);
       this.camLook.set(0, 0, -4);
     }
     this.camera.position.copy(this.camPos);
     this.camera.lookAt(this.camLook);
-    const focus = (this.mode === 'play' || this.mode === 'game') && this.player ? this.player.root.position : this.camLook;
-    this.sun.position.set(focus.x + 14, 28, focus.z + 12);
+    // 지도 보기: 바라보는 가운데가 단추에 가리지 않는 칸의 가운데에 오도록 화면을 옮긴다
+    this.mapS = (this.mapS || 0) + ((this.mapT || 0) - (this.mapS || 0)) * Math.min(1, dt * 4);
+    if (this.mapS > 0.002) {
+      const r = this.safeRect();
+      const dx = (r.W / 2 - (r.left + r.w / 2)) * this.mapS, dy = (r.H / 2 - (r.top + r.h / 2)) * this.mapS;
+      this.camera.setViewOffset(r.W, r.H, dx, dy, r.W, r.H);
+    } else if (this.camera.view && this.camera.view.enabled) this.camera.clearViewOffset();
+    this.fitFar();
+    const focus = (this.mode === 'play' || this.mode === 'game') && this.player && !(this.mapT > 0.05) ? this.player.root.position : this.camLook;
+    const sk = this.shadowK || 1;
+    this.sun.position.set(focus.x + 14 * sk, 28 * sk, focus.z + 12 * sk);
     this.sun.target.position.set(focus.x, 0, focus.z);
 
     // 가리는 물체 흐리게
@@ -2280,9 +2501,13 @@ export class Village {
       dx = kx * c + kz * sn;
       dz = -kx * sn + kz * c;
     } else if (this.target) {
-      dx = this.target.pos.x - p.x;
-      dz = this.target.pos.z - p.z;
-      const d = Math.hypot(dx, dz);
+      // 다른 섬으로 갈 때는 다리 끝을 차례로 거쳐 간다
+      if (this.viaFor !== this.target) { this.viaFor = this.target; this.via = this.planRoute(p, this.target.pos); }
+      while (this.via.length && Math.hypot(this.via[0].x - p.x, this.via[0].z - p.z) < 0.6) this.via.shift();
+      const goal = this.via.length ? this.via[0] : this.target.pos;
+      dx = goal.x - p.x;
+      dz = goal.z - p.z;
+      const d = this.via.length ? 1 : Math.hypot(dx, dz);
       if (d < 0.25) {
         const act = this.target.action;
         this.target = null;
