@@ -170,12 +170,14 @@ function logoutLocal() {
 }
 
 async function refresh() {
-  const [o, w, p, st] = await Promise.all([
+  const [o, w, p, st, su] = await Promise.all([
     rpc('kids_t_overview', { p_token: token }),
     rpc('kids_t_weeks', { p_token: token }),
     rpc('kids_t_posts', { p_token: token }),
     rpc('kids_t_storage', { p_token: token }).catch(() => null),
+    rpc('kids_t_signup', { p_token: token }).catch(() => null),
   ]);
+  signup = su;
   data = o;
   weeks = w || [];
   posts = p || [];
@@ -207,11 +209,43 @@ function render() {
   renderTeachers();
 }
 
+let signup = null;
+function renderSignup() {
+  const box = $('#signupBox');
+  if (!signup) { box.hidden = true; return; }
+  box.hidden = false;
+  const sw = h('input', { type: 'checkbox', checked: signup.open, 'aria-label': '아이 직접 가입 받기' });
+  sw.addEventListener('change', async () => {
+    sw.disabled = true;
+    try { signup = await call('kids_t_set_signup', { p_open: sw.checked, p_code: null }); } catch (e) { sw.checked = !sw.checked; sw.disabled = false; return; }
+    toast(sw.checked ? '아이들이 직접 가입할 수 있어요.' : '직접 가입을 껐어요.');
+    renderSignup();
+  });
+  const code = h('input', { value: signup.code || '', maxlength: 12, 'aria-label': '새 가입 코드' });
+  const err = h('p', { class: 'err', role: 'alert' });
+  box.replaceChildren(
+    h('div', { class: 'signup-head' },
+      h('div', {}, h('h3', {}, '아이 직접 가입'),
+        h('p', { class: 'note' }, '아이가 마을 첫 화면의 ‘처음 왔어요! 가입하기’에서 가입 코드와 이름, 생년월일, 아이디, 비밀번호를 직접 넣으면 바로 계정이 생겨요.')),
+      h('label', { class: 'switch' }, sw, signup.open ? '받는 중' : '꺼짐')),
+    h('div', { class: 'signup-code' }, h('span', {}, '지금 가입 코드'), h('b', {}, signup.code || '-')),
+    h('div', { class: 'verse-head' },
+      h('label', { class: 'field', style: 'flex:1' }, h('span', {}, '가입 코드 바꾸기 (한글·영문·숫자 4~12글자)'), code),
+      h('button', { class: 'btn btn-sm', type: 'button', onclick: async () => {
+        try { signup = await call('kids_t_set_signup', { p_open: null, p_code: code.value.trim() }, err); } catch (e) { return; }
+        toast('가입 코드를 바꿨어요.');
+        renderSignup();
+      } }, '바꾸기')),
+    err,
+    h('p', { class: 'note warn' }, '가입 코드를 아는 사람은 누구나 가입할 수 있어요. 교회 안에서만 알려 주고, 가입이 끝나면 꺼 두거나 코드를 바꿔 주세요. 직접 가입한 아이의 보호자 동의는 가입 화면의 체크로만 받은 것이라, 종이 동의서 등으로 따로 확인하면 아이 정보에서 ‘동의 확인함’을 눌러 기록해 주세요.'));
+}
+
 function renderKids() {
+  renderSignup();
   const list = $('#kidList');
   const pub = data.verses.filter((v) => v.is_published).length;
   if (!data.children.length) {
-    list.replaceChildren(h('div', { class: 'card empty' }, '아직 아이 계정이 없어요. 위의 ‘아이 계정 만들기’로 시작해 주세요.'));
+    list.replaceChildren(h('div', { class: 'card empty' }, '아직 아이 계정이 없어요. 아이들이 마을 첫 화면에서 직접 가입하거나, 위의 ‘아이 계정 만들기’로 만들 수 있어요.'));
     return;
   }
   list.replaceChildren(...data.children.map((c) => {
@@ -221,13 +255,30 @@ function renderKids() {
     const practiced = c.memory.reduce((s, m) => s + m.practice_count, 0);
     return h('button', { class: 'kid', type: 'button', onclick: () => openKid(c.id) },
       cv,
-      h('div', {}, h('div', { class: 'nm' }, c.name, ' ', c.locked ? h('span', { class: 'pill red' }, '잠김') : null),
+      h('div', {}, h('div', { class: 'nm' }, c.name, ' ', c.locked ? h('span', { class: 'pill red' }, '잠김') : null,
+          c.joined_self ? h('span', { class: 'pill' }, '직접 가입') : null, ' ', !c.consent_checked ? h('span', { class: 'pill sun' }, '동의 확인 전') : null),
         h('div', { class: 'sub' }, `아이디 ${c.login_id}`, c.village_name ? ` · 마을 이름 ${c.village_name}` : ' · 아직 꾸미기 전')),
       h('div', { class: 'stat col3' }, birthLabel(c.birthdate)),
       h('div', { class: 'stat col4' }, h('b', {}, `${passed}/${pub}`), ' 도장 · 연습 ', h('b', {}, String(practiced)), '번 · 묵상 ', h('b', {}, String(c.qt_count || 0)),
         ' · 필사 ', h('b', {}, String(c.copy_count || 0)), ' · 열매 ', h('b', {}, String(c.fruits))),
       h('div', { class: 'stat' }, ago(c.last_seen_at)));
   }));
+}
+
+function consentCheck(c) {
+  const d = h('input', { type: 'date', value: new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10) });
+  const err = h('p', { class: 'err', role: 'alert' });
+  return h('div', { class: 'note warn', style: 'margin-top:10px;display:grid;gap:8px' },
+    h('span', {}, `직접 가입한 아이예요. 보호자 동의는 가입 화면의 체크로만 받았어요(${c.consent_date}). 종이 동의서 등으로 따로 확인했다면 날짜를 고르고 눌러 주세요.`),
+    h('div', { class: 'verse-head' },
+      h('label', { class: 'field', style: 'flex:1' }, h('span', {}, '동의 확인한 날'), d),
+      h('button', { class: 'btn btn-sm', type: 'button', onclick: async () => {
+        try { await call('kids_t_check_consent', { p_child: c.id, p_date: d.value }, err); } catch (e) { return; }
+        toast('보호자 동의를 확인했다고 기록했어요.');
+        await refresh();
+        $('#kidDlg').close();
+      } }, '동의 확인함')),
+    err);
 }
 
 function openKid(id) {
@@ -270,7 +321,9 @@ function openKid(id) {
         h('label', { class: 'field' }, h('span', {}, '이름'), fName),
         h('label', { class: 'field' }, h('span', {}, '생년월일'), fBirth),
         h('label', { class: 'field' }, h('span', {}, '로그인 아이디'), fId)),
-      h('p', { class: 'note', style: 'margin-top:10px' }, `보호자 동의서 받은 날: ${c.consent_date}`),
+      c.consent_checked
+        ? h('p', { class: 'note', style: 'margin-top:10px' }, `보호자 동의 확인한 날: ${c.consent_date}`)
+        : consentCheck(c),
       err,
       h('div', { class: 'form-actions' }, h('button', { class: 'btn btn-go btn-sm', type: 'button', onclick: async () => {
         try { await call('kids_t_update_child', { p_id: c.id, p_login_id: fId.value, p_name: fName.value, p_birthdate: fBirth.value }, err); } catch (e) { return; }
@@ -291,7 +344,7 @@ function openKid(id) {
       pinErr),
     h('section', {},
       h('h4', {}, '계정 지우기'),
-      h('p', { class: 'note', style: 'margin-bottom:10px' }, '이름, 생년월일, 꾸민 모습, 암송 기록이 모두 지워지고 되돌릴 수 없어요. 아이가 교회를 떠났거나 보호자가 동의를 거두면 지워 주세요.'),
+      h('p', { class: 'note', style: 'margin-bottom:10px' }, '이름, 생년월일, 꾸민 모습, 암송·묵상·필사 기록, 사진과 그림, 놀이 기록이 모두 지워지고 되돌릴 수 없어요. 아이가 교회를 떠났거나 보호자가 동의를 거두면 지워 주세요.'),
       h('div', { class: 'form-actions' }, confirmButton('지우기', '정말 지우기', async () => {
         try { await call('kids_t_delete_child', { p_id: c.id }); } catch (e) { return; }
         dlg.close();

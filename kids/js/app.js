@@ -118,6 +118,9 @@ function bindUi() {
     await login($('#loginId').value, $('#loginPin').value);
   });
   $('#demoGo').addEventListener('click', () => login('체험', '1234'));
+  $('#joinOpen').addEventListener('click', () => showJoin(true));
+  $('#joinBack').addEventListener('click', () => showJoin(false));
+  $('#joinForm').addEventListener('submit', (e) => { e.preventDefault(); join(); });
   $('#promptBtn').addEventListener('click', () => {
     const id = $('#prompt').dataset.id;
     if (id) village.enter(id);
@@ -205,9 +208,54 @@ function afterLogin() {
   else enterVillage(true);
 }
 
+// ---------- 직접 가입 ----------
+function showJoin(on) {
+  $('#loginForm').hidden = on;
+  $('#joinForm').hidden = !on;
+  $('#joinErr').textContent = '';
+  $('#joinDemoNote').hidden = !DEMO;
+  if (on) setTimeout(() => $('#joinCode').focus({ preventScroll: true }), 50);
+  else setTimeout(() => $('#loginId').focus({ preventScroll: true }), 50);
+}
+
+async function join() {
+  const err = $('#joinErr');
+  err.textContent = '';
+  const v = (id) => $(id).value.trim();
+  if (!v('#joinCode')) { err.textContent = '가입 코드를 써 주세요.'; return; }
+  if (!v('#joinName')) { err.textContent = '이름을 써 주세요.'; return; }
+  if (!$('#joinBirth').value) { err.textContent = '생년월일을 골라 주세요.'; return; }
+  if (!/^[가-힣A-Za-z0-9_]{2,12}$/.test(v('#joinId'))) { err.textContent = message({ code: 'BAD_LOGIN_ID' }); return; }
+  if (!/^[0-9]{4,6}$/.test($('#joinPin').value)) { err.textContent = message({ code: 'BAD_PIN' }); return; }
+  if ($('#joinPin').value !== $('#joinPin2').value) { err.textContent = '비밀번호 두 개가 서로 달라요.'; return; }
+  if (!$('#joinAgree').checked) { err.textContent = message({ code: 'NO_AGREE' }); return; }
+  const btn = $('#joinGo');
+  btn.disabled = true;
+  btn.textContent = '가입하는 중…';
+  try {
+    const res = await rpc('kids_signup', { p_code: v('#joinCode'), p_login_id: v('#joinId'), p_pin: $('#joinPin').value,
+      p_name: v('#joinName'), p_birthdate: $('#joinBirth').value, p_agree: true });
+    if (!res || !res.ok) { err.textContent = message({ code: res && res.error }); return; }
+    state.token = res.token;
+    store.set('token', res.token);
+    await loadMe();
+    for (const id of ['#joinCode', '#joinName', '#joinBirth', '#joinId', '#joinPin', '#joinPin2']) $(id).value = '';
+    $('#joinAgree').checked = false;
+    showJoin(false);
+    toast(`가입했어요! 아이디는 ${josa(state.me.login_id, '이에요', '예요')}. 잊지 않게 적어 두세요.`, 4200);
+    afterLogin();
+  } catch (e) {
+    err.textContent = message(e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '가입하고 마을로!';
+  }
+}
+
 function showLogin() {
   stopNet();
   stopMusic();
+  rpc('kids_signup_open').then((open) => { $('#joinOpen').hidden = !open; }).catch(() => { $('#joinOpen').hidden = true; });
   village.setMode('idle');
   $('#hud').hidden = true;
   $('#prompt').hidden = true;

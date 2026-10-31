@@ -191,6 +191,26 @@ export class DemoBackend {
   }
 
   // ---------- 아이 ----------
+  signupConf() { return this.db.signup || (this.db.signup = { open: true, code: '0000' }); }
+  kids_signup_open() { return this.signupConf().open; }
+  kids_signup({ p_code, p_login_id, p_pin, p_name, p_birthdate, p_agree }) {
+    const conf = this.signupConf();
+    if (!conf.open) fail('SIGNUP_CLOSED');
+    if (String(p_code || '').trim().toLowerCase() !== conf.code.toLowerCase()) return { ok: false, error: 'BAD_JOIN_CODE' };
+    if (!p_agree) fail('NO_AGREE');
+    const l = String(p_login_id || '').trim();
+    if (!ID_RE.test(l)) fail('BAD_LOGIN_ID');
+    if (!/^[0-9]{4,6}$/.test(p_pin || '')) fail('BAD_PIN');
+    const n = String(p_name || '').trim();
+    if (n.length < 1 || n.length > 20) fail('BAD_NAME');
+    if (!p_birthdate || p_birthdate < '2005-01-01' || p_birthdate > iso(new Date())) fail('BAD_BIRTHDATE');
+    if (this.db.children.some((c) => c.login_id.toLowerCase() === l.toLowerCase())) fail('DUPLICATE_ID');
+    if (this.db.children.some((c) => c.name === n && c.birthdate === p_birthdate)) fail('ALREADY_JOINED');
+    const id = 'c' + Date.now();
+    this.db.children.push({ id, login_id: l, pin: p_pin, name: n, birthdate: p_birthdate, consent_date: iso(new Date()), village_name: null, avatar: null,
+      fruits: 0, last_seen_at: nowIso(), memory: {}, joined_self: true, consent_checked: false });
+    return { ok: true, token: this.newSession('child', id) };
+  }
   kids_login({ p_login_id, p_pin }) {
     const c = this.db.children.find((x) => x.login_id.toLowerCase() === String(p_login_id || '').trim().toLowerCase());
     if (!c || c.pin !== p_pin) return { ok: false, error: 'LOGIN_FAILED' };
@@ -496,6 +516,7 @@ export class DemoBackend {
       children: [...this.db.children].sort((a, b) => a.name.localeCompare(b.name, 'ko')).map((c) => ({
         id: c.id, login_id: c.login_id, name: c.name, birthdate: c.birthdate, consent_date: c.consent_date, village_name: c.village_name,
         avatar: c.avatar, fruits: c.fruits, last_seen_at: c.last_seen_at, locked: false,
+        joined_self: !!c.joined_self, consent_checked: c.consent_checked !== false,
         qt_count: this.db.qtEntries.filter((e) => e.child === c.id).length,
         copy_count: this.db.copyEntries.filter((e) => e.child === c.id).length,
         memory: Object.entries(c.memory).map(([verse_id, m]) => ({ verse_id, practice_count: m.practice_count, best_score: m.best_score, passed: !!m.passed, last_practiced_on: m.last })),
@@ -653,6 +674,26 @@ export class DemoBackend {
     const art = this.db.art.map((a) => ({ kind: 'art', key: a.id, child_id: a.child, name: name(a.child).name, village_name: name(a.child).village_name,
       label: a.title || '제목 없는 그림', text: null, shared: a.shared, hidden: a.hidden, at: a.at, thumb: imgGet(a.thumb) }));
     return [...qt, ...cp, ...art].sort((a, b) => b.at.localeCompare(a.at));
+  }
+  kids_t_signup({ p_token }) { this.session(p_token, 'teacher'); return { ...this.signupConf() }; }
+  kids_t_set_signup({ p_token, p_open, p_code }) {
+    this.session(p_token, 'teacher');
+    const conf = this.signupConf();
+    if (p_code != null) {
+      const c = String(p_code).trim();
+      if (!/^[가-힣A-Za-z0-9]{4,12}$/.test(c)) fail('BAD_JOIN_CODE_FORMAT');
+      conf.code = c;
+    }
+    if (p_open != null) conf.open = !!p_open;
+    return { ...conf };
+  }
+  kids_t_check_consent({ p_token, p_child, p_date }) {
+    this.session(p_token, 'teacher');
+    if (!p_date || p_date > iso(new Date())) fail('NO_CONSENT');
+    const c = this.child(p_child);
+    c.consent_checked = true;
+    c.consent_date = p_date;
+    return { ok: true };
   }
   kids_t_photo_ok({ p_token, p_child, p_week, p_ok }) {
     this.session(p_token, 'teacher');

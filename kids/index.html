@@ -77,6 +77,10 @@ button { font: inherit; color: inherit; }
 /* 로그인 */
 .screen { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; overflow-y: auto; padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
 #login { background: linear-gradient(to bottom, rgba(166, 221, 246, .15), rgba(166, 221, 246, .55)); }
+.brand-logo.small { width: 84px; height: 84px; border-radius: 22px; }
+.consent-box { background: #fff; border: 2px dashed var(--line); border-radius: 16px; padding: 12px 14px; font-size: 14px; line-height: 1.6; color: var(--ink-soft); }
+.consent-box b { font-family: var(--display); font-weight: 400; color: var(--ink); font-size: 16px; }
+.consent-box p { margin: 4px 0 0; }
 .login-card { width: min(420px, 100%); background: var(--paper); border-radius: 34px; padding: 28px 26px 22px; box-shadow: var(--shadow); display: grid; gap: 14px; position: relative; border: 4px solid #fff; }
 .brand { text-align: center; display: grid; gap: 4px; justify-items: center; }
 .brand .ico svg { width: 58px; height: 58px; }
@@ -556,7 +560,30 @@ button { font: inherit; color: inherit; }
     <p class="err" id="loginErr" role="alert"></p>
     <button class="btn btn-go" id="loginGo" type="submit">마을로 들어가기</button>
     <button class="btn btn-sun" id="demoGo" type="button" hidden>체험 아이디로 들어가기</button>
+    <button class="btn btn-soft" id="joinOpen" type="button" hidden>처음 왔어요! 가입하기</button>
     <a class="small-link" href="teacher.html">선생님 화면</a>
+  </form>
+  <form class="login-card join-card" id="joinForm" autocomplete="off" hidden>
+    <div class="brand">
+      <img class="brand-logo small" src="icons/logo-256.png" alt="" width="84" height="84">
+      <h1>마을 주민 되기</h1>
+      <p>보호자와 함께 써 주세요</p>
+    </div>
+    <p class="note" id="joinDemoNote" hidden>체험판 가입 코드는 0000이에요.</p>
+    <label class="field"><span>가입 코드 (선생님께 받아요)</span><input id="joinCode" autocapitalize="off" autocomplete="off" spellcheck="false" maxlength="12"></label>
+    <label class="field"><span>내 이름 (진짜 이름)</span><input id="joinName" maxlength="20" autocomplete="off"></label>
+    <label class="field"><span>생년월일</span><input id="joinBirth" type="date" min="2005-01-01"></label>
+    <label class="field"><span>아이디 (한글·영문·숫자 2~12글자)</span><input id="joinId" maxlength="12" autocapitalize="off" autocomplete="off" spellcheck="false"></label>
+    <label class="field"><span>비밀번호 (숫자 4~6자리)</span><input id="joinPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off"></label>
+    <label class="field"><span>비밀번호 한 번 더</span><input id="joinPin2" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off"></label>
+    <div class="consent-box">
+      <b>보호자께</b>
+      <p>진실한숲교회 어린이 마을은 아이를 알아보기 위해 개인정보로 이름과 생년월일만 받습니다. 그 밖에 아이가 정한 아이디와 마을 이름, 꾸민 모습, 암송·묵상·필사 기록과 글, 그림, 놀이 기록이 저장됩니다. 아이가 나누기로 한 글과 그림은 교회 친구들과 선생님이 볼 수 있고, 선생님이 숨길 수 있습니다. 계정을 지우고 싶으시면 선생님께 말씀해 주세요. 계정을 지우면 기록도 함께 지워집니다.</p>
+    </div>
+    <label class="check"><input type="checkbox" id="joinAgree"><span>보호자와 함께 읽었고, 보호자가 동의했어요.</span></label>
+    <p class="err" id="joinErr" role="alert"></p>
+    <button class="btn btn-go" id="joinGo" type="submit">가입하고 마을로!</button>
+    <button class="btn btn-plain" id="joinBack" type="button">돌아가기</button>
   </form>
 </section>
 

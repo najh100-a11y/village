@@ -71,6 +71,12 @@ const MESSAGES = {
   FISH_TIRED: '오늘은 물고기들이 쉬고 싶대요. 내일 또 와요!',
   BAD_STARS: '요리 기록을 저장하지 못했어요.',
   PLAY_LOCKED: '놀이 마당은 오늘의 말씀 활동을 하나 마치면 열려요.',
+  BAD_JOIN_CODE: '가입 코드가 맞지 않아요. 선생님께 코드를 다시 물어보세요.',
+  SIGNUP_CLOSED: '지금은 가입을 받지 않아요. 선생님께 말해 주세요.',
+  SIGNUP_BUSY: '잠시 뒤에 다시 해 주세요.',
+  NO_AGREE: '보호자와 함께 읽고 동의 칸에 표시해 주세요.',
+  ALREADY_JOINED: '같은 이름과 생일로 이미 가입한 친구가 있어요. 아이디를 잊었다면 선생님께 물어보세요.',
+  BAD_JOIN_CODE_FORMAT: '가입 코드는 한글·영문·숫자 4~12글자로 정해 주세요.',
 };
 
 export function message(err) {

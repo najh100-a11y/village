@@ -147,6 +147,12 @@ dialog::backdrop { background: rgba(60, 45, 30, .35); }
 .field textarea.small { min-height: 70px; font-size: 16px; }
 .importing { font-family: var(--display); color: var(--leaf-deep); }
 /* 아이들 글 */
+.signup-card { display: grid; gap: 12px; }
+.signup-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; }
+.signup-head h3 { margin: 0 0 6px; font-family: var(--display); font-weight: 400; font-size: 20px; color: var(--leaf-deep); }
+.signup-code { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.signup-code span { color: var(--ink-soft); }
+.signup-code b { font-family: var(--display); font-weight: 400; font-size: 30px; letter-spacing: 2px; color: var(--ink); background: #fff; border: 2px dashed var(--line); border-radius: 14px; padding: 2px 16px; }
 .posts { display: grid; gap: 10px; }
 .post { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 14px; align-items: start; background: var(--paper); border: 2px solid var(--line); border-radius: 18px; padding: 12px 16px; }
 .post.is-hidden { opacity: .65; }
@@ -217,6 +223,7 @@ dialog::backdrop { background: rgba(60, 45, 30, .35); }
 
     <section id="tab-kids">
       <div class="bar"><h2>아이들</h2><button class="btn btn-go" id="addKidBtn" type="button">아이 계정 만들기</button></div>
+      <div class="card signup-card" id="signupBox" style="margin-bottom:16px"></div>
       <form id="kidForm" class="card" hidden style="display:grid;gap:14px;margin-bottom:16px">
         <p class="note">이 마을은 아이의 <b>이름과 생년월일만</b> 저장합니다. 만 14세 미만 아이는 계정을 만들기 전에 보호자 동의서를 꼭 받아 주세요.</p>
         <div class="grid2">
