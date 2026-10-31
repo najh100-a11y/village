@@ -97,7 +97,8 @@ export class Fireworks {
     this.tex = dotTexture();
     this.shows = [];
     this.flash = 0;
-    this.onBoom = null; // 소리 (터질 때)
+    this.onBoom = null; // 소리 (터질 때): (kind, center)
+    this.onLaunch = null; // 소리 (올라갈 때): (item, x, z)
   }
 
   // item 불꽃을 (x, z)에서 쏘아 올린다
@@ -110,6 +111,7 @@ export class Fireworks {
     head.position.set(x, 1.0, z);
     this.v.scene.add(head);
     this.shows.push({ item, def, from: new THREE.Vector3(x, 1.0, z), top, t: 0, rise: 1.25, trail, head, bursts: [], done: false, emit: 0 });
+    if (this.onLaunch) this.onLaunch(item, x, z);
   }
 
   burst(s, center, kind, delay = 0) {

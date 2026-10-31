@@ -6,17 +6,17 @@ import { mergeStatic, mergeColored } from './merge.js';
 import { PARK_ISLE, makeIsle, makeTree } from './isles.js';
 
 // 놀이동산 섬: 마을 남쪽 다리 건너. 바닥(둥근 광장)과 입구
-export const PARK = { x: 0, z: 59, r: 14.2 };
+export const PARK = { x: 0, z: 60.5, r: 17 };
 export const GATE = { x: 0, z: 45.0 };
 export const RIDES = {
   carousel: { x: 0, z: 52.5, name: '회전목마', door: [0, 49.0] },
   ferris: { x: -10.5, z: 59.5, name: '대관람차', door: [-10.5, 61.8] },
   viking: { x: 10.5, z: 60.5, name: '바이킹', door: [9.7, 56.7] },
-  bumper: { x: 0, z: 68.0, name: '범퍼카', door: [0, 65.1] },
+  bumper: { x: 0, z: 69.5, name: '범퍼카', door: [0, 64.0] },
 };
 export const RIDE_IDS = Object.keys(RIDES);
 // 범퍼카 장: 바닥 반너비, 반깊이, 차 반지름, 바닥 높이
-export const ARENA = { hw: 4.0, hd: 1.9, car: 0.62, y: 0.12 };
+export const ARENA = { hw: 8.8, hd: 4.2, car: 0.62, y: 0.12 }; // 가로세로 17.6 × 8.4 (처음보다 넓이 약 4.8배)
 export const CAR_SEAT = 0.39; // 차 바닥에서 앉은 아이 발밑(root)까지
 // 놀이동산 섬에서 나무를 심지 않는 곳 (대관람차 곤돌라, 바이킹 배가 지나가는 하늘 아래와 입구)
 export const NO_TREE = [
@@ -280,7 +280,7 @@ export class Park {
     // 둘레에 나무
     for (let k = 0; k < 18; k++) {
       const a = (k / 18) * Math.PI * 2 + 0.1;
-      const x = I.x + Math.cos(a) * 15.7, z = I.z + Math.sin(a) * 15.7;
+      const x = I.x + Math.cos(a) * 18.2, z = I.z + Math.sin(a) * 18.2;
       if (NO_TREE.some((c) => Math.hypot(x - c.x, z - c.z) < c.r)) continue;
       if (z > I.z + 9) continue; // 남쪽은 비워 둔다: 놀이기구 카메라가 그쪽에서 본다
       const t = makeTree('round', 0.85 + ((k * 7) % 5) * 0.08);
@@ -623,12 +623,13 @@ export class Park {
     root.position.set(B.x, 0, B.z);
     const st = new THREE.Group();
     st.add(box(2 * A.hw + 0.5, A.y, 2 * A.hd + 0.5, toon('#6F7FA8'), 0, A.y / 2, 0, false));
-    for (let i = -3; i <= 3; i++) st.add(box(0.06, 0.006, 2 * A.hd, toon('#7E8EB8'), i * 1.1, A.y + 0.003, 0, false));
+    for (let i = -7; i <= 7; i++) st.add(box(0.06, 0.006, 2 * A.hd, toon('#7E8EB8'), i * 1.1, A.y + 0.003, 0, false));
+    for (let i = -3; i <= 3; i++) st.add(box(2 * A.hw, 0.006, 0.06, toon('#7E8EB8'), 0, A.y + 0.003, i * 1.1, false));
     // 고무 벽 (빨강·흰색 번갈아)
     const wallH = 0.42, wy = A.y + wallH / 2;
     const cols = [toon('#EF6461'), toon('#FFFDF7')];
     const xs = 2 * A.hw + 0.3, zs = 2 * A.hd + 0.3;
-    const nx = 10, nz = 5;
+    const nx = 22, nz = 10;
     for (let i = 0; i < nx; i++) {
       const x = -xs / 2 + (i + 0.5) * (xs / nx);
       for (const z of [-(A.hd + 0.12), A.hd + 0.12]) st.add(box(xs / nx, wallH, 0.2, cols[i % 2], x, wy, z));
@@ -638,39 +639,41 @@ export class Park {
       for (const x of [-(A.hw + 0.12), A.hw + 0.12]) st.add(box(0.2, wallH, zs / nz, cols[(i + 1) % 2], x, wy, z));
     }
     const bulb = this.v.glow('#FFF2B3');
-    const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sz]) => V(sx * (A.hw + 0.12), 0, sz * (A.hd + 0.12)));
-    for (const c of corners) {
-      st.add(cyl(0.11, 0.13, 3.1, toon('#F6D55C'), c.x, 1.55, c.z, 10));
-      st.add(ball(0.2, bulb, c.x, 3.2, c.z, 12, false));
+    // 기둥: 네 모서리와 입구 쪽 가운데. 기둥 사이에 줄 전구 (범퍼카를 탈 때 보이는 앞쪽은 비워 둔다)
+    const ex = A.hw + 0.12, ez = A.hd + 0.12;
+    const BL = V(-ex, 0, -ez), BM = V(0, 0, -ez), BR = V(ex, 0, -ez), FL = V(-ex, 0, ez), FR = V(ex, 0, ez);
+    for (const c of [BL, BM, BR, FL, FR]) {
+      st.add(cyl(0.12, 0.14, 3.4, toon('#F6D55C'), c.x, 1.7, c.z, 10));
+      st.add(ball(0.22, bulb, c.x, 3.5, c.z, 12, false));
     }
-    // 줄 전구 (앞뒤)
-    for (const sz of [-1, 1]) {
-      const a = corners[sz < 0 ? 0 : 3], b = corners[sz < 0 ? 1 : 2];
-      for (let i = 1; i < 12; i++) {
-        const k = i / 12;
-        st.add(ball(0.07, bulb, a.x + (b.x - a.x) * k, 2.95 - Math.sin(k * Math.PI) * 0.45, a.z, 8, false));
+    for (const [a, b] of [[BL, BM], [BM, BR], [BL, FL], [BR, FR]]) {
+      const n = Math.max(6, Math.round(a.distanceTo(b) / 0.75));
+      for (let i = 1; i < n; i++) {
+        const k = i / n;
+        st.add(ball(0.08, bulb, a.x + (b.x - a.x) * k, 3.25 - Math.sin(k * Math.PI) * 0.5, a.z + (b.z - a.z) * k, 8, false));
       }
     }
     merge(st);
     root.add(st);
     const sg = this.sign('범퍼카', 2.0, { bg: '#5FA9E0', fg: '#FFFDF7', border: '#3F7FB8' });
-    sg.position.set(0, 1.3, -(A.hd + 0.12));
+    sg.position.set(-A.hw / 2, 1.3, -(A.hd + 0.12));
     root.add(sg);
-    // 곰 친구들이 모는 차 셋: 같은 길을 같은 빠르기로 돌아서 서로 부딪히지 않는다
+    // 곰 친구들이 모는 차 다섯: 바깥 길 셋은 한쪽으로, 안쪽 길 둘은 반대쪽으로 돈다 (길끼리 떨어져 있어 서로 부딪히지 않는다)
     this.npc = [];
-    const npcCols = ['#5DB760', '#F49A4C', '#A07FE3'];
-    const bears = ['#B07F4E', '#E9C88F', '#8A8F98'];
-    for (let i = 0; i < 3; i++) {
+    const npcCols = ['#5DB760', '#F49A4C', '#A07FE3', '#EF6461', '#5FA9E0'];
+    const bears = ['#B07F4E', '#E9C88F', '#8A8F98', '#C98B4E', '#F2E2C4'];
+    for (let i = 0; i < 5; i++) {
       const car = this.makeCar(npcCols[i]);
       const bear = makeBear(bears[i]);
       bear.position.y = -0.0;
       car.add(bear);
       car.position.y = A.y;
       root.add(car);
-      this.npc.push({ g: car, ph: (i * TAU) / 3, spin: 0, x: 0, z: 0, wx: 0, wz: 0 });
+      const inner = i >= 3;
+      this.npc.push({ g: car, inner, ph: inner ? ((i - 3) * TAU) / 2 : (i * TAU) / 3, spin: 0, x: 0, z: 0, wx: 0, wz: 0 });
     }
     this.bumperRoot = root;
-    this.place('bumper', root, 4.2, [{ x: 0, z: 0, hw: A.hw + 0.25, hd: A.hd + 0.25 }]);
+    this.place('bumper', root, 9.2, [{ x: 0, z: 0, hw: A.hw + 0.25, hd: A.hd + 0.25 }]);
   }
   // 범퍼카 장 안으로 자리를 맞춘다
   clampArena(p) {
@@ -689,7 +692,7 @@ export class Park {
 
   // ---------- 가로등 ----------
   buildLamps() {
-    for (const [x, z] of [[-3.6, 46.8], [3.6, 46.8], [-6.5, 71.5], [6.5, 71.5]]) {
+    for (const [x, z] of [[-3.6, 46.8], [3.6, 46.8], [-11.2, 74.6], [11.2, 74.6]]) {
       const g = new THREE.Group();
       g.add(cyl(0.09, 0.12, 2.6, toon('#4A4A55'), 0, 1.3, 0, 8));
       g.add(ball(0.26, this.v.glow('#FFF4CF'), 0, 2.75, 0, 12));
@@ -772,10 +775,12 @@ export class Park {
     // 범퍼카 곰 친구들
     const B = RIDES.bumper, A = ARENA;
     for (const n of this.npc) {
-      const u = T * 0.42 + n.ph;
-      const x = Math.cos(u) * (A.hw - 1.0) + Math.sin(u * 3) * 0.12;
-      const z = Math.sin(u) * (A.hd - 0.85);
-      const dx = -Math.sin(u) * (A.hw - 1.0), dz = Math.cos(u) * (A.hd - 0.85);
+      const rx = n.inner ? A.hw - 4.4 : A.hw - 1.2, rz = n.inner ? A.hd - 2.6 : A.hd - 0.95;
+      const dir = n.inner ? -1 : 1;
+      const u = dir * T * (n.inner ? 0.55 : 0.36) + n.ph;
+      const x = Math.cos(u) * rx + Math.sin(u * 3) * 0.12;
+      const z = Math.sin(u) * rz;
+      const dx = -Math.sin(u) * rx * dir, dz = Math.cos(u) * rz * dir;
       n.x = x; n.z = z;
       n.wx = B.x + x; n.wz = B.z + z;
       n.spin = Math.max(0, n.spin - dt * 1.4);

@@ -46,13 +46,16 @@ export const GUIDES = {
   },
 };
 
-export function guideCard(kind, { compact = false } = {}) {
+export function guideCard(kind, { compact = false, extra = null } = {}) {
   const g = GUIDES[kind];
+  const steps = extra ? [...g.steps, extra] : g.steps;
   return h('section', { class: 'guide' + (compact ? ' compact' : '') },
     h('h3', {}, g.title),
     h('p', { class: 'guide-lead' }, g.lead),
-    h('ol', { class: 'guide-steps' }, g.steps.map(([t, d]) => h('li', {}, h('b', {}, t), h('span', {}, d)))));
+    h('ol', { class: 'guide-steps' }, steps.map(([t, d]) => h('li', {}, h('b', {}, t), h('span', {}, d)))));
 }
+// 필사 공책 사진 열매 안내 (서버가 준비되었을 때만 보여 준다)
+export const COPY_PHOTO_STEP = ['공책 사진은 열매 10개', '공책에 손으로 다 쓰고 사진을 찍어 올리면 열매 10개를 받아요. 화면에 따라 쓰거나 공책 체크로 마치면 2개예요.'];
 
 // 처음 들어온 집이면 가이드를 먼저 보여 준다 (기기마다 한 번)
 export function firstVisit(kind) {

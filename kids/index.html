@@ -365,6 +365,13 @@ button.g-chip:active { transform: scale(.96); }
 .shop-item b { font-family: var(--display); font-weight: 400; font-size: 17px; }
 .shop-item p { margin: 2px 0 0; font-size: 14px; color: var(--ink-soft); }
 .shop-item .acts { display: grid; gap: 6px; justify-items: end; }
+.shop-item .fw-ic.pet svg { background: #D7EFC4; }
+@media (max-width: 560px) {
+  .shop-item { grid-template-columns: 56px minmax(0, 1fr); text-align: left; }
+  .shop-item .fw-ic svg { width: 54px; height: 54px; }
+  .shop-item .acts { grid-column: 1 / -1; grid-auto-flow: column; justify-content: stretch; justify-items: stretch; }
+  .shop-item .acts:empty { display: none; }
+}
 .shop-fruit { font-family: var(--display); font-size: 18px; margin: 0 0 10px; }
 .dish-eat .eaters { background: #F3FAEE; border-radius: 14px; padding: 8px 12px; margin: 10px 0; }
 .g-label.bonk { font-size: 22px; color: #E5602F; background: #FFF6E0; border-color: #F6D55C; padding: 2px 12px; }
@@ -490,6 +497,12 @@ button.online[data-unread]:not([data-unread=""])::after { content: ' 💌' attr(
 .quiet-say { margin: 0; font-family: var(--display); color: var(--ink-soft); text-align: center; }
 @keyframes breathe { 0%, 100% { transform: scale(.82); } 50% { transform: scale(1.08); } }
 @media (prefers-reduced-motion: reduce) { .quiet-ring { animation: none; } }
+.reward-note { margin: 0; background: #FFF4D6; border: 3px dashed #F2C35B; border-radius: 16px; padding: 10px 14px; line-height: 1.55; font-size: 17px; }
+.reward-note b { font-family: var(--display); font-weight: 400; color: #C2453A; }
+.mode.best { border-color: #F2C35B; background: #FFF8E2; }
+.mode.best b { color: #C2453A; }
+.shop-h { margin: 10px 0 0; font-family: var(--display); font-weight: 400; font-size: 20px; color: var(--ink); }
+.shop-item.with-me { border-color: var(--leaf); background: #EEF8E6; }
 .fb-word { display: block; font-family: var(--display); font-size: 14px; color: var(--leaf-deep); margin-bottom: 2px; }
 .qt-card { background-image: none; }
 .think, .write { background: #fff; border-radius: 24px; padding: 16px 20px; box-shadow: 0 5px 0 var(--line); display: grid; gap: 10px; }

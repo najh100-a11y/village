@@ -105,7 +105,7 @@ export function createRides({ v, ui, begin, stopAll, portrait, shout }) {
     pl.root.add(car);
     // 다른 차와 떨어진 자리에서 시작
     const others = park.otherCars();
-    const spots = [[-2.6, -0.9], [2.6, -0.9], [-2.6, 0.9], [2.6, 0.9], [0, 0], [-1.3, 0.9], [1.3, -0.9]];
+    const spots = [[-6.0, -2.4], [6.0, -2.4], [-6.0, 2.4], [6.0, 2.4], [0, 0], [-2.8, 1.2], [2.8, -1.2]];
     let best = spots[0], bd = -1;
     for (const [sx, sz] of spots) {
       const d = Math.min(9, ...others.map((o) => Math.hypot(o.x - (B.x + sx), o.z - (B.z + sz))));
@@ -216,8 +216,8 @@ export function createRides({ v, ui, begin, stopAll, portrait, shout }) {
       const k = portrait() ? 1.3 : 1;
       shake = Math.max(0, shake - dt);
       const sx = shake ? (Math.random() - 0.5) * shake : 0, sy = shake ? (Math.random() - 0.5) * shake : 0;
-      game.cam.look.set(B.x + (pos.x - B.x) * 0.55 + sx, 0.4 + sy, B.z + (pos.z - B.z) * 0.45);
-      game.cam.pos.set(B.x + (pos.x - B.x) * 0.3, 9.5 * k, B.z + 10.5 * k);
+      game.cam.look.set(B.x + (pos.x - B.x) * 0.7 + sx, 0.4 + sy, B.z + (pos.z - B.z) * 0.55);
+      game.cam.pos.set(B.x + (pos.x - B.x) * 0.45, 11 * k, B.z + 4 + (pos.z - B.z) * 0.3 + 9.5 * k);
       for (let i = pops.length - 1; i >= 0; i--) {
         const q = pops[i];
         q.life -= dt;

@@ -144,6 +144,89 @@ function noise({ dur = 0.25, vol = 0.15, freq = 1200, freq2 = 0, q = 1, kind = '
 }
 
 const play = (fn) => (...a) => { if (ready()) { try { fn(...a); } catch (e) { /* 소리는 없어도 괜찮다 */ } } };
+
+// ---------- 불꽃놀이 소리 ----------
+// 불꽃 소리는 길게 끌리므로 3초짜리 잡음을 되풀이해 쓰고, 여러 개가 겹쳐도 깨지지 않게 압축기를 거친다.
+// 휴대폰 스피커는 아주 낮은 소리를 잘 못 내서, '펑'과 '타닥' 소리는 귀에 잘 들리는 높이로 만든다.
+let fxBus = null, longNoise = null;
+function bus() {
+  if (!fxBus) {
+    fxBus = ac.createDynamicsCompressor();
+    fxBus.threshold.value = -16;
+    fxBus.knee.value = 12;
+    fxBus.ratio.value = 4;
+    fxBus.attack.value = 0.003;
+    fxBus.release.value = 0.3;
+    fxBus.connect(master);
+  }
+  return fxBus;
+}
+function fxNoise({ dur = 0.3, vol = 0.2, freq = 1200, freq2 = 0, q = 0.8, kind = 'bandpass', delay = 0, attack = 0.004, hold = 0 }) {
+  if (!longNoise) {
+    longNoise = ac.createBuffer(1, ac.sampleRate * 3, ac.sampleRate);
+    const d = longNoise.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  const t = ac.currentTime + delay;
+  const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+  s.buffer = longNoise;
+  s.loop = true;
+  f.type = kind;
+  f.Q.value = q;
+  f.frequency.setValueAtTime(freq, t);
+  if (freq2) f.frequency.exponentialRampToValueAtTime(freq2, t + dur);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), t + attack);
+  if (hold > attack) g.gain.setValueAtTime(Math.max(0.0002, vol), t + hold); // hold: 그때까지 소리를 그대로 낸다
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  s.connect(f);
+  f.connect(g);
+  g.connect(bus());
+  s.start(t, Math.random() * 2);
+  s.stop(t + dur + 0.05);
+}
+function fxTone({ f = 440, f2 = 0, type = 'sine', dur = 0.3, vol = 0.1, delay = 0, attack = 0.005, vib = 0, hold = 0 }) {
+  const t = ac.currentTime + delay;
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(f, t);
+  if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+  if (vib) {
+    const l = ac.createOscillator(), lg = ac.createGain();
+    l.frequency.value = 9;
+    lg.gain.value = vib;
+    l.connect(lg);
+    lg.connect(o.frequency);
+    l.start(t);
+    l.stop(t + dur + 0.05);
+  }
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), t + attack);
+  if (hold > attack) g.gain.setValueAtTime(Math.max(0.0002, vol), t + hold); // hold: 그때까지 소리를 그대로 낸다
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g);
+  g.connect(bus());
+  o.start(t);
+  o.stop(t + dur + 0.05);
+}
+// 불꽃이 올라갈 때: 높아지는 휘파람과 쉭 소리 (vol: 멀면 작게)
+function fwLaunch(vol = 1) {
+  fxTone({ f: 520, f2: 1750, type: 'sine', dur: 1.25, vol: 0.055 * vol, attack: 0.12, hold: 0.85, vib: 22 });
+  fxNoise({ dur: 1.15, vol: 0.045 * vol, freq: 2600, freq2: 6200, q: 0.7, attack: 0.06, hold: 0.7 });
+}
+// 불꽃이 터질 때: 펑(높은 잡음) + 쿵(낮은 울림과 들리는 배음) + 우르릉 잔향 + 메아리 + 타닥타닥
+function fwBurst(kind = 'spark', vol = 1) {
+  const v = vol * (kind === 'flower2' ? 0.6 : 1);
+  fxNoise({ dur: 0.24, vol: 0.6 * v, freq: 1500, q: 0.5, attack: 0.002 });
+  fxTone({ f: 160, f2: 48, type: 'sine', dur: 0.85, vol: 0.55 * v, attack: 0.004 });
+  fxTone({ f: 320, f2: 110, type: 'triangle', dur: 0.45, vol: 0.2 * v, attack: 0.004 });
+  fxNoise({ dur: 1.7, vol: 0.3 * v, freq: 2600, freq2: 220, q: 0.4, kind: 'lowpass', attack: 0.01 });
+  fxNoise({ dur: 1.2, vol: 0.11 * v, freq: 900, freq2: 180, q: 0.5, kind: 'lowpass', delay: 0.36, attack: 0.04 });
+  const n = kind === 'heart' ? 10 : kind === 'flower2' ? 8 : 18;
+  const until = kind === 'spark' ? 1.9 : 1.5;
+  for (let i = 0; i < n; i++) fxNoise({ dur: rnd(0.02, 0.05), vol: rnd(0.05, 0.13) * v, freq: rnd(3500, 7500), q: 1.6, delay: rnd(0.35, until), attack: 0.002 });
+  if (kind === 'heart') [1568, 2093, 2637, 3136].forEach((f, i) => fxTone({ f, dur: 0.7, vol: 0.05 * v, delay: 0.45 + i * 0.13 }));
+}
 const rnd = (a, b) => a + Math.random() * (b - a);
 
 export const sfx = {
@@ -178,13 +261,13 @@ export const sfx = {
   // 동물 소리 (soft면 작게)
   bark: play((soft = false) => { const v = soft ? 0.07 : 0.13; tone({ f: 520, f2: 330, type: 'sawtooth', dur: 0.09, vol: v * 0.6 }); tone({ f: 470, f2: 300, type: 'triangle', dur: 0.1, vol: v, delay: 0.16 }); }),
   meow: play((soft = false) => { const v = soft ? 0.06 : 0.11; tone({ f: 620, f2: 880, type: 'triangle', dur: 0.16, vol: v }); tone({ f: 880, f2: 520, type: 'triangle', dur: 0.26, vol: v, delay: 0.15 }); }),
-  // 불꽃 터지는 소리 (soft: 두 번째 작은 꽃)
-  boom: play((soft = false) => {
-    const v = soft ? 0.5 : 1;
-    tone({ f: 120, f2: 45, type: 'sine', dur: 0.5, vol: 0.22 * v });
-    noise({ dur: 0.45, vol: 0.14 * v, freq: 900, freq2: 200, q: 0.6, kind: 'lowpass' });
-    for (let i = 0; i < 6; i++) noise({ dur: 0.04, vol: 0.05 * v, freq: rnd(3000, 6000), q: 2, kind: 'bandpass', delay: 0.25 + i * rnd(0.05, 0.12) });
-  }),
+  // 불꽃놀이: 올라가는 소리와 터지는 소리 (kind: spark, flower, flower2, heart / vol: 거리에 따라 0.3~1)
+  fwLaunch: play((vol = 1) => fwLaunch(vol)),
+  firework: play((kind = 'spark', vol = 1) => fwBurst(kind, vol)),
+  boom: play((soft = false) => fwBurst(soft ? 'flower2' : 'spark', 1)),
+  // 애완동물: 토끼 깡충, 병아리 삐약
+  hop: play(() => { tone({ f: 420, f2: 880, type: 'triangle', dur: 0.12, vol: 0.09 }); tone({ f: 560, f2: 1100, type: 'triangle', dur: 0.1, vol: 0.06, delay: 0.14 }); }),
+  peep: play((soft = false) => { const v = soft ? 0.05 : 0.09; tone({ f: 2300, f2: 3000, dur: 0.07, vol: v }); tone({ f: 2400, f2: 3100, dur: 0.07, vol: v, delay: 0.12 }); }),
   // 폴짝 뛰기: 통 올라가는 소리
   jump: play(() => { tone({ f: 330, f2: 760, type: 'triangle', dur: 0.14, vol: 0.1 }); tone({ f: 660, f2: 990, dur: 0.08, vol: 0.04, delay: 0.06 }); }),
   tweet: play(() => { [0, 0.13, 0.24].forEach((d, i) => tone({ f: 2600 + i * 300, f2: 3600 + i * 200, dur: 0.06, vol: 0.035, delay: d })); }),

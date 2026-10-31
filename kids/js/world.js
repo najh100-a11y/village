@@ -4,7 +4,7 @@ import { Avatar, toon, toonGradient } from './avatar.js';
 import { randomAvatar, colorOf, shade } from './face.js';
 import { mergeStatic, Instancer } from './merge.js';
 import { Park, RIDE_IDS, resetLimbs } from './park.js';
-import { Critters } from './critters.js';
+import { Critters, Follower, PET_ITEMS } from './critters.js';
 import { Pool, inPool, SWIM_Y, swimPose } from './pool.js';
 import { clampWalk, makeBridge, BRIDGES, WORLD_CENTER, WORLD_HALF, route, PARK_ISLE } from './isles.js';
 import { POOL } from './pool.js';
@@ -315,7 +315,8 @@ export class Village {
     this.critters.onSound = (kind, soft) => this.on.onCritterSound && this.on.onCritterSound(kind, soft);
     this.bugs = new Bugs(this);
     this.fireworks = new Fireworks(this);
-    this.fireworks.onBoom = (kind) => this.on.onBoom && this.on.onBoom(kind);
+    this.fireworks.onBoom = (kind, c) => this.on.onBoom && this.on.onBoom(kind, c);
+    this.fireworks.onLaunch = (item, x, z) => this.on.onFwLaunch && this.on.onFwLaunch(item, x, z);
     this.buildNpcs();
     this.buildRoads();
     this.applyTimeOfDay();
@@ -1081,8 +1082,8 @@ export class Village {
     this.addBench(-6.9, 17.0, -2.565); // 연못을 보는 벤치
     this.addBench(-5.0, 50.0, 1.107); // 놀이동산 섬: 회전목마를 본다
     this.addBench(5.0, 50.0, -1.107);
-    this.addBench(-6.8, 67.5, Math.PI / 2); // 범퍼카를 본다
-    this.addBench(6.8, 67.5, -Math.PI / 2);
+    this.addBench(-11.6, 69.5, Math.PI / 2); // 범퍼카를 본다
+    this.addBench(11.6, 69.5, -Math.PI / 2);
     this.addBench(-2.7, -14.6, Math.PI / 2); // 내 집 가는 길
   }
   // 벤치 i의 왼쪽(0)·오른쪽(1) 자리: 앉았을 때 발밑 위치와 방향
@@ -1637,6 +1638,7 @@ export class Village {
   removeRemote(id) {
     const r = this.remotes.get(id);
     if (!r) return;
+    this.setPet(id, null);
     this.scene.remove(r.av.root);
     r.av.dispose();
     r.tag.remove();
@@ -2020,6 +2022,7 @@ export class Village {
       if (p.type === 'bench') { this.walkToBench(p.i); return; }
       if (p.type === 'fruit') { this.walkToFruit(p.i); return; }
       if (p.type === 'pet') { this.petAnimal(p.i); return; }
+      if (p.type === 'mypet') { this.petFollower(p.owner); return; }
       if (p.type === 'bug') { this.walkToBug(p.i); return; }
       if (p.type === 'dish') { this.walkToDish(p.i); return; }
     }
@@ -2062,6 +2065,36 @@ export class Village {
     this.reportMove(pos.x, pos.z);
   }
   // 강아지·고양이를 누르면 멈춰서 반기고, 나는 그 옆으로 간다
+  // ---------- 애완동물: 주인('me' 또는 친구 id)을 따라다닌다 ----------
+  setPet(owner, item) {
+    this.followers = this.followers || new Map();
+    const cur = this.followers.get(owner);
+    if (cur && cur.item === item) return;
+    if (cur) { cur.dispose(); this.followers.delete(owner); }
+    if (!item || !PET_ITEMS[item]) return;
+    this.followers.set(owner, new Follower(this, item, owner));
+  }
+  updateFollowers(dt) {
+    if (!this.followers) return;
+    for (const [owner, f] of this.followers) {
+      if (owner === 'me') {
+        if (!this.player) continue;
+        // 놀이 중이면(놀이기구, 낚시 등) 그 자리에서 기다린다. 벤치에 앉거나 열매를 먹을 때는 곁에 있는다
+        f.update(dt, this.player.root, this.mode !== 'play');
+      } else {
+        const r = this.remotes.get(owner);
+        if (!r) continue;
+        f.update(dt, r.av.root, !!(r.pin && r.pin.kind !== 'bench'));
+      }
+    }
+  }
+  petFollower(owner) {
+    const f = this.followers && this.followers.get(owner);
+    if (!f) return;
+    const kind = f.pet();
+    if (this.on.onPet) this.on.onPet({ kind, mine: owner === 'me' });
+  }
+
   petAnimal(i) {
     if (!this.critters || !this.player) return;
     const r = this.critters.pet(i);
@@ -2142,9 +2175,9 @@ export class Village {
       }
     }
     // 놀이동산 섬: 세 겹 둘레
-    for (const [r, n] of [[6.5, 10], [12.2, 16], [14.8, 20]]) for (let k = 0; k < n; k++) {
+    for (const [r, n] of [[6.5, 10], [12.5, 16], [16.8, 22]]) for (let k = 0; k < n; k++) {
       const a = (k / n) * Math.PI * 2;
-      add(PARK_ISLE.x + Math.cos(a) * r, PARK_ISLE.z - 1 + Math.sin(a) * r);
+      add(PARK_ISLE.x + Math.cos(a) * r, PARK_ISLE.z - 1.5 + Math.sin(a) * r);
     }
     // 수영장 섬: 수영장 둘레
     const ox = POOL.hw + POOL.deck + 1.0, oz = POOL.hd + POOL.deck + 1.0;
@@ -2353,6 +2386,7 @@ export class Village {
       const T = this.park.now();
       this.park.update(T, dt);
       if (this.critters) this.critters.update(T, dt);
+      this.updateFollowers(dt);
       if (this.pool) this.pool.update(T, dt);
       if (this.bugs) this.bugs.update(T, dt);
     }

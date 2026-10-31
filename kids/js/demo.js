@@ -5,7 +5,7 @@ import { FISH, FRIDGE as FRIDGE_IDS } from './play-data.js';
 import { toJpeg } from './images.js';
 import { cleanChat } from './chatfilter.js';
 const BUG_KINDS = ['cabbage_white', 'swallowtail', 'honeybee', 'ladybug', 'grasshopper', 'red_dragonfly', 'mantis', 'cicada', 'stag_beetle', 'rhino_beetle', 'firefly'];
-const ITEM_PRICE = { fw_spark: 1, fw_flower: 3, fw_heart: 5 };
+const ITEM_PRICE = { fw_spark: 1, fw_flower: 3, fw_heart: 5, pet_dog: 30, pet_cat: 30, pet_rabbit: 30, pet_chick: 30 };
 
 const FIRST = PLAN.weeks[0].week_start;
 const LAST = PLAN.weeks[PLAN.weeks.length - 1].days.slice(-1)[0].date;
@@ -86,7 +86,20 @@ function seedDrawings() {
 }
 
 // 이 기기에 남은 체험판 자료에 새 계획(이야기, 묵상 해설)을 덮어쓴다. 아이들이 쓴 글은 그대로 둔다.
+// 체험판 예시 친구 바다는 토끼를 데리고 다닌다 (친구 애완동물이 어떻게 보이는지)
+function seedPets(db) {
+  if (!db || db.petsSeeded) return db;
+  db.petsSeeded = true;
+  const c3 = (db.children || []).find((c) => c.id === 'c3');
+  if (c3 && !c3.pet) {
+    c3.pet = 'pet_rabbit';
+    db.items = db.items || {};
+    db.items.c3 = { ...(db.items.c3 || {}), pet_rabbit: 1 };
+  }
+  return db;
+}
 function syncPlan(db) {
+  seedPets(db);
   if (!db || db.planVersion === PLAN.version) return db; // 한 번만 (선생님이 고친 내용은 남긴다)
   db.planVersion = PLAN.version;
   try {
@@ -112,7 +125,7 @@ export class DemoBackend {
       const s = localStorage.getItem(this.key);
       if (s) return syncPlan(JSON.parse(s));
     } catch (e) { /* 무시 */ }
-    const db = this.seed();
+    const db = seedPets(this.seed());
     try {
       seedDrawings().forEach((d, i) => {
         const id = `seed${i + 1}`;
@@ -217,7 +230,7 @@ export class DemoBackend {
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true }; }
   kids_dm_send({ p_token, p_to, p_text }) {
     const me = this.session(p_token, 'child');
     if (!this.villageConf().chat_open) fail('CHAT_OFF');
@@ -327,15 +340,17 @@ export class DemoBackend {
     const me = this.session(p_token, 'child');
     const items = {};
     for (const [k, n] of Object.entries((this.db.items || {})[me] || {})) if (n > 0) items[k] = n;
-    return { fruits: this.child(me).fruits, items, prices: { ...ITEM_PRICE } };
+    return { fruits: this.child(me).fruits, items, prices: { ...ITEM_PRICE }, pet: this.child(me).pet || null };
   }
   kids_shop_buy({ p_token, p_item, p_n }) {
     const me = this.session(p_token, 'child');
     const price = ITEM_PRICE[p_item];
-    const n = p_n || 1;
+    const pet = String(p_item || '').startsWith('pet_');
+    const n = pet ? 1 : p_n || 1;
     if (!price || n < 1 || n > 5) fail('BAD_ITEM');
     this.db.items = this.db.items || {};
     const bag = this.db.items[me] || (this.db.items[me] = {});
+    if (pet && (bag[p_item] || 0) >= 1) fail('HAVE_PET');
     if ((bag[p_item] || 0) + n > 99) fail('BAG_FULL');
     const c = this.child(me);
     if (c.fruits < price * n) fail('NO_FRUIT');
@@ -348,12 +363,20 @@ export class DemoBackend {
   kids_item_use({ p_token, p_item }) {
     const me = this.session(p_token, 'child');
     const bag = ((this.db.items || {})[me]) || {};
+    if (!String(p_item || '').startsWith('fw_')) fail('BAD_ITEM');
     this.usedAt = this.usedAt || {};
     if (this.usedAt[me] && Date.now() - this.usedAt[me] < 2000) fail('TOO_FAST');
     if (!(bag[p_item] > 0)) fail('NO_ITEM');
     bag[p_item] -= 1;
     this.usedAt[me] = Date.now();
     return { item: p_item, left: bag[p_item] };
+  }
+  // 데리고 다닐 애완동물 (null이면 집에서 쉰다)
+  kids_pet_set({ p_token, p_pet }) {
+    const me = this.session(p_token, 'child');
+    if (p_pet && !(((this.db.items || {})[me] || {})[p_pet] > 0 && String(p_pet).startsWith('pet_'))) fail('NO_PET');
+    this.child(me).pet = p_pet || null;
+    return { pet: p_pet || null };
   }
   kids_t_dish_hide({ p_token, p_id, p_hidden }) {
     this.session(p_token, 'teacher');
@@ -393,7 +416,7 @@ export class DemoBackend {
   kids_me({ p_token }) {
     const c = this.child(this.session(p_token, 'child'));
     c.last_seen_at = nowIso();
-    return { id: c.id, login_id: c.login_id, name: c.name, village_name: c.village_name, avatar: c.avatar, fruits: c.fruits,
+    return { id: c.id, login_id: c.login_id, name: c.name, village_name: c.village_name, avatar: c.avatar, fruits: c.fruits, pet: c.pet || null,
       is_birthday: c.birthdate.slice(5) === iso(new Date()).slice(5) };
   }
   kids_save_avatar({ p_token, p_avatar, p_village_name }) {
@@ -427,7 +450,7 @@ export class DemoBackend {
   }
   kids_village({ p_token }) {
     this.session(p_token, 'child');
-    return { room: 'demo', people: this.db.children.filter((c) => c.village_name && c.avatar).map((c) => ({ id: c.id, name: c.village_name, avatar: c.avatar })) };
+    return { room: 'demo', people: this.db.children.filter((c) => c.village_name && c.avatar).map((c) => ({ id: c.id, name: c.village_name, avatar: c.avatar, pet: c.pet || null })) };
   }
   kids_today({ p_token }) {
     const me = this.session(p_token, 'child');
@@ -515,7 +538,7 @@ export class DemoBackend {
       week: { week_start: ws, theme: w.theme, ref: w.copy_ref, intro: w.copy_intro, passage: w.copy_passage, is_current: ws === weekOf(t) },
       prev: i > 0 ? weeks[i - 1] : null,
       next: i < weeks.length - 1 ? weeks[i + 1] : null,
-      mine: mine ? { note: mine.note, shared: mine.shared, hidden: mine.hidden, has_photo: !!mine.photo, photo_ok: !!mine.photo_ok, thumb: imgGet(mine.thumb) } : null,
+      mine: mine ? { note: mine.note, shared: mine.shared, hidden: mine.hidden, has_photo: !!mine.photo, photo_ok: !!mine.photo_ok, photo_paid: !!mine.photo_paid, thumb: imgGet(mine.thumb) } : null,
       friends: this.entriesFor(this.db.copyEntries, ws, 'week', 'copy', me, 'note').map((f) => {
         const e = this.db.copyEntries.find((x) => x.child === f.id && x.week === ws);
         const visible = e.photo && (f.me || (e.photo_ok && e.shared && !e.hidden));
@@ -531,7 +554,11 @@ export class DemoBackend {
     const c = this.child(me);
     let e = this.db.copyEntries.find((x) => x.child === me && x.week === p_week);
     let gained = 0;
-    if (!e) { e = { child: me, week: p_week, note: '', shared: true, hidden: false, at: nowIso() }; this.db.copyEntries.push(e); gained = 2; c.fruits += 2; }
+    // 공책 사진: 처음이면 열매 10개, 따라 쓰기로 2개를 이미 받았으면 8개 더 (한 주에 한 번)
+    if (!e) { e = { child: me, week: p_week, note: '', shared: true, hidden: false, at: nowIso() }; this.db.copyEntries.push(e); gained = 10; }
+    else if (!e.photo_paid) gained = 8;
+    c.fruits += gained;
+    e.photo_paid = true;
     const id = `p${me}${p_week}`;
     imgPut(this.db, id, p_photo);
     imgPut(this.db, id + 't', p_thumb);

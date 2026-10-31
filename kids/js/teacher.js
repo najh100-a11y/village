@@ -259,7 +259,7 @@ function renderVillage() {
       renderVillage();
     } }, d.hidden ? '다시 보이기' : '숨기기'))) : [h('div', { class: 'card empty' }, '아직 올린 요리가 없어요.')]));
   const sl = $('#shopList');
-  const ITEM = { fw_spark: '반짝 불꽃', fw_flower: '꽃 불꽃', fw_heart: '하트 불꽃' };
+  const ITEM = { fw_spark: '반짝 불꽃', fw_flower: '꽃 불꽃', fw_heart: '하트 불꽃', pet_dog: '애완동물 강아지', pet_cat: '애완동물 고양이', pet_rabbit: '애완동물 토끼', pet_chick: '애완동물 병아리' };
   const shop = v.shop || [];
   if (sl) sl.replaceChildren(...(shop.length ? shop.map((l) => h('div', { class: 'chat-row' },
     h('time', { datetime: l.at }, timeOf(l.at)),

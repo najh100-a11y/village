@@ -13,6 +13,7 @@ import { createPlay3D } from './play3d.js';
 import { ACT_ICON, ACT_TEXT, fishById, recipeById, RECIPES } from './play-data.js';
 import { BUGS, bugById, bugIcon, catchChance, RARITY_TEXT } from './bugs.js';
 import { FIREWORKS, FW_IDS, fireworkIcon } from './fireworks.js';
+import { PET_ITEMS, PET_IDS } from './critters.js';
 import { initSound, startMusic, stopMusic, setScene, sfx, cycleSound, soundMode } from './sound.js';
 import { h, modal, toast, confetti, josa } from './ui.js';
 import { drawFaceIcon, normalizeAvatar, defaultAvatar } from './face.js';
@@ -93,11 +94,12 @@ async function boot() {
       else if (what === 'stop') { setActivity(''); munchSaid = false; }
       else if (what === 'empty') toast('이 나무 열매는 다 땄어요. 조금 있으면 다시 열려요!', 2600);
     },
-    onPet: (r) => { if (r.kind === 'cat') sfx.meow(); else sfx.bark(); },
+    onPet: (r) => { if (r.kind === 'cat') sfx.meow(); else if (r.kind === 'rabbit') sfx.hop(); else if (r.kind === 'chick') sfx.peep(); else sfx.bark(); },
     onBug: (i, kind) => onBug(i, kind),
     onNet: (on) => setActivity(on ? 'bug' : ''),
     onDish: (i, d) => openDish(d),
-    onBoom: (kind) => sfx.boom(kind === 'flower2'),
+    onBoom: (kind, c) => sfx.firework(kind, fwVol(c)),
+    onFwLaunch: (item, x, z) => sfx.fwLaunch(fwVol({ x, z })),
     onSplash: () => sfx.splash(),
     onCritterSound: (kind, soft) => { if (kind === 'bird') sfx.tweet(); else if (kind === 'cat') sfx.meow(soft); else sfx.bark(soft); },
   });
@@ -120,7 +122,7 @@ async function boot() {
   };
   memory = createMemory({ ...common, onBoard: (cur) => village.setBoard(cur ? cur.ref : '') });
   qt = createQt({ ...common, features: () => state.features || {} });
-  copy = createCopy(common);
+  copy = createCopy({ ...common, features: () => state.features || {} });
   const onlineFriends = () => [...online].map((id) => state.people.get(id)).filter(Boolean);
   hub = createPlayHub({
     getNet: () => net,
@@ -389,6 +391,12 @@ const GAMES = {
   ferris: () => play3d.ride('ferris'), viking: () => play3d.ride('viking'), carousel: () => play3d.ride('carousel'), bumper: () => play3d.ride('bumper'),
 };
 let benchTold = false, munchSaid = false, jumpSent = 0;
+// 불꽃 소리 크기: 내 주민에게서 멀수록 작게 (가까우면 1, 45m쯤이면 0.3)
+function fwVol(c) {
+  const p = village && village.playerPos();
+  if (!c || !p) return 0.9;
+  return Math.max(0.3, Math.min(1, 1.15 - Math.hypot(p.x - c.x, p.z - c.z) / 45));
+}
 
 // 화면 가장자리에서 단추들이 차지한 너비 (지도 보기에서 섬을 그 안쪽에 맞춘다)
 function measureSafe() {
@@ -480,10 +488,11 @@ async function enterVillage(greet) {
   village.setPlayer(me.avatar);
   village.setHome(me.village_name, normalizeAvatar(me.avatar));
   village.setMyName(me.village_name);
+  village.setPet('me', me.pet || null);
   village.setMode('play');
   village.viewChanged();
   rpc('kids_chat_open').then(showChatInput).catch(() => showChatInput(false));
-  rpc('kids_features').then((f) => { state.features = f || {}; }).catch(() => { state.features = {}; });
+  rpc('kids_features').then((f) => { state.features = f || {}; showNews(); }).catch(() => { state.features = {}; });
   village.setPaused(false);
   updateHud();
   $('#hud').hidden = false;
@@ -551,6 +560,7 @@ async function startNet() {
       online.add(id);
       showCount();
       village.addRemote(id, p.avatar, p.name);
+      village.setPet(id, p.pet || null);
       n.announce();
     },
     onLeave: (id) => {
@@ -565,7 +575,7 @@ async function startNet() {
       if ((type === 'inv' || type === 'invr') && p.to !== (state.me && state.me.id)) return;
       const person = await ensurePerson(id);
       if (!person || net !== n) return;
-      if (!online.has(id)) { online.add(id); showCount(); village.addRemote(id, person.avatar, person.name); }
+      if (!online.has(id)) { online.add(id); showCount(); village.addRemote(id, person.avatar, person.name); village.setPet(id, person.pet || null); }
       if (type === 'mv') village.remoteMove(id, p);
       else if (type === 'st') village.remoteStop(id, p);
       else if (type === 'say') {
@@ -625,7 +635,7 @@ async function startNet() {
       } else if (type === 'av') {
         try { await fetchPeople(true); } catch (e) { return; }
         const np = state.people.get(id);
-        if (np) village.addRemote(id, np.avatar, np.name);
+        if (np) { village.addRemote(id, np.avatar, np.name); village.setPet(id, np.pet || null); }
       }
     },
   });
@@ -729,6 +739,15 @@ async function openBag(focusBug) {
     else fw.append(h('div', { class: 'shop-list' }, owned.map((id) => fwRow(id, items[id], { launch: true }))));
   }
   secs.push(fw);
+  // 애완동물
+  if (state.features.pets) {
+    const items = (shop && shop.items) || {};
+    const owned = PET_IDS.filter((id) => items[id] > 0);
+    const pets = h('section', { class: 'bag-sec' }, h('h3', {}, '🐾 우리 집 친구'));
+    if (!owned.length) pets.append(h('p', { class: 'note' }, '아직 애완동물이 없어요. 열매 상점에서 열매 30개로 데려올 수 있어요.'));
+    else pets.append(h('div', { class: 'shop-list' }, owned.map((id) => petRow(id, { owned: true }))));
+    secs.push(pets);
+  }
   // 곤충 도감
   const bugs = h('section', { class: 'bag-sec' });
   if (!state.features.bugs) bugs.append(h('h3', {}, '🦋 곤충 도감'), h('p', { class: 'note' }, '곤충 채집은 곧 열려요.'));
@@ -772,6 +791,81 @@ function fwRow(id, count, { buy = false, launch = false, fruits = 0 } = {}) {
     h('div', {}, h('b', {}, f.name), h('p', {}, f.desc), h('p', {}, count ? `가방에 ${count}개` : '')), acts);
 }
 
+// ---------- 애완동물 ----------
+// 상점과 가방에 쓰는 작은 그림
+function petIcon(id) {
+  const c = (PET_ITEMS[id] || {}).coat || '#ccc';
+  const eye = '<circle cx="19" cy="25" r="2.2" fill="#2E2A2A"/><circle cx="29" cy="25" r="2.2" fill="#2E2A2A"/>';
+  const face = `<circle cx="24" cy="27" r="13" fill="${c}" stroke="#5A3D2B" stroke-width="1.5"/>${eye}`;
+  if (id === 'pet_dog') return `<svg viewBox="0 0 48 48" aria-hidden="true"><ellipse cx="11" cy="22" rx="5" ry="10" fill="#8A5A33"/><ellipse cx="37" cy="22" rx="5" ry="10" fill="#8A5A33"/>${face}<ellipse cx="24" cy="32" rx="6" ry="4.5" fill="#FFF3DA"/><circle cx="24" cy="30" r="2.2" fill="#2E2A2A"/></svg>`;
+  if (id === 'pet_cat') return `<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M12 20 14 6 23 15zM36 20 34 6 25 15z" fill="${c}" stroke="#5A3D2B" stroke-width="1.5"/>${face}<path d="M22 31h4l-2 2z" fill="#EF8FA0"/><path d="M14 30h-6M14 33h-6M34 30h6M34 33h6" stroke="#5A3D2B" stroke-width="1"/></svg>`;
+  if (id === 'pet_rabbit') return `<svg viewBox="0 0 48 48" aria-hidden="true"><ellipse cx="18" cy="12" rx="4.5" ry="11" fill="${c}" stroke="#5A3D2B" stroke-width="1.5"/><ellipse cx="30" cy="12" rx="4.5" ry="11" fill="${c}" stroke="#5A3D2B" stroke-width="1.5"/><ellipse cx="18" cy="12" rx="2" ry="7" fill="#F6B8C8"/><ellipse cx="30" cy="12" rx="2" ry="7" fill="#F6B8C8"/>${face}<circle cx="24" cy="31" r="2" fill="#F6B8C8"/></svg>`;
+  return `<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="28" r="14" fill="${c}" stroke="#5A3D2B" stroke-width="1.5"/><path d="M22 13c1-3 3-4 5-3" stroke="#5A3D2B" stroke-width="1.5" fill="none"/>${eye}<path d="M20 30h8l-4 4z" fill="#F49A4C"/></svg>`;
+}
+function petRow(id, { owned, buy = false, fruits = 0 }) {
+  const p = PET_ITEMS[id];
+  const ic = h('div', { class: 'fw-ic pet', 'aria-hidden': 'true' });
+  ic.innerHTML = petIcon(id);
+  const acts = h('div', { class: 'acts' });
+  const withMe = state.me && state.me.pet === id;
+  if (!owned && buy) acts.append(h('button', { class: 'btn btn-go btn-small', type: 'button', disabled: fruits < p.price, onclick: () => buyPet(id) }, `열매 ${p.price}개로 데려오기`));
+  if (owned) acts.append(withMe
+    ? h('button', { class: 'btn btn-plain btn-small', type: 'button', onclick: () => choosePet(null) }, '집에서 쉬게 하기')
+    : h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => choosePet(id) }, '데리고 다니기'));
+  return h('div', { class: 'shop-item' + (withMe ? ' with-me' : '') }, ic,
+    h('div', {}, h('b', {}, p.name), h('p', {}, p.desc), h('p', {}, owned ? (withMe ? '지금 나와 함께 다녀요' : '우리 집 친구예요') : '')), acts);
+}
+let petBusy = false;
+async function buyPet(id) {
+  if (petBusy) return;
+  petBusy = true;
+  try {
+    const r = await rpc('kids_shop_buy', { p_token: token(), p_item: id, p_n: 1 });
+    shopData = r;
+    setFruits(r.fruits);
+    sfx.success();
+    petBusy = false;
+    await choosePet(id, true);
+  } catch (e) {
+    if (e.code === 'SESSION') { sessionLost(); return; }
+    toast(message(e), 3000);
+  } finally { petBusy = false; }
+}
+async function choosePet(id, fresh = false) {
+  if (petBusy) return;
+  petBusy = true;
+  try {
+    await rpc('kids_pet_set', { p_token: token(), p_pet: id });
+    state.me.pet = id;
+    village.setPet('me', id);
+    if (net) net.send('av', {});
+    if (id) {
+      const p = PET_ITEMS[id];
+      if (p.kind === 'cat') sfx.meow(); else if (p.kind === 'rabbit') sfx.hop(); else if (p.kind === 'chick') sfx.peep(); else sfx.bark();
+      toast(fresh ? `${josa(p.name, '이가', '가')} 우리 집 친구가 되었어요! 이제 졸졸 따라다녀요.` : `${josa(p.name, '이랑', '랑')} 함께 다녀요!`, 3000);
+    } else toast('애완동물이 집에서 쉬고 있어요.', 2400);
+    const body = document.querySelector('#modalBody .talk.shop');
+    if (body && shopData) drawShop(body, shopData);
+    const bag = document.querySelector('#modalBody .talk.bag');
+    if (bag) openBag();
+  } catch (e) {
+    if (e.code === 'SESSION') { sessionLost(); return; }
+    toast(message(e), 3000);
+  } finally { petBusy = false; }
+}
+
+// 새로 생긴 일을 한 번씩 알려 준다 (기기마다 한 번)
+function showNews() {
+  const news = [];
+  if (state.features.photo10) news.push(['photo10', '새 소식! 필사 이야기를 공책에 손으로 써서 사진을 올리면 열매 10개를 받아요.']);
+  if (state.features.pets) news.push(['pets', '새 소식! 열매 상점에 애완동물이 왔어요. 열매 30개로 데려오면 졸졸 따라다녀요.']);
+  const fresh = news.filter(([k]) => { try { return !localStorage.getItem(`kv.news.${k}`); } catch (e) { return false; } });
+  fresh.forEach(([k, text], i) => setTimeout(() => {
+    toast(text, 5200);
+    try { localStorage.setItem(`kv.news.${k}`, '1'); } catch (e) { /* 다음에 또 */ }
+  }, 2500 + i * 5800));
+}
+
 // ---------- 열매 상점 ----------
 async function openShop() {
   const body = h('div', { class: 'talk shop' }, h('p', { class: 'fb-empty' }, '상점을 여는 중…'));
@@ -785,8 +879,13 @@ function drawShop(body, shop) {
   const items = shop.items || {};
   body.replaceChildren(
     h('p', { class: 'shop-fruit' }, `내 열매 🍎 ${shop.fruits}개`),
+    h('h3', { class: 'shop-h' }, '🎆 불꽃놀이'),
     h('div', { class: 'shop-list' }, FW_IDS.map((id) => fwRow(id, items[id] || 0, { buy: true, launch: true, fruits: shop.fruits }))),
-    h('p', { class: 'note' }, '열매는 암송 연습, 묵상, 필사를 하면 모여요. 산 불꽃은 가방에 들어가고, 마을 어디서나 터트릴 수 있어요. 친구들 하늘에도 같이 터져요.'));
+    state.features.pets ? h('h3', { class: 'shop-h' }, '🐾 애완동물') : null,
+    state.features.pets ? h('div', { class: 'shop-list' }, PET_IDS.map((id) => petRow(id, { owned: items[id] > 0, buy: true, fruits: shop.fruits }))) : null,
+    h('p', { class: 'note' }, state.features.pets
+      ? '열매는 암송 연습, 묵상, 필사를 하면 모여요. 산 불꽃은 가방에 들어가고, 마을 어디서나 터트릴 수 있어요. 애완동물은 한 번 데려오면 계속 우리 집 친구예요. 한 번에 한 마리가 나를 따라다녀요.'
+      : '열매는 암송 연습, 묵상, 필사를 하면 모여요. 산 불꽃은 가방에 들어가고, 마을 어디서나 터트릴 수 있어요. 친구들 하늘에도 같이 터져요.'));
 }
 let buying = false;
 async function buyFirework(id) {
@@ -818,7 +917,6 @@ async function launchFirework(id) {
     village.fireworks.launch(id, x, z);
     village.lookUp(4.8);
     village.celebrate();
-    sfx.whoosh();
     if (net) net.send('fw', { k: id, x, z });
     toast(`${FIREWORKS[id].name}! 하늘을 봐요${r.left ? ` (가방에 ${r.left}개 남았어요)` : ''}`, 2600);
   } catch (e) {
@@ -1056,7 +1154,7 @@ function onNpc() {
   if (!playOpen()) lines.push('말씀 활동을 하나 마치면 놀이 마당과 놀이동산 섬이 열려. 낚시도 하고 바이킹도 탈 수 있어!');
   if (t.qt && !t.qt.done) { lines.push(`오늘 묵상은 '${t.qt.title}'이야. 묵상의 숲에 가 볼래?`); go = ['묵상의 숲으로', 'qt']; }
   else if (cur && !cur.practiced_today && !cur.passed) { lines.push(`이번 주 말씀은 ${cur.ref}이야. 암송의 집에서 연습해 볼까?`); go = ['암송의 집으로', 'memory']; }
-  else if (t.copy && !t.copy.done) { lines.push(t.theme ? `이번 주 필사는 '${t.theme}' 이야기야(${t.copy.ref}). 필사 도서관에서 읽고 따라 써 볼래?` : `이번 주 필사는 ${t.copy.ref}이야. 필사 도서관에서 따라 써 볼래?`); go = ['필사 도서관으로', 'library']; }
+  else if (t.copy && !t.copy.done) { if (state.features.photo10) lines.push('이번 주 이야기를 공책에 손으로 써서 사진을 올리면 열매를 10개나 받을 수 있어!'); lines.push(t.theme ? `이번 주 필사는 '${t.theme}' 이야기야(${t.copy.ref}). 필사 도서관에서 읽고 따라 써 볼래?` : `이번 주 필사는 ${t.copy.ref}이야. 필사 도서관에서 따라 써 볼래?`); go = ['필사 도서관으로', 'library']; }
   else if (t.qt || cur) { lines.push('오늘 할 일을 벌써 다 했구나. 정말 멋지다! 친구들 글에 응원도 보내 봐.'); lines.push('남쪽 다리를 건너면 놀이동산 섬이야. 친구랑 회전목마나 바이킹을 타도 좋아. 동쪽 다리 건너 수영장 섬에서 헤엄쳐도 좋고!'); }
   else lines.push('마을을 천천히 둘러보렴. 남쪽 다리를 건너면 놀이동산 섬, 동쪽 다리를 건너면 수영장 섬이야. 열매가 달린 나무를 누르면 열매를 따 먹을 수 있어.');
   openSheet('숲지기 솔', h('div', { class: 'talk' },
@@ -1090,7 +1188,9 @@ async function openMaker(first) {
   let result = await maker.open({ avatar: me.avatar || defaultAvatar(), name: me.village_name || '', first });
   while (result) {
     try {
+      const pet = state.me && state.me.pet;
       state.me = await rpc('kids_save_avatar', { p_token: token(), p_avatar: result.avatar, p_village_name: result.name });
+      if (state.me && !('pet' in state.me)) state.me.pet = pet;
       break;
     } catch (e) {
       if (e.code === 'SESSION') { maker.close(); return sessionLost(); }

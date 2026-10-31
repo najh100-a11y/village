@@ -63,6 +63,7 @@ begin
   update public.kids_children set fruits = fruits + v_gain where id = v_id returning fruits into v_fruits;
   return jsonb_build_object('gained', v_gain, 'fruits', v_fruits);
 end $$;
+grant execute on function public.kids_qt_save(text, date, text, text, boolean, text) to anon, authenticated;
 
 -- 선생님: 묵상 저장 (해설을 함께 저장한다. 예전 화면은 p_note 없이 불러도 되고, 그때는 해설을 그대로 둔다)
 drop function if exists public.kids_t_save_qt(text, date, text, text, jsonb, jsonb, text, text);
@@ -90,6 +91,7 @@ begin
     note = case when p_note is null then q.note else excluded.note end;
   return jsonb_build_object('ok', true);
 end $$;
+grant execute on function public.kids_t_save_qt(text, date, text, text, jsonb, jsonb, text, text, text) to anon, authenticated;
 
 -- 선생님: 주간 계획 보기 (해설 포함)
 create or replace function public.kids_t_weeks(p_token text)

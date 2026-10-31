@@ -6,7 +6,7 @@ import { toon, toonGradient } from './avatar.js';
 import { mergeStatic } from './merge.js';
 
 export const MAIN_WALK = 30.2; // 마을 섬에서 걸을 수 있는 반지름
-export const PARK_ISLE = { x: 0, z: 60, r: 18, walk: 16.4, seed: 3 };
+export const PARK_ISLE = { x: 0, z: 62.5, r: 20.5, walk: 18.9, seed: 3 }; // 범퍼카 장이 넓어서 섬도 넉넉하게
 export const POOL_ISLE = { x: 56, z: -4, r: 13.5, walk: 12.0, seed: 7 };
 // 다리 (걷는 곳은 x0~x1, z0~z1 네모)
 export const BRIDGES = [
@@ -14,8 +14,8 @@ export const BRIDGES = [
   { id: 'pool', x0: 29.0, x1: 44.6, z0: -5.1, z1: -2.9, deck: [33.4, 43.3], along: 'x' },
 ];
 // 지도 전체를 볼 때 바라보는 가운데와 반 너비 (섬 셋과 둘레 얕은 물까지)
-export const WORLD_CENTER = { x: 19, z: 23 };
-export const WORLD_HALF = { w: 53, h: 57 };
+export const WORLD_CENTER = { x: 19, z: 27 };
+export const WORLD_HALF = { w: 53, h: 61 };
 
 // 섬과 다리를 한 줄로 놓으면: 놀이동산 섬 - 다리 - 마을 섬 - 다리 - 수영장 섬
 // 서로 다른 곳으로 갈 때는 다리 끝을 거쳐 간다.
