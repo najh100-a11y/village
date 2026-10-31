@@ -1,6 +1,7 @@
 // 진숲 어린이 마을 — 오목 놀이터 (컴퓨터와, 또는 마을 친구와 1:1)
 import { h, modal, toast, confetti, josa } from './ui.js';
 import { friendPicker, waitInvite } from './play.js';
+import { sfx } from './sound.js';
 
 const N = 13;
 const DIRS = [[1, 0], [0, 1], [1, 1], [1, -1]];
@@ -199,6 +200,7 @@ export function createOmok({ hub, onlineFriends, onCelebrate }) {
   }
 
   function place(x, y, c) {
+    sfx.stone();
     g.board[idx(x, y)] = c;
     g.moves.push([x, y]);
     g.turn = c === 1 ? 2 : 1;
@@ -217,7 +219,7 @@ export function createOmok({ hub, onlineFriends, onCelebrate }) {
       say('내가 이겼어요! 다섯 개를 이었어요.');
       confetti();
       onCelebrate();
-    } else say(`${josa(oppName(), '이가', '가')} 이겼어요. 다음 판에 다시 해 봐요!`);
+    } else { say(`${g.mode === 'ai' ? '숲지기 솔이' : josa(oppName(), '이가', '가')} 이겼어요. 다음 판에 다시 해 봐요!`); sfx.fail(); }
     drawControls();
   }
 

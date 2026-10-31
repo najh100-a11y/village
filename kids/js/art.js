@@ -3,6 +3,7 @@ import { h, modal, toast, confetti, showImage } from './ui.js';
 import { message } from './api.js';
 import { reactionBar } from './social.js';
 import { toJpeg, jpegUrl } from './images.js';
+import { sfx } from './sound.js';
 
 const W = 800, H = 600;
 const COLORS = ['#2E2A2A', '#7A5233', '#EF6461', '#F49A4C', '#F6D55C', '#5DB760', '#2F8F5B', '#7EC8F2', '#3F6FD8', '#A07FE3', '#F6A2C4', '#FFFFFF'];
@@ -84,7 +85,7 @@ export function createArt({ rpc, getToken, onSessionLost, onCelebrate, onShared 
       const [x, y] = pos(e);
       if (tool.mode === 'fill') {
         snap();
-        if (floodFill(pctx, x, y, tool.color)) { used = true; show(); } else undo.pop();
+        if (floodFill(pctx, x, y, tool.color)) { used = true; show(); sfx.blub(); } else undo.pop();
         return;
       }
       cv.setPointerCapture(e.pointerId);

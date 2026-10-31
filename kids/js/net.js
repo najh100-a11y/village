@@ -26,7 +26,7 @@ export function clean(type, p) {
   if (type === 'inv') return typeof p.to === 'string' && ID_RE.test(p.to) && GID_RE.test(p.g) && GAME_KINDS.includes(p.k)
     && (p.x == null || WORD_RE.test(p.x)) ? { to: p.to, g: p.g, k: p.k, x: p.x || null } : null;
   if (type === 'invr') return typeof p.to === 'string' && ID_RE.test(p.to) && GID_RE.test(p.g) && typeof p.ok === 'boolean'
-    ? { to: p.to, g: p.g, ok: p.ok, b: p.b === 1 ? 1 : 0 } : null;
+    ? { to: p.to, g: p.g, ok: p.ok, b: p.b === 1 || p.b === 2 ? p.b : 0 } : null;
   if (type === 'act') return ACTS.includes(p.a) ? { a: p.a } : null;
   if (type === 'fish') return WORD_RE.test(p.f) ? { f: p.f } : null;
   if (type === 'art') return {};

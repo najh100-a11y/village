@@ -70,6 +70,7 @@ const MESSAGES = {
   TOO_FAST: '조금만 쉬었다가 해요.',
   FISH_TIRED: '오늘은 물고기들이 쉬고 싶대요. 내일 또 와요!',
   BAD_STARS: '요리 기록을 저장하지 못했어요.',
+  PLAY_LOCKED: '놀이 마당은 오늘의 말씀 활동을 하나 마치면 열려요.',
 };
 
 export function message(err) {

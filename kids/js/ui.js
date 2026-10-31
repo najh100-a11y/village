@@ -1,4 +1,5 @@
 // 진숲 어린이 마을 — 화면 도우미 (요소 만들기, 창, 알림, 아이콘)
+import { sfx } from './sound.js';
 
 export function h(tag, attrs = {}, ...kids) {
   const el = document.createElement(tag);
@@ -43,6 +44,7 @@ export const modal = {
     m.className = 'modal ' + cls;
     document.getElementById('modalTitle').textContent = title;
     this.setBody(content);
+    if (m.hidden) sfx.open();
     m.hidden = false;
     modalClose = onClose;
     requestAnimationFrame(() => m.classList.add('show'));
@@ -58,6 +60,7 @@ export const modal = {
     if (m.hidden) return;
     m.classList.remove('show');
     m.hidden = true;
+    sfx.close();
     const cb = modalClose;
     modalClose = null;
     if (cb) cb();
@@ -75,6 +78,7 @@ export function toast(text, ms = 2600) {
 }
 
 export function confetti() {
+  sfx.success();
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const layer = h('div', { class: 'confetti' });
   const cols = ['#EF6461', '#F6D55C', '#5DB760', '#7EC8F2', '#F6A2C4', '#A07FE3'];
@@ -103,6 +107,7 @@ export const josa = (word, withB, withoutB) => `${word}${hasBatchim(word) ? with
 
 // 사진·그림 크게 보기 (창 위에 한 겹 더)
 export function showImage(url, caption = '') {
+  sfx.pop(true);
   const close = () => { layer.remove(); window.removeEventListener('keydown', onKey, true); };
   const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
   const layer = h('div', { class: 'viewer', role: 'dialog', 'aria-label': caption || '크게 보기', onclick: close },

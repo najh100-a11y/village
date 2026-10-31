@@ -2,6 +2,7 @@
 // 마을 전체 채널로는 짧은 초대만 오가고, 놀이는 두 사람만 듣는 채널에서 한다.
 import { h, josa } from './ui.js';
 import { drawFaceIcon, normalizeAvatar } from './face.js';
+import { sfx } from './sound.js';
 
 const KIND_ASK = { omok: '오목 한 판 두자고 해요!', cook: '같이 요리하자고 해요!' };
 const newGid = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]).join('') + Date.now().toString(36).slice(-4);
@@ -26,7 +27,7 @@ function reliable(raw, onMsg) {
   };
 }
 
-export function createPlayHub({ getNet, getPerson, getMe, onAccept, onInviteShown, isBusy }) {
+export function createPlayHub({ getNet, getPerson, getMe, onAccept, onInviteShown, isBusy, onLockedInvite }) {
   const pending = new Map(); // gid → { resolve, peer, kind, timer }
   let session = null;
   let card = null;
@@ -78,9 +79,10 @@ export function createPlayHub({ getNet, getPerson, getMe, onAccept, onInviteShow
     };
   }
 
-  function reply(to, g, ok, busy = false) {
+  // busy: 0 대답 그대로, 1 다른 놀이 중, 2 오늘 말씀 활동을 아직 안 함
+  function reply(to, g, ok, busy = 0) {
     const net = getNet();
-    if (net) net.send('invr', { to, g, ok, b: busy ? 1 : 0 });
+    if (net) net.send('invr', { to, g, ok, b: busy });
   }
 
   function showCard(from, p) {
@@ -103,6 +105,7 @@ export function createPlayHub({ getNet, getPerson, getMe, onAccept, onInviteShow
             onAccept(p.k, s);
           } }, '좋아!'))));
     document.body.append(card);
+    sfx.invite();
     if (onInviteShown) onInviteShown();
   }
 
@@ -110,7 +113,9 @@ export function createPlayHub({ getNet, getPerson, getMe, onAccept, onInviteShow
     const me = getMe();
     if (!me || p.to !== me) return false;
     if (type === 'inv') {
-      if (session || card || (isBusy && isBusy())) { reply(from, p.g, false, true); return true; }
+      const why = isBusy ? isBusy() : false;
+      if (why === 'locked') { reply(from, p.g, false, 2); if (onLockedInvite) onLockedInvite(from, p.k); return true; }
+      if (session || card || why) { reply(from, p.g, false, 1); return true; }
       showCard(from, p);
       return true;
     }
@@ -119,7 +124,7 @@ export function createPlayHub({ getNet, getPerson, getMe, onAccept, onInviteShow
       if (!w || w.peer !== from) return true;
       clearTimeout(w.timer);
       pending.delete(p.g);
-      if (!p.ok) { w.resolve({ ok: false, reason: p.b ? 'busy' : 'no' }); return true; }
+      if (!p.ok) { w.resolve({ ok: false, reason: p.b === 2 ? 'locked' : p.b ? 'busy' : 'no' }); return true; }
       if (session) session.close();
       w.resolve({ ok: true, session: makeSession({ gid: p.g, peer: from, kind: w.kind, host: true, extra: w.extra }) });
       return true;
@@ -154,7 +159,7 @@ export function waitInvite(hub, friend, kind, extra, { setBody, onBack }) {
   return inv.promise.then((r) => {
     if (r.ok) return r.session;
     if (r.reason === 'cancel') return null;
-    const why = { busy: `${josa(friend.name, '은', '는')} 지금 다른 놀이를 하고 있어요.`, no: `${josa(friend.name, '이', '가')} 다음에 하재요.`, timeout: `${josa(friend.name, '이', '가')} 대답이 없어요.`, off: '지금은 친구와 연결되지 않아요.' }[r.reason] || '지금은 함께할 수 없어요.';
+    const why = { locked: `${josa(friend.name, '은', '는')} 오늘 말씀 활동을 아직 안 했대요. 하나 마치면 같이 놀 수 있어요!`, busy: `${josa(friend.name, '은', '는')} 지금 다른 놀이를 하고 있어요.`, no: `${josa(friend.name, '이', '가')} 다음에 하재요.`, timeout: `${josa(friend.name, '이', '가')} 대답이 없어요.`, off: '지금은 친구와 연결되지 않아요.' }[r.reason] || '지금은 함께할 수 없어요.';
     setBody(h('div', { class: 'mem wait-inv' },
       h('p', { class: 'result-big' }, why),
       h('div', { class: 'row' }, h('button', { class: 'btn btn-go', type: 'button', onclick: onBack }, '돌아가기'))));

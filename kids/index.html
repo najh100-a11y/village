@@ -3,10 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
-<title>진숲 어린이 마을</title>
-<meta name="description" content="진실한숲교회 어린이들이 말씀을 외우고 함께 지내는 3D 마을">
+<title>모여라 진숲 어린이 마을</title>
+<meta name="description" content="진실한숲교회 어린이들이 말씀을 외우고 함께 노는 3D 마을">
 <meta name="theme-color" content="#A6DDF6">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 29V15' stroke='%236B4429' stroke-width='2.4' stroke-linecap='round'/%3E%3Cpath d='M16 16C9 16 4.5 11.5 4.5 5.5 11.5 5.5 16 9 16 16z' fill='%236CC24A'/%3E%3Cpath d='M16 13.5c.5-6 4.5-9.8 11.5-9.8 0 6-4.6 10-11.5 9.8z' fill='%238BD46A'/%3E%3C/svg%3E">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="64x64" href="icons/favicon-64.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-title" content="모여라 진숲">
+<meta property="og:title" content="모여라 진숲 어린이 마을">
+<meta property="og:description" content="진실한숲교회 어린이들이 말씀을 외우고 함께 노는 3D 마을">
+<meta property="og:image" content="https://najh100-a11y.github.io/village/kids/icons/icon-512.png">
+<meta property="og:url" content="https://najh100-a11y.github.io/village/kids/">
 <link rel="preload" href="fonts/maplestory-bold.otf" as="font" type="font/otf" crossorigin>
 <link rel="preload" href="fonts/maplestory-light.otf" as="font" type="font/otf" crossorigin>
 <style>
@@ -72,6 +80,8 @@ button { font: inherit; color: inherit; }
 .login-card { width: min(420px, 100%); background: var(--paper); border-radius: 34px; padding: 28px 26px 22px; box-shadow: var(--shadow); display: grid; gap: 14px; position: relative; border: 4px solid #fff; }
 .brand { text-align: center; display: grid; gap: 4px; justify-items: center; }
 .brand .ico svg { width: 58px; height: 58px; }
+.brand-logo { width: 128px; height: 128px; border-radius: 30px; filter: drop-shadow(0 6px 12px rgba(70, 50, 30, .18)); }
+.loading-logo { width: 120px; height: 120px; justify-self: center; margin-bottom: 8px; border-radius: 28px; animation: float 1.6s ease-in-out infinite; }
 .brand h1 { margin: 0; font-family: var(--display); font-weight: 400; font-size: clamp(30px, 7vw, 40px); color: var(--leaf-deep); letter-spacing: -.5px; text-wrap: balance; }
 .brand p { margin: 0; color: var(--ink-soft); }
 .field { display: grid; gap: 6px; }
@@ -96,6 +106,10 @@ button { font: inherit; color: inherit; }
 .round { display: grid; justify-items: center; gap: 1px; width: 66px; padding: 8px 0 6px; border-radius: 22px; border: 3px solid #fff; background: var(--paper); box-shadow: 0 6px 18px rgba(70, 50, 30, .16); cursor: pointer; font-family: var(--display); font-size: 13px; color: var(--ink-soft); }
 .round .ico svg { width: 28px; height: 28px; display: block; color: var(--leaf-deep); }
 .round:active { transform: scale(.95); }
+.round.sound .mute { display: none; }
+.round.sound.muted .ico svg { color: #B7A994; }
+.round.sound.muted .mute { display: block; }
+.round.sound.muted .wave { display: none; }
 
 #prompt { position: fixed; left: 0; top: 0; z-index: 9; }
 .bubble { display: grid; justify-items: center; gap: 2px; background: var(--paper); border: 3px solid #fff; border-radius: 22px; padding: 8px 18px 10px; box-shadow: 0 8px 20px rgba(70, 50, 30, .22); cursor: pointer; font-family: var(--display); animation: float 1.6s ease-in-out infinite; }
@@ -332,12 +346,12 @@ button { font: inherit; color: inherit; }
 
 @media (max-width: 560px) {
   #hud .hud-btns { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(10px + env(safe-area-inset-bottom)); gap: 6px; }
-  #hud .round { width: 64px; }
+  #hud .round { width: 60px; }
   #hint { bottom: calc(96px + env(safe-area-inset-bottom)); }
   .chat-log { bottom: calc(150px + env(safe-area-inset-bottom)); }
   .say-panel { top: auto; bottom: calc(96px + env(safe-area-inset-bottom)); right: 50%; transform: translateX(50%); }
   .plate b { max-width: 46vw; }
-  .is-demo .demo-ribbon { top: calc(14px + env(safe-area-inset-top)); bottom: auto; }
+  html.is-demo .demo-ribbon { top: calc(14px + env(safe-area-inset-top)); bottom: auto; }
 }
 #toast { position: fixed; left: 50%; top: calc(86px + env(safe-area-inset-top)); transform: translate(-50%, -20px); opacity: 0; transition: .3s; z-index: 40; background: var(--paper); border: 3px solid #fff; border-radius: 999px; padding: 10px 20px; font-family: var(--display); font-size: 18px; box-shadow: var(--shadow); pointer-events: none; max-width: calc(100% - 32px); text-align: center; }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
@@ -508,7 +522,7 @@ button { font: inherit; color: inherit; }
 <canvas id="world" aria-label="진숲 어린이 마을 3D 화면"></canvas>
 <div id="labels"></div>
 
-<div id="loading"><div class="sprout-spin"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 29V15" stroke="#6B4429" stroke-width="2.4" stroke-linecap="round"/><path d="M16 16C9 16 4.5 11.5 4.5 5.5 11.5 5.5 16 9 16 16z" fill="#6CC24A"/><path d="M16 13.5c.5-6 4.5-9.8 11.5-9.8 0 6-4.6 10-11.5 9.8z" fill="#8BD46A"/></svg></div>마을을 준비하고 있어요…</div>
+<div id="loading"><img class="loading-logo" src="icons/logo-256.png" alt="" width="120" height="120">모여라 진숲! 마을을 준비하고 있어요…</div>
 
 <header id="hud" hidden>
   <div class="plate">
@@ -519,6 +533,7 @@ button { font: inherit; color: inherit; }
     <button class="round say" id="btnSay" type="button"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 3.5V16h-1A.5.5 0 0 1 4 15.5z" fill="currentColor" opacity=".25" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="8.5" cy="10" r="1.2" fill="currentColor"/><circle cx="12" cy="10" r="1.2" fill="currentColor"/><circle cx="15.5" cy="10" r="1.2" fill="currentColor"/></svg></span>말하기</button>
     <button class="round" id="btnStamps" type="button"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.5C5.5 4.3 8.6 4.4 12 6.2c3.4-1.8 6.5-1.9 9-.7v13c-2.5-1.2-5.6-1.1-9 .7-3.4-1.8-6.5-1.9-9-.7z" fill="currentColor" opacity=".25"/><path d="M12 6.2v13M3 5.5C5.5 4.3 8.6 4.4 12 6.2c3.4-1.8 6.5-1.9 9-.7v13c-2.5-1.2-5.6-1.1-9 .7-3.4-1.8-6.5-1.9-9-.7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></span>도장판</button>
     <button class="round" id="btnDress" type="button"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 3.5 4 6l1.8 4 2.2-1v11.5h8V9l2.2 1L20 6l-4.5-2.5c-.6 1.5-1.9 2.3-3.5 2.3S9.1 5 8.5 3.5z" fill="currentColor" opacity=".25" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></span>꾸미기</button>
+    <button class="round sound" id="btnSound" type="button" data-quiet><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor" opacity=".25" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path class="wave" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="mute" d="M16 9.5l5 5M21 9.5l-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>소리</button>
     <button class="round" id="btnOut" type="button"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 20.5V5a1.5 1.5 0 0 1 1.5-1.5h9A1.5 1.5 0 0 1 18 5v15.5" fill="currentColor" opacity=".25"/><path d="M4 20.5h16M6 20.5V5a1.5 1.5 0 0 1 1.5-1.5h9A1.5 1.5 0 0 1 18 5v15.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="14.5" cy="12.5" r="1.2" fill="currentColor"/></svg></span>나가기</button>
   </nav>
 </header>
@@ -531,9 +546,9 @@ button { font: inherit; color: inherit; }
 <section id="login" class="screen" hidden>
   <form class="login-card" id="loginForm" autocomplete="off">
     <div class="brand">
-      <span class="ico"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 29V15" stroke="#6B4429" stroke-width="2.4" stroke-linecap="round"/><path d="M16 16C9 16 4.5 11.5 4.5 5.5 11.5 5.5 16 9 16 16z" fill="#6CC24A"/><path d="M16 13.5c.5-6 4.5-9.8 11.5-9.8 0 6-4.6 10-11.5 9.8z" fill="#8BD46A"/></svg></span>
-      <h1>진숲 어린이 마을</h1>
-      <p>진실한숲교회 어린이들의 작은 섬</p>
+      <img class="brand-logo" src="icons/logo-256.png" alt="" width="128" height="128">
+      <h1>모여라 진숲</h1>
+      <p>진실한숲교회 어린이 마을</p>
     </div>
     <p class="note" id="demoNote" hidden>체험판이에요. 서버에 저장되지 않고 이 기기에만 남아요. 아래 노란 버튼으로 바로 들어가 보세요.</p>
     <label class="field"><span>아이디</span><input id="loginId" name="kv-id" autocapitalize="off" autocomplete="off" spellcheck="false" maxlength="12" enterkeyhint="next"></label>

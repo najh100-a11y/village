@@ -3,6 +3,7 @@ import { h, modal, toast, confetti, josa } from './ui.js';
 import { message } from './api.js';
 import { friendPicker, waitInvite } from './play.js';
 import { RECIPES, recipeById, INGREDIENTS } from './play-data.js';
+import { sfx } from './sound.js';
 
 const shuffle = (a) => { const b = [...a]; for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; };
 const starsOf = (avg) => (avg >= 0.85 ? 3 : avg >= 0.6 ? 2 : 1);
@@ -24,11 +25,12 @@ function stepCollect(stage, st, done) {
   const t0 = performance.now();
   const spawn = setInterval(() => {
     if (over) return;
-    const it = h('button', { class: `drop ${st.item}`, type: 'button', 'aria-label': '줍기', style: `left:${8 + Math.random() * 80}%;top:${10 + Math.random() * 72}%` });
+    const it = h('button', { class: `drop ${st.item}`, type: 'button', 'data-quiet': '', 'aria-label': '줍기', style: `left:${8 + Math.random() * 80}%;top:${10 + Math.random() * 72}%` });
     it.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       if (over) return;
       it.remove();
+      sfx.pop();
       got++;
       count.textContent = `${got} / ${st.need}`;
       if (got >= st.need) end();
@@ -53,13 +55,14 @@ function stepCollect(stage, st, done) {
 function stepTap(stage, st, done) {
   const count = h('b', {}, `0 / ${st.need}`);
   const bar = h('div', { class: 'timebar' }, h('i'));
-  const big = h('button', { class: `tap-big ${st.item}`, type: 'button' }, TAP_LABEL[st.item] || '콕!');
+  const big = h('button', { class: `tap-big ${st.item}`, type: 'button', 'data-quiet': '' }, TAP_LABEL[st.item] || '콕!');
   stage.replaceChildren(h('p', { class: 'step-hint' }, st.hint), h('div', { class: 'step-top' }, count, bar), big);
   let got = 0, over = false;
   const t0 = performance.now();
   big.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     if (over) return;
+    sfx.tick();
     got++;
     count.textContent = `${got} / ${st.need}`;
     big.classList.remove('hit'); void big.offsetWidth; big.classList.add('hit');
@@ -101,6 +104,7 @@ function stepHeat(stage, st, done) {
     const d = Math.abs(v - zone);
     btn.disabled = true;
     btn.textContent = d < 0.09 ? '딱 좋아요!' : d < 0.2 ? '조금 아쉬워요' : v < zone ? '덜 익었어요' : '조금 탔어요';
+    if (d < 0.09) sfx.ding(); else sfx.fail();
     setTimeout(() => done(d < 0.09 ? 1 : Math.max(0.3, 1 - d * 2.2)), 700);
   });
 }
@@ -123,6 +127,7 @@ function stepPick(stage, st, done) {
     const miss = st.want.filter((id) => !chosen.has(id)).length;
     ok.disabled = true;
     if (wrong || miss) {
+      sfx.fail();
       const fixed = h('p', { class: 'step-note' }, '정답: ', st.want.map((id) => chip(id)));
       stage.append(fixed);
       setTimeout(() => done(Math.max(0.3, 1 - (wrong + miss) * 0.25)), 1500);
@@ -135,11 +140,13 @@ function stepStir(stage, st, done) {
   const count = h('b', {}, `0 / ${st.need}바퀴`);
   stage.replaceChildren(h('p', { class: 'step-hint' }, st.hint), h('div', { class: 'step-top' }, count), pot,
     h('p', { class: 'hint-line' }, '손가락을 떼지 않고 동그랗게 돌려요. 잘 안 되면 냄비를 여러 번 눌러도 돼요.'));
-  let acc = 0, lastA = null, over = false, taps = 0;
+  let acc = 0, lastA = null, over = false, taps = 0, lastQ = 0;
   const t0 = performance.now();
   const angle = (e) => { const r = pot.getBoundingClientRect(); return Math.atan2(e.clientY - (r.top + r.height / 2), e.clientX - (r.left + r.width / 2)); };
   const update = () => {
     const turns = Math.min(st.need, Math.floor(Math.abs(acc) / (Math.PI * 2) + taps / 4));
+    const quarter = Math.floor(Math.abs(acc) / (Math.PI / 2)) + taps;
+    if (quarter !== lastQ) { lastQ = quarter; sfx.blub(); }
     count.textContent = `${turns} / ${st.need}바퀴`;
     pot.firstChild.style.transform = `rotate(${acc + taps * (Math.PI / 2)}rad)`;
     if (turns >= st.need && !over) {
@@ -180,6 +187,7 @@ function stepCount(stage, st, done) {
     ok.disabled = true;
     if (exact) done(1);
     else {
+      sfx.fail();
       stage.append(h('p', { class: 'step-note' }, '정답: 보리빵 다섯 개와 물고기 두 마리예요.'));
       setTimeout(() => done(0.5), 1500);
     }
@@ -284,6 +292,7 @@ export function createCook({ rpc, getToken, onSessionLost, onCelebrate, hub, onl
   }
 
   function next() {
+    sfx.ding();
     run.i += 1;
     setTimeout(() => { if (run) play(); }, 450);
   }

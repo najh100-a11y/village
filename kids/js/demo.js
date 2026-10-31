@@ -177,6 +177,15 @@ export class DemoBackend {
     rs.forEach((r) => { counts[r.r] = (counts[r.r] || 0) + 1; });
     return { counts, mine: rs.filter((r) => r.from === viewer).map((r) => r.r) };
   }
+  // 그날 암송 연습·묵상·필사 가운데 하나라도 했는지 (놀이 마당 열기)
+  cleared(me) {
+    const c = this.child(me);
+    const s = startOfToday();
+    return Object.values(c.memory).some((m) => m.last === today())
+      || this.db.qtEntries.some((e) => e.child === me && (e.updatedAt || e.at) >= s)
+      || this.db.copyEntries.some((e) => e.child === me && (e.updatedAt || e.at) >= s);
+  }
+  gate(me) { if (!this.cleared(me)) fail('PLAY_LOCKED'); }
   publishedDays() {
     return this.db.qt.filter((q) => this.db.weeks.some((w) => w.week_start === q.week_start && w.is_published)).map((q) => q.day).sort();
   }
@@ -237,7 +246,7 @@ export class DemoBackend {
     const v = this.db.verses.find((x) => x.id === vId);
     const c = this.child(me);
     return {
-      today: t, theme: w ? w.theme : null,
+      today: t, theme: w ? w.theme : null, cleared: this.cleared(me),
       verse: v ? { id: v.id, ref: v.ref, practiced: !!(c.memory[v.id] && c.memory[v.id].practice_count) } : null,
       qt: q ? { day: q.day, title: q.title, ref: q.ref, done: this.db.qtEntries.some((e) => e.child === me && e.day === q.day) } : null,
       copy: w && w.copy_ref ? { week: w.week_start, ref: w.copy_ref, done: this.db.copyEntries.some((e) => e.child === me && e.week === w.week_start) } : null,
@@ -292,7 +301,7 @@ export class DemoBackend {
     let e = this.db.qtEntries.find((x) => x.child === me && x.day === p_day);
     let gained = 0;
     if (!e) { e = { child: me, day: p_day, hidden: false, at: nowIso() }; this.db.qtEntries.push(e); gained = 1; c.fruits += 1; }
-    Object.assign(e, { answer, prayer, shared: p_shared !== false });
+    Object.assign(e, { answer, prayer, shared: p_shared !== false, updatedAt: nowIso() });
     return { gained, fruits: c.fruits };
   }
   kids_copy_week({ p_token, p_week }) {
@@ -329,7 +338,7 @@ export class DemoBackend {
     const id = `p${me}${p_week}`;
     imgPut(this.db, id, p_photo);
     imgPut(this.db, id + 't', p_thumb);
-    Object.assign(e, { photo: id, thumb: id + 't', photo_ok: false });
+    Object.assign(e, { photo: id, thumb: id + 't', photo_ok: false, updatedAt: nowIso() });
     return { gained, fruits: c.fruits };
   }
   kids_copy_photo_delete({ p_token, p_week }) {
@@ -354,6 +363,7 @@ export class DemoBackend {
   }
   kids_art_save({ p_token, p_title, p_image, p_thumb, p_shared }) {
     const me = this.session(p_token, 'child');
+    this.gate(me);
     const title = String(p_title || '').trim();
     if (title.length > 20) fail('TOO_LONG');
     if (this.db.art.filter((a) => a.child === me).length >= 40) fail('ART_FULL');
@@ -399,6 +409,7 @@ export class DemoBackend {
   // ---------- 낚시 ----------
   kids_fish_catch({ p_token }) {
     const me = this.session(p_token, 'child');
+    this.gate(me);
     const mine = this.db.fish.filter((f) => f.child === me);
     const last = mine.map((f) => f.at).sort().pop();
     if (last && Date.now() - new Date(last).getTime() < 3000) fail('TOO_FAST');
@@ -436,6 +447,7 @@ export class DemoBackend {
   }
   kids_cook_done({ p_token, p_recipe, p_stars, p_together }) {
     const me = this.session(p_token, 'child');
+    this.gate(me);
     if (!['manna', 'lentil', 'fishbread', 'barley', 'matzah'].includes(p_recipe)) fail('NOT_FOUND');
     if (!(p_stars >= 1 && p_stars <= 3)) fail('BAD_STARS');
     this.db.cook = this.db.cook || {};
@@ -453,7 +465,7 @@ export class DemoBackend {
     let e = this.db.copyEntries.find((x) => x.child === me && x.week === p_week);
     let gained = 0;
     if (!e) { e = { child: me, week: p_week, hidden: false, at: nowIso() }; this.db.copyEntries.push(e); gained = 2; c.fruits += 2; }
-    Object.assign(e, { note, shared: p_shared !== false });
+    Object.assign(e, { note, shared: p_shared !== false, updatedAt: nowIso() });
     return { gained, fruits: c.fruits };
   }
   kids_react({ p_token, p_kind, p_target, p_key, p_reaction, p_on }) {

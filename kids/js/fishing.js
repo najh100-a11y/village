@@ -4,6 +4,7 @@ import { h, modal, toast, confetti, josa } from './ui.js';
 import { message } from './api.js';
 import { drawFaceIcon, normalizeAvatar } from './face.js';
 import { FISH, fishById, RARITY } from './play-data.js';
+import { sfx } from './sound.js';
 
 export function drawFish(ctx, kind, cx, cy, len, { silhouette = false } = {}) {
   const f = typeof kind === 'string' ? fishById(kind) : kind;
@@ -71,7 +72,7 @@ export function createFishing({ rpc, getToken, onSessionLost, onCelebrate, onRar
     const ctx = cv.getContext('2d');
     const msg = h('p', { class: 'pond-msg', 'aria-live': 'polite' }, '낚싯대를 던져 볼까요?');
     const meter = h('div', { class: 'reel', hidden: true }, h('i'));
-    const btn = h('button', { class: 'btn btn-go pond-btn', type: 'button' }, '던지기');
+    const btn = h('button', { class: 'btn btn-go pond-btn', type: 'button', 'data-quiet': '' }, '던지기');
     const tabs = h('div', { class: 'pond-tabs' });
     st = { phase: 'idle', t: 0, cv, ctx, msg, meter, btn, bob: { x: 0.55, y: 0.55, dip: 0 }, nib: 0 };
     btn.addEventListener('click', act);
@@ -153,9 +154,10 @@ export function createFishing({ rpc, getToken, onSessionLost, onCelebrate, onRar
     if (!st) return;
     const p = st.phase;
     if (p === 'idle' || p === 'miss' || p === 'done') return cast();
-    if (p === 'wait') { clearTimeout(st.timer); setPhase('miss', '앗, 너무 일찍 당겼어요. 찌가 쑥 들어갈 때 당겨요!', '다시 던지기'); return; }
+    if (p === 'wait') { clearTimeout(st.timer); sfx.fail(); setPhase('miss', '앗, 너무 일찍 당겼어요. 찌가 쑥 들어갈 때 당겨요!', '다시 던지기'); return; }
     if (p === 'bite') { clearTimeout(st.timer); return reel(); }
     if (p === 'reel') {
+      sfx.tick();
       st.power = Math.min(100, st.power + 9);
       if (st.power >= 100) land();
     }
@@ -163,6 +165,7 @@ export function createFishing({ rpc, getToken, onSessionLost, onCelebrate, onRar
 
   function cast() {
     st.bob = { x: 0.3 + Math.random() * 0.4, y: 0.4 + Math.random() * 0.3 };
+    sfx.splash();
     setPhase('wait', '찌를 잘 보세요… 쑥 들어가면 당겨요!', '당기기');
     const wait = 1600 + Math.random() * 3800;
     // 살짝 건드리는 입질 (속지 않기)
@@ -170,7 +173,8 @@ export function createFishing({ rpc, getToken, onSessionLost, onCelebrate, onRar
     st.timer = setTimeout(() => {
       if (!st || st.phase !== 'wait') return;
       setPhase('bite', '지금이에요! 당겨요!', '당기기!', { pulse: true });
-      st.timer = setTimeout(() => { if (st && st.phase === 'bite') setPhase('miss', '물고기가 도망갔어요. 다시 해 볼까요?', '다시 던지기'); }, 1300);
+      sfx.bite();
+      st.timer = setTimeout(() => { if (st && st.phase === 'bite') { sfx.fail(); setPhase('miss', '물고기가 도망갔어요. 다시 해 볼까요?', '다시 던지기'); } }, 1300);
     }, wait);
   }
 
@@ -186,7 +190,7 @@ export function createFishing({ rpc, getToken, onSessionLost, onCelebrate, onRar
       st.power = Math.max(0, st.power - st.drain * ((now - last) / 1000));
       last = now;
       st.meter.firstChild.style.width = st.power + '%';
-      if (now > left || st.power <= 0) { setPhase('miss', '줄이 느슨해져서 놓쳤어요. 다시 해 볼까요?', '다시 던지기'); return; }
+      if (now > left || st.power <= 0) { sfx.fail(); setPhase('miss', '줄이 느슨해져서 놓쳤어요. 다시 해 볼까요?', '다시 던지기'); return; }
       st.timer = setTimeout(tick, 50);
     };
     tick();
@@ -208,7 +212,7 @@ export function createFishing({ rpc, getToken, onSessionLost, onCelebrate, onRar
     const junk = f.rarity < 0;
     setPhase('done', junk ? `${josa(f.name, '이', '가')} 걸렸어요. 연못을 깨끗하게 했어요!` : `${josa(f.name, '을', '를')} 낚았어요! ${r.size}cm`, '또 던지기');
     showCatch(r, f);
-    if (!junk && (r.first || f.rarity >= 2)) { confetti(); onCelebrate(); }
+    if (!junk && (r.first || f.rarity >= 2)) { confetti(); onCelebrate(); } else if (junk) sfx.blub(); else sfx.ding();
     if (f.rarity >= 2 && onRare) onRare(r.fish);
   }
 

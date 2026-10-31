@@ -1,5 +1,6 @@
 // 진숲 어린이 마을 — 암송의 집 (말씀 보기, 외우기 연습, 도장판)
 import { h, icon, modal, toast, confetti } from './ui.js';
+import { sfx } from './sound.js';
 import { message } from './api.js';
 import { guideCard, firstVisit, friendBoard } from './social.js';
 
@@ -153,8 +154,9 @@ export function createMemory({ rpc, getToken, onFruits, onCelebrate, onBoard, on
       const chips = h('div', { class: 'chips' });
       const done = h('button', { class: 'btn btn-go', type: 'button', hidden: true, onclick: step3 }, '다음: 순서대로 놓기');
       shuffle(order.map((i) => tokens[i])).forEach((word) => {
-        const c = h('button', { class: 'chip', type: 'button', onclick: () => {
+        const c = h('button', { class: 'chip', type: 'button', 'data-quiet': '', onclick: () => {
           if (word === tokens[order[pos]]) {
+            sfx.pop();
             const s = spans[order[pos]];
             s.textContent = word;
             s.classList.add('filled');
@@ -164,6 +166,7 @@ export function createMemory({ rpc, getToken, onFruits, onCelebrate, onBoard, on
             if (pos >= order.length) { done.hidden = false; chips.append(h('p', { class: 'cheer' }, '빈칸을 다 채웠어요!')); }
           } else {
             run.mistakes++;
+            sfx.fail();
             c.classList.remove('shake');
             void c.offsetWidth;
             c.classList.add('shake');
@@ -186,14 +189,16 @@ export function createMemory({ rpc, getToken, onFruits, onCelebrate, onBoard, on
       const built = h('p', { class: 'verse-body big build-line' }, h('span', { class: 'caret' }));
       const chips = h('div', { class: 'chips' });
       shuffle(tokens).forEach((word) => {
-        const c = h('button', { class: 'chip', type: 'button', onclick: () => {
+        const c = h('button', { class: 'chip', type: 'button', 'data-quiet': '', onclick: () => {
           if (word === tokens[pos]) {
+            sfx.pop();
             built.lastChild.before(h('span', { class: 'word pop' }, word), ' ');
             c.remove();
             pos++;
             if (pos >= tokens.length) finish();
           } else {
             run.mistakes++;
+            sfx.fail();
             c.classList.remove('shake');
             void c.offsetWidth;
             c.classList.add('shake');

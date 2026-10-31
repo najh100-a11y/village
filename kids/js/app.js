@@ -12,6 +12,7 @@ import { createFishing } from './fishing.js';
 import { createArt } from './art.js';
 import { createCook } from './cook.js';
 import { ACT_ICON, fishById } from './play-data.js';
+import { initSound, startMusic, stopMusic, setScene, sfx, cycleSound, soundMode } from './sound.js';
 import { h, modal, toast, confetti, josa } from './ui.js';
 import { drawFaceIcon, normalizeAvatar, defaultAvatar } from './face.js';
 
@@ -39,6 +40,8 @@ const DONE_TEXT = {
 };
 
 async function boot() {
+  initSound({ src: 'audio/bgm.mp3' });
+  drawSoundBtn();
   if (DEMO) {
     $('#demoNote').hidden = false;
     $('#demoGo').hidden = false;
@@ -84,7 +87,11 @@ async function boot() {
     getNet: () => net,
     getPerson: (id) => state.people.get(id),
     getMe: () => state.me && state.me.id,
-    isBusy: () => !$('#maker').hidden || $('#hud').hidden,
+    isBusy: () => (!$('#maker').hidden || $('#hud').hidden ? true : !playOpen() ? 'locked' : false),
+    onLockedInvite: (from, kind) => {
+      const p = state.people.get(from);
+      if (p) toast(`${josa(p.name, '이가', '가')} ${kind === 'omok' ? '오목' : '요리'}를 같이 하재요. 오늘 말씀 활동을 하나 마치면 놀 수 있어요!`, 3800);
+    },
     onAccept: (kind, session) => openGameWith(kind, session),
   });
   omok = createOmok({ hub, onlineFriends, onCelebrate: () => village.celebrate() });
@@ -119,6 +126,7 @@ function bindUi() {
   $('#btnDress').addEventListener('click', () => openMaker(false));
   $('#btnOut').addEventListener('click', askLogout);
   $('#btnSay').addEventListener('click', toggleSay);
+  $('#btnSound').addEventListener('click', () => { cycleSound(); drawSoundBtn(); toast({ all: '음악과 효과음을 켰어요', sfx: '음악은 끄고 효과음만 들려요', off: '소리를 모두 껐어요' }[soundMode()]); });
   $('#modalClose').addEventListener('click', () => modal.close());
   $('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') modal.close(); });
   window.addEventListener('keydown', (e) => {
@@ -127,8 +135,8 @@ function bindUi() {
   // 말하기 판: 정해진 말과 이모티콘만
   const panel = $('#sayPanel');
   panel.replaceChildren(
-    h('div', { class: 'say-phrases' }, Object.entries(PHRASES).map(([id, t]) => h('button', { class: 'say-btn', type: 'button', onclick: () => say(id) }, t))),
-    h('div', { class: 'say-emotes' }, Object.entries(EMOTES).map(([id, t]) => h('button', { class: 'say-emo', type: 'button', 'aria-label': id, onclick: () => say(id) }, t))));
+    h('div', { class: 'say-phrases' }, Object.entries(PHRASES).map(([id, t]) => h('button', { class: 'say-btn', type: 'button', 'data-quiet': '', onclick: () => say(id) }, t))),
+    h('div', { class: 'say-emotes' }, Object.entries(EMOTES).map(([id, t]) => h('button', { class: 'say-emo', type: 'button', 'data-quiet': '', 'aria-label': id, onclick: () => say(id) }, t))));
 }
 
 function toggleSay() {
@@ -141,8 +149,19 @@ function say(id) {
   if (!text) return;
   $('#sayPanel').hidden = true;
   village.say('me', text);
+  sfx.pop();
   logLine(state.me.village_name, text, true);
   if (net) net.send('say', { p: id });
+}
+
+const SOUND_LABEL = { all: '소리', sfx: '음악 끔', off: '소리 끔' };
+function drawSoundBtn() {
+  const b = $('#btnSound');
+  if (!b) return;
+  const m = soundMode();
+  b.classList.toggle('muted', m !== 'all');
+  b.setAttribute('aria-label', `소리 설정: ${SOUND_LABEL[m]}`);
+  b.lastChild.textContent = SOUND_LABEL[m];
 }
 
 function logLine(name, text, mine) {
@@ -188,6 +207,7 @@ function afterLogin() {
 
 function showLogin() {
   stopNet();
+  stopMusic();
   village.setMode('idle');
   $('#hud').hidden = true;
   $('#prompt').hidden = true;
@@ -199,7 +219,32 @@ function showLogin() {
 }
 
 async function refreshToday() {
-  try { state.today = await rpc('kids_today', { p_token: token() }); } catch (e) { /* 다음에 */ }
+  const was = playOpen();
+  try { state.today = await rpc('kids_today', { p_token: token() }); } catch (e) { return; }
+  if (!was && playOpen() && state.todayChecked) {
+    toast('놀이 마당이 열렸어요! 남쪽 놀이 마당에서 친구들과 놀아요', 3800);
+    setTimeout(() => sfx.fruit(), 600);
+  }
+  state.todayChecked = true;
+}
+
+// 놀이 마당: 그날 암송·묵상·필사 가운데 하나라도 마쳐야 열린다
+const playOpen = () => !!(state.today && state.today.cleared);
+const GAMES = { fish: () => fishing.open(), omok: () => omok.open(), cook: () => cook.open(), art: () => art.open() };
+async function openGame(id) {
+  if (!playOpen()) await refreshToday();
+  if (!playOpen()) return showLocked();
+  openHouse(GAMES[id], id);
+}
+function showLocked() {
+  const go = (where) => { modal.close(); village.walkTo(where); };
+  openSheet('놀이 마당', h('div', { class: 'talk' },
+    h('p', { class: 'result-big' }, '말씀 활동을 하나 마치면 열려요!'),
+    h('p', {}, '오늘 암송 연습, 오늘 묵상, 이번 주 필사 가운데 하나만 해도 돼요. 마치고 오면 낚시, 오목, 그림, 요리를 할 수 있어요.'),
+    h('div', { class: 'row' },
+      h('button', { class: 'btn btn-soft', type: 'button', onclick: () => go('memory') }, '암송의 집'),
+      h('button', { class: 'btn btn-soft', type: 'button', onclick: () => go('qt') }, '묵상의 숲'),
+      h('button', { class: 'btn btn-soft', type: 'button', onclick: () => go('library') }, '필사 도서관'))), 'talk-sheet');
 }
 
 async function enterVillage(greet) {
@@ -219,6 +264,8 @@ async function enterVillage(greet) {
   refreshToday();
   refreshWall();
   startNet();
+  startMusic();
+  setScene('village');
   if (greet && me.is_birthday) {
     setTimeout(() => {
       confetti();
@@ -290,9 +337,11 @@ async function startNet() {
       else if (type === 'say') {
         const text = PHRASES[p.p] || EMOTES[p.p];
         village.say(id, text);
+        sfx.pop(true);
         logLine(person.name, text, false);
       } else if (type === 'done') {
         village.remoteCelebrate(id);
+        sfx.ding();
         toast(`${josa(person.name, '이가', '가')} ${DONE_TEXT[p.k]}!`, 3200);
       } else if (type === 'inv' || type === 'invr') {
         hub.onMsg(type, id, p);
@@ -351,6 +400,7 @@ function updateHud() {
 function setFruits(n) {
   if (state.me) state.me.fruits = n;
   const el = $('#hudFruit');
+  if (Number(el.textContent) < n && !$('#hud').hidden) sfx.fruit();
   if (el.textContent !== String(n)) {
     el.textContent = String(n);
     el.parentElement.classList.remove('bump');
@@ -377,9 +427,10 @@ function openHouse(fn, act = '') {
   village.setPaused(true);
   fn();
   setActivity(act);
+  setScene(GAMES[act] ? 'game' : 'quiet');
   const m = document.getElementById('modal');
   const obs = new MutationObserver(() => {
-    if (m.hidden) { village.setPaused(false); obs.disconnect(); refreshToday(); setActivity(''); }
+    if (m.hidden) { village.setPaused(false); obs.disconnect(); refreshToday(); setActivity(''); setScene('village'); }
   });
   obs.observe(m, { attributes: true, attributeFilter: ['hidden'] });
 }
@@ -394,10 +445,7 @@ function onEnter(id) {
   if (id === 'memory') return openHouse(() => memory.open(), 'memory');
   if (id === 'qt') return openHouse(() => qt.open(), 'qt');
   if (id === 'library') return openHouse(() => copy.open(), 'copy');
-  if (id === 'fish') return openHouse(() => fishing.open(), 'fish');
-  if (id === 'omok') return openHouse(() => omok.open(), 'omok');
-  if (id === 'cook') return openHouse(() => cook.open(), 'cook');
-  if (id === 'art') return openHouse(() => art.open(), 'art');
+  if (GAMES[id]) return openGame(id);
   if (id === 'home') return openMaker(false);
   const s = SOON[id];
   if (s) {
@@ -418,6 +466,7 @@ function onNpc() {
   if (me.is_birthday) lines.push(`${name}, 생일 축하해! 오늘은 마을이 더 반짝이는 것 같아.`);
   else lines.push(`안녕, ${name}!${t.theme ? ` 이번 주 주제는 '${t.theme}'이야.` : ''}`);
   let go = null;
+  if (!playOpen()) lines.push('말씀 활동을 하나 마치면 남쪽 놀이 마당이 열려. 낚시도 하고 오목도 둘 수 있어!');
   if (t.qt && !t.qt.done) { lines.push(`오늘 묵상은 '${t.qt.title}'이야. 묵상의 숲에 가 볼래?`); go = ['묵상의 숲으로', 'qt']; }
   else if (cur && !cur.practiced_today && !cur.passed) { lines.push(`이번 주 말씀은 ${cur.ref}이야. 암송의 집에서 연습해 볼까?`); go = ['암송의 집으로', 'memory']; }
   else if (t.copy && !t.copy.done) { lines.push(`이번 주 필사는 ${t.copy.ref}이야. 필사 도서관에서 따라 써 볼래?`); go = ['필사 도서관으로', 'library']; }
