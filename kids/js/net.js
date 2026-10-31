@@ -8,9 +8,9 @@ export const PHRASES = {
   bless: '축복해!', memory: '암송의 집에서 만나!', qt: '오늘 묵상했어?', copy: '필사 같이 하자!', wait: '잠깐 기다려 줘!', bye: '내일 또 만나!',
 };
 export const EMOTES = { heart: '❤️', clap: '👏', smile: '😊', wave: '👋', pray: '🙏', star: '⭐' };
-const EVENTS = ['mv', 'st', 'say', 'chat', 'done', 'av', 'inv', 'invr', 'act', 'fish', 'art', 'dish'];
+const EVENTS = ['mv', 'st', 'say', 'chat', 'dm', 'done', 'av', 'inv', 'invr', 'act', 'fish', 'art', 'dish', 'ob'];
 export const GAME_KINDS = ['omok', 'cook'];
-export const ACTS = ['', 'fish', 'omok', 'cook', 'art', 'memory', 'qt', 'copy'];
+export const ACTS = ['', 'fish', 'omok', 'cook', 'art', 'memory', 'qt', 'copy', 'watch'];
 const ID_RE = /^[A-Za-z0-9-]{1,64}$/;
 const GID_RE = /^[a-z0-9]{8,12}$/;
 const WORD_RE = /^[a-z]{2,12}$/;
@@ -33,6 +33,15 @@ export function clean(type, p) {
   if (type === 'fish') return WORD_RE.test(p.f) ? { f: p.f } : null;
   if (type === 'art') return {};
   if (type === 'dish') return {};
+  // 둘이 대화: 받는 아이만 화면에 띄운다
+  if (type === 'dm') { const t = typeof p.m === 'string' ? cleanChat(p.m) : ''; return t && typeof p.to === 'string' && ID_RE.test(p.to) ? { to: p.to, m: t } : null; }
+  // 오목 구경: 판(13×13 = 169칸, 0 빈칸 1 검은 돌 2 흰 돌), 검은 돌·흰 돌 주인(g는 숲지기 솔), 이긴 쪽, 판 번호, 마지막 수
+  if (type === 'ob') {
+    const who = (v) => v === 'g' || (typeof v === 'string' && ID_RE.test(v));
+    return typeof p.b === 'string' && /^[012]{169}$/.test(p.b) && who(p.k) && who(p.w) && [0, 1, 2, 3].includes(p.x)
+      && Number.isInteger(p.r) && p.r >= 1 && p.r < 1000 && Number.isInteger(p.l) && p.l >= -1 && p.l < 169
+      ? { b: p.b, k: p.k, w: p.w, x: p.x, r: p.r, l: p.l } : null;
+  }
   return null;
 }
 
@@ -56,7 +65,8 @@ export class Outbox {
     return Math.min(MAX_RATE, REALTIME_BUDGET / (n * n));
   }
   push(ev, payload) {
-    if (ev === 'inv' || ev === 'invr') { if (this.peerCount() > 0) this.post(ev, payload); return; } // 초대와 대답은 바로
+    if (ev === 'inv' || ev === 'invr' || ev === 'dm') { if (this.peerCount() > 0) this.post(ev, payload); return; } // 초대·대답·둘이 대화는 바로
+    if (ev === 'ob') this.queue = this.queue.filter((m) => m[0] !== 'ob'); // 오목 판은 가장 새 것만
     if (ev === 'mv' || ev === 'st') this.move = [ev, payload];
     else {
       if (ev === 'act') this.queue = this.queue.filter((m) => m[0] !== 'act');

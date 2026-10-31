@@ -1435,6 +1435,18 @@ export class Village {
     this.target = { pos: d.pos.clone(), action: () => this.enter(id) };
     this.reportMove(d.pos.x, d.pos.z);
   }
+  // 친구 옆으로 걸어가기
+  walkToFriend(id) {
+    const r = this.remotes.get(id);
+    if (!r || !this.player || this.mode !== 'play') return;
+    const q = r.av.root.position, p = this.player.root.position;
+    const dx = p.x - q.x, dz = p.z - q.z, d = Math.hypot(dx, dz) || 1;
+    const pos = new THREE.Vector3(q.x + (dx / d) * 1.3, 0, q.z + (dz / d) * 1.3);
+    this.resolve(pos);
+    this.target = { pos, action: () => { if (this.remotes.has(id)) this.player.root.rotation.y = Math.atan2(q.x - this.player.root.position.x, q.z - this.player.root.position.z); } };
+    this.showTapMark(pos);
+    this.reportMove(pos.x, pos.z);
+  }
   walkToNpc() {
     const g = this.guide.root.position;
     const p = this.player.root.position;

@@ -257,10 +257,24 @@ function renderVillage() {
       toast(d.hidden ? '다시 식탁에 올렸어요.' : '식탁에서 숨겼어요.');
       renderVillage();
     } }, d.hidden ? '다시 보이기' : '숨기기'))) : [h('div', { class: 'card empty' }, '아직 올린 요리가 없어요.')]));
+  const cl = $('#commentList');
+  const cms = v.comments || [];
+  if (cl) cl.replaceChildren(...(cms.length ? cms.map((c) => h('div', { class: 'chat-row' },
+    h('time', { datetime: c.at }, timeOf(c.at)),
+    h('div', {}, h('span', { class: 'who' }, c.name || '-', h('small', {}, c.village_name || '')), ' ',
+      h('span', { class: 'pill' }, `${c.art_owner || '친구'}의 그림${c.art_title ? ` ‘${c.art_title}’` : ''}`), ' ',
+      c.masked ? h('span', { class: 'pill red' }, '가림') : null, c.hidden ? h('span', { class: 'pill red' }, '숨김') : null,
+      h('div', { class: 'body' }, c.body)),
+    h('button', { class: 'btn btn-sm' + (c.hidden ? '' : ' btn-ghost'), type: 'button', onclick: async () => {
+      try { villageConf = await call('kids_t_comment_hide', { p_id: c.id, p_hidden: !c.hidden }); } catch (e) { return; }
+      toast(c.hidden ? '댓글을 다시 보이게 했어요.' : '댓글을 숨겼어요.');
+      renderVillage();
+    } }, c.hidden ? '다시 보이기' : '숨기기'))) : [h('div', { class: 'card empty' }, '아직 그림 댓글이 없어요.')]));
   if (!v.chat.length) { list.replaceChildren(h('div', { class: 'card empty' }, '아직 아이들이 쓴 글이 없어요.')); return; }
   list.replaceChildren(...v.chat.map((m) => h('div', { class: 'chat-row' },
     h('time', { datetime: m.at }, timeOf(m.at)),
     h('div', {}, h('span', { class: 'who' }, m.name || '-', h('small', {}, m.village_name || '')), ' ',
+      m.to_name ? h('span', { class: 'pill' }, `→ ${m.to_name}에게 둘이 대화`) : null, ' ',
       m.masked ? h('span', { class: 'pill red' }, '가림') : null,
       h('div', { class: 'body' }, m.body)),
     h('button', { class: 'btn btn-sm' + (m.muted ? '' : ' btn-ghost'), type: 'button', onclick: async () => {

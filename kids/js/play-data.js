@@ -111,4 +111,5 @@ export function dishName(items, kind) {
   return `${head}${uniq.length > 2 ? ' 듬뿍' : ''} ${COOK_KIND[kind][0]}`.trim();
 }
 
-export const ACT_ICON = { fish: '🎣', omok: '⚫', cook: '🍳', art: '🎨', memory: '📖', qt: '🌿', copy: '✏️' };
+export const ACT_ICON = { fish: '🎣', omok: '⚫', cook: '🍳', art: '🎨', memory: '📖', qt: '🌿', copy: '✏️', watch: '👀' };
+export const ACT_TEXT = { fish: '낚시하는 중', omok: '오목 두는 중', cook: '요리하는 중', art: '그림 그리는 중', memory: '암송하는 중', qt: '묵상하는 중', copy: '필사하는 중', watch: '오목 구경하는 중' };

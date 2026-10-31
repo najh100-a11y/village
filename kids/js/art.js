@@ -5,8 +5,9 @@ import { reactionBar } from './social.js';
 import { toJpeg, jpegUrl } from './images.js';
 import { sfx } from './sound.js';
 import { createPainter, PW, PH, COLORS, TOOLS, STAMPS, SHAPE_LIST, stampIcon } from './paint.js';
+import { cleanChat, CHAT_MAX } from './chatfilter.js';
 
-export function createArt({ rpc, getToken, onSessionLost, onCelebrate, onShared, onSaved }) {
+export function createArt({ rpc, getToken, onSessionLost, onCelebrate, onShared, onSaved, features = () => ({}) }) {
   let view = 'draw';
   let paper = null, used = false, painter = null;
   const tool = { color: COLORS[6], size: 10, tool: 'brush', shape: 'circle', stamp: 'star', filled: true };
@@ -186,7 +187,45 @@ export function createArt({ rpc, getToken, onSessionLost, onCelebrate, onShared,
     } else {
       body.push(reactionBar({ ...it, key: it.id }, { kind: 'art', key: it.id, rpc, getToken, onSessionLost }));
     }
+    if (features().comments) body.push(h('button', { class: 'btn btn-soft btn-small cmt-open', type: 'button', onclick: () => comments(it, view) }, '💬 댓글 보기·쓰기'));
     return h('article', { class: 'art-card' + (it.me ? ' me' : '') }, body);
+  }
+
+  // 그림 한 장과 댓글
+  async function comments(it, back) {
+    const backTo = back || 'gallery';
+    view = 'comments';
+    modal.setTitle(it.title || '제목 없는 그림');
+    const img = h('img', { class: 'cmt-img', src: jpegUrl(it.thumb), alt: it.title || '' });
+    const list = h('div', { class: 'cmt-list', 'aria-live': 'polite' }, h('p', { class: 'hint-line' }, '댓글을 불러오고 있어요…'));
+    const input = h('input', { type: 'text', maxlength: CHAT_MAX, autocomplete: 'off', enterkeyhint: 'send', placeholder: '그림에 남길 말 (선생님도 볼 수 있어요)', 'aria-label': '댓글' });
+    const form = h('form', { class: 'say-write' }, input, h('button', { class: 'btn btn-go btn-small', type: 'submit', 'data-quiet': '' }, '남기기'));
+    const draw = (rows) => {
+      list.replaceChildren(...(rows.length ? rows.map((c) => h('p', { class: 'cmt' + (c.me ? ' me' : '') }, h('b', {}, c.name || '친구'), ' ', c.body)) : [h('p', { class: 'fb-empty' }, '아직 댓글이 없어요. 첫 댓글을 남겨 볼까요?')]));
+      list.scrollTop = list.scrollHeight;
+    };
+    let sending = false;
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!cleanChat(input.value) || sending) return;
+      sending = true;
+      try {
+        const rows = await rpc('kids_art_comment_add', { p_token: getToken(), p_art: it.id, p_text: input.value });
+        input.value = '';
+        sfx.pop();
+        draw(rows || []);
+      } catch (err) { fail(err); } finally { sending = false; }
+    });
+    modal.setBody(h('div', { class: 'mem game art' }, tabs(),
+      h('div', { class: 'cmt-wrap' },
+        h('button', { class: 'cmt-pic', type: 'button', 'aria-label': '그림 크게 보기', onclick: async () => {
+          const close = showImage(jpegUrl(it.thumb), '불러오는 중…');
+          try { const r = await rpc('kids_art_get', { p_token: getToken(), p_id: it.id }); close(); showImage(jpegUrl(r.image), it.title ? `${it.name} · ${it.title}` : it.name); } catch (err) { close(); fail(err); }
+        } }, img),
+        h('p', { class: 'cmt-by' }, `${it.name || '친구'}의 그림`)),
+      list, form,
+      h('div', { class: 'row' }, h('button', { class: 'btn btn-plain', type: 'button', onclick: () => go(backTo) }, backTo === 'mine' ? '내 그림으로' : '전시관으로'))));
+    try { draw(await rpc('kids_art_comments', { p_token: getToken(), p_art: it.id })); } catch (err) { if (!fail(err)) list.replaceChildren(h('p', { class: 'fb-empty' }, '댓글을 불러오지 못했어요.')); }
   }
 
   async function gallery() {

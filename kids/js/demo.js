@@ -197,6 +197,23 @@ export class DemoBackend {
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
+  kids_features() { return { dish: true, comments: true, dm: true }; }
+  kids_dm_send({ p_token, p_to, p_text }) {
+    const me = this.session(p_token, 'child');
+    if (!this.villageConf().chat_open) fail('CHAT_OFF');
+    if (this.child(me).chat_muted) fail('CHAT_MUTED');
+    if (!p_to || p_to === me) fail('NOT_FOUND');
+    this.child(p_to);
+    const t = cleanChat(p_text);
+    if (!t) fail('EMPTY_CHAT');
+    this.db.chat = this.db.chat || [];
+    const last = this.db.chat.filter((m) => m.child === me).map((m) => m.at).sort().pop();
+    if (last && Date.now() - new Date(last).getTime() < 1500) fail('TOO_FAST');
+    const raw = [...String(p_text || '').replace(/\s+/g, ' ').trim()].slice(0, 60).join('');
+    this.db.chat.push({ id: Date.now() + Math.random(), child: me, to: p_to, body: t, masked: t !== raw, at: nowIso() });
+    this.db.chat = this.db.chat.slice(-300);
+    return { text: t };
+  }
   kids_chat_open() { return this.villageConf().chat_open; }
   kids_chat_send({ p_token, p_text }) {
     const me = this.session(p_token, 'child');
@@ -462,6 +479,38 @@ export class DemoBackend {
     const me = this.session(p_token, 'child');
     return this.db.art.filter((a) => (p_mine ? a.child === me : a.shared && !a.hidden))
       .sort((a, b) => b.at.localeCompare(a.at)).slice(0, 40).map((a) => this.artItem(a, me)).filter(Boolean);
+  }
+  // 그림 댓글
+  artComments(me, artId) {
+    return (this.db.artComments || []).filter((c) => c.art === artId && !c.hidden).slice(-60).map((c) => {
+      const ch = this.db.children.find((x) => x.id === c.child) || {};
+      return { id: c.id, name: ch.village_name, body: c.body, me: c.child === me, at: c.at };
+    });
+  }
+  kids_art_comments({ p_token, p_art }) {
+    const me = this.session(p_token, 'child');
+    this.db.art.find((x) => x.id === p_art && (x.child === me || (x.shared && !x.hidden))) || fail('NOT_FOUND');
+    return this.artComments(me, p_art);
+  }
+  kids_art_comment_add({ p_token, p_art, p_text }) {
+    const me = this.session(p_token, 'child');
+    if (!this.villageConf().chat_open) fail('CHAT_OFF');
+    if (this.child(me).chat_muted) fail('CHAT_MUTED');
+    this.db.art.find((x) => x.id === p_art && (x.child === me || (x.shared && !x.hidden))) || fail('NOT_FOUND');
+    const t = cleanChat(p_text);
+    if (!t) fail('EMPTY_CHAT');
+    this.db.artComments = this.db.artComments || [];
+    const last = this.db.artComments.filter((c) => c.child === me).map((c) => c.at).sort().pop();
+    if (last && Date.now() - new Date(last).getTime() < 3000) fail('TOO_FAST');
+    const raw = [...String(p_text || '').replace(/\s+/g, ' ').trim()].slice(0, 60).join('');
+    this.db.artComments.push({ id: Date.now() + Math.random(), art: p_art, child: me, body: t, masked: t !== raw, hidden: false, at: nowIso() });
+    return this.artComments(me, p_art);
+  }
+  kids_t_comment_hide({ p_token, p_id, p_hidden }) {
+    this.session(p_token, 'teacher');
+    const c = (this.db.artComments || []).find((x) => x.id === p_id) || fail('NOT_FOUND');
+    c.hidden = !!p_hidden;
+    return this.kids_t_village({ p_token });
   }
   kids_art_get({ p_token, p_id }) {
     const me = this.session(p_token, 'child');
@@ -773,9 +822,16 @@ export class DemoBackend {
       today: today(), chat_open: v.chat_open, free_until: v.free_until, play_free: this.playFree(),
       chat: (this.db.chat || []).slice().reverse().slice(0, 200).map((m) => {
         const c = this.db.children.find((x) => x.id === m.child) || {};
-        return { id: m.id, child: m.child, name: c.name, village_name: c.village_name, body: m.body, masked: m.masked, muted: !!c.chat_muted, at: m.at };
+        const t = m.to ? this.db.children.find((x) => x.id === m.to) || {} : null;
+        return { id: m.id, child: m.child, name: c.name, village_name: c.village_name, to_name: t && t.name, to_village_name: t && t.village_name, body: m.body, masked: m.masked, muted: !!c.chat_muted, at: m.at };
       }),
       muted: this.db.children.filter((c) => c.chat_muted).map((c) => ({ id: c.id, name: c.name, village_name: c.village_name })),
+      comments: (this.db.artComments || []).slice().reverse().slice(0, 100).map((m) => {
+        const c = this.db.children.find((x) => x.id === m.child) || {};
+        const a = this.db.art.find((x) => x.id === m.art) || {};
+        const o = this.db.children.find((x) => x.id === a.child) || {};
+        return { id: m.id, child: m.child, name: c.name, village_name: c.village_name, art_title: a.title, art_owner: o.village_name, body: m.body, masked: m.masked, hidden: m.hidden, muted: !!c.chat_muted, at: m.at };
+      }),
       dishes: (this.db.dishes || []).slice().reverse().slice(0, 60).map((d) => {
         const c = this.db.children.find((x) => x.id === d.child) || {};
         return { id: d.id, name: d.name, kind: d.kind, child_name: c.name, village_name: c.village_name, hidden: d.hidden, at: d.at };

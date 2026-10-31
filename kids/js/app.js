@@ -10,13 +10,14 @@ import { cleanChat, CHAT_MAX } from './chatfilter.js';
 import { createPlayHub } from './play.js';
 import { createArt } from './art.js';
 import { createPlay3D } from './play3d.js';
-import { ACT_ICON, fishById, recipeById, RECIPES } from './play-data.js';
+import { ACT_ICON, ACT_TEXT, fishById, recipeById, RECIPES } from './play-data.js';
 import { initSound, startMusic, stopMusic, setScene, sfx, cycleSound, soundMode } from './sound.js';
 import { h, modal, toast, confetti, josa } from './ui.js';
 import { drawFaceIcon, normalizeAvatar, defaultAvatar } from './face.js';
 
 const $ = (s) => document.querySelector(s);
-const state = { token: store.get('token'), me: null, people: new Map(), today: null };
+const state = { token: store.get('token'), me: null, people: new Map(), today: null, features: {}, dms: new Map(), unread: 0 };
+const observes = new Map(); // 오목 구경: 친구 id → 가장 최근 판
 let village = null;
 let maker = null;
 let memory = null;
@@ -94,7 +95,7 @@ async function boot() {
     },
     onAccept: (kind, session) => openGameWith(kind, session),
   });
-  art = createArt({ ...common, onShared: () => { if (net) net.send('art', {}); refreshWall(); }, onSaved: (b64) => { if (play3d) play3d.artSaved(b64); } });
+  art = createArt({ ...common, onShared: () => { if (net) net.send('art', {}); refreshWall(); }, onSaved: (b64) => { if (play3d) play3d.artSaved(b64); }, features: () => state.features });
   // 놀이는 창을 띄우지 않고 마을 안 그 자리에서 3D로 한다
   play3d = createPlay3D({
     village, rpc, getToken: token, onSessionLost: sessionLost, onCelebrate: () => village.celebrate(),
@@ -102,6 +103,11 @@ async function boot() {
     onRare: (f) => { if (net) net.send('fish', { f }); },
     openArt: (start, onClose) => art.open(start, { onClose }),
     onDishShared: () => { if (net) net.send('dish', {}); dishAt = 0; refreshDishes(); },
+    myId: () => state.me && state.me.id,
+    personName: (id) => { const p = state.people.get(id); return p ? p.name : ''; },
+    onOmokState: (st) => { if (net) net.send('ob', st); },
+    getObserve: (id) => { const o = observes.get(id); return o && Date.now() - o.at < 30000 ? o.st : null; },
+    watchable: () => watchableGames(),
   });
   village.decorateRemote = (r, act, hint) => play3d.decorateRemote(r, act, hint);
   bindUi();
@@ -136,6 +142,7 @@ function bindUi() {
   $('#btnOut').addEventListener('click', askLogout);
   $('#btnSay').addEventListener('click', toggleSay);
   $('#btnView').addEventListener('click', () => village.resetView());
+  $('#onlineCount').addEventListener('click', () => openFriends());
   $('#btnSound').addEventListener('click', () => { cycleSound(); drawSoundBtn(); toast({ all: '음악과 효과음을 켰어요', sfx: '음악은 끄고 효과음만 들려요', off: '소리를 모두 껐어요' }[soundMode()]); });
   $('#modalClose').addEventListener('click', () => modal.close());
   $('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') modal.close(); });
@@ -352,6 +359,7 @@ async function enterVillage(greet) {
   village.setMode('play');
   village.viewChanged();
   rpc('kids_chat_open').then(showChatInput).catch(() => showChatInput(false));
+  rpc('kids_features').then((f) => { state.features = f || {}; }).catch(() => { state.features = {}; });
   village.setPaused(false);
   updateHud();
   $('#hud').hidden = false;
@@ -458,6 +466,13 @@ async function startNet() {
           toast(`${josa(person.name, '이가', '가')} ${josa(f.name, '을', '를')} 낚았어요!`, 3200);
           logLine(person.name, `🎣 ${f.name}!`, false);
         }
+      } else if (type === 'dm') {
+        // 둘이 이야기는 서버에 기록된 뒤에만 오가야 하므로, 기능이 켜져 있을 때만 받는다
+        if (p.to !== (state.me && state.me.id) || !state.features.dm || !state.chatOpen) return;
+        addDm(id, p.m, false);
+      } else if (type === 'ob') {
+        observes.set(id, { st: p, at: Date.now() });
+        if (play3d) play3d.observe(id, p);
       } else if (type === 'dish') {
         dishAt = 0;
         refreshDishes();
@@ -503,6 +518,116 @@ function setActivity(a) {
   if (a === myAct) return;
   myAct = a;
   if (net) net.send('act', { a });
+}
+
+// ---------- 친구 목록, 둘이 대화, 오목 구경 ----------
+function watchableGames() {
+  const out = [];
+  for (const [id, o] of observes) {
+    if (Date.now() - o.at > 30000 || !online.has(id)) continue;
+    const other = o.st.k === id ? o.st.w : o.st.k;
+    out.push({ id, name: (state.people.get(id) || {}).name || '친구', vs: other === 'g' ? '숲지기 솔' : (state.people.get(other) || {}).name || '' });
+  }
+  return out;
+}
+
+function friendsBadge() {
+  const el = $('#onlineCount');
+  el.dataset.unread = state.unread ? String(state.unread) : '';
+}
+
+function openFriends() {
+  const list = [...online].map((id) => state.people.get(id)).filter(Boolean);
+  const games = new Set(watchableGames().map((g) => g.id));
+  const dmOk = !!(state.features.dm && state.chatOpen);
+  const rows = list.map((p) => {
+    const face = h('canvas', { width: 80, height: 80, class: 'fl-face', 'aria-hidden': 'true' });
+    drawFaceIcon(face, normalizeAvatar(p.avatar));
+    const r = village.remotes.get(p.id);
+    const act = r && r.actName;
+    const unread = (state.dms.get(p.id) || []).filter((m) => !m.mine && !m.read).length;
+    return h('div', { class: 'fl-row' }, face,
+      h('div', { class: 'fl-main' }, h('b', {}, p.name), h('span', {}, act ? `${ACT_ICON[act] || ''} ${ACT_TEXT[act] || ''}` : '마을을 걷고 있어요')),
+      h('div', { class: 'fl-acts' },
+        dmOk ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => openDm(p.id) }, unread ? `💌 이야기 (${unread})` : '💌 둘이 이야기') : null,
+        games.has(p.id) ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => { modal.close(); play3d.omokWatch(p.id); } }, '👀 구경하기') : null,
+        h('button', { class: 'btn btn-plain btn-small', type: 'button', onclick: () => { modal.close(); if (play3d.active) play3d.stop(); village.walkToFriend(p.id); } }, '찾아가기')));
+  });
+  openSheet(`지금 마을에 있는 친구 ${list.length}명`, h('div', { class: 'talk friends' },
+    rows.length ? h('div', { class: 'fl-list' }, rows) : h('p', { class: 'fb-empty' }, '지금은 혼자 있어요. 친구가 들어오면 여기에 보여요.'),
+    dmOk ? h('p', { class: 'note' }, '둘이 이야기한 글은 둘만 보이지만, 안전을 위해 선생님은 볼 수 있어요.') : null), 'talk-sheet');
+}
+
+function addDm(id, text, mine) {
+  const list = state.dms.get(id) || [];
+  list.push({ mine, text, at: Date.now(), read: mine || dmOpenWith === id });
+  while (list.length > 60) list.shift();
+  state.dms.set(id, list);
+  if (dmOpenWith === id) { drawDm(); if (!mine) sfx.pop(true); return; }
+  if (!mine) {
+    state.unread += 1;
+    friendsBadge();
+    sfx.invite();
+    const p = state.people.get(id) || { name: '친구' };
+    showDmCard(id, p.name, text);
+  }
+}
+
+let dmCard = null;
+function showDmCard(id, name, text) {
+  if (dmCard) dmCard.remove();
+  const close = () => { if (dmCard === card) { card.remove(); dmCard = null; } };
+  const card = h('div', { class: 'invite-card dm-card', role: 'status' },
+    h('div', { class: 'dm-ic', 'aria-hidden': 'true' }, '💌'),
+    h('div', { class: 'inv-main' },
+      h('p', {}, h('b', {}, name), ' ', text),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn btn-plain btn-small', type: 'button', onclick: close }, '나중에'),
+        h('button', { class: 'btn btn-go btn-small', type: 'button', onclick: () => { close(); openDm(id); } }, '대답하기'))));
+  dmCard = card;
+  document.body.append(card);
+  setTimeout(close, 7000);
+}
+
+let dmOpenWith = null, dmBody = null;
+function drawDm() {
+  if (!dmBody) return;
+  const list = state.dms.get(dmOpenWith) || [];
+  for (const m of list) if (!m.mine && !m.read) { m.read = true; state.unread = Math.max(0, state.unread - 1); }
+  friendsBadge();
+  dmBody.replaceChildren(...(list.length ? list.map((m) => h('p', { class: 'dm-msg' + (m.mine ? ' me' : '') }, m.text)) : [h('p', { class: 'fb-empty' }, '먼저 인사해 볼까요?')]));
+  dmBody.scrollTop = dmBody.scrollHeight;
+}
+function openDm(id) {
+  const p = state.people.get(id);
+  if (!p) return;
+  dmOpenWith = id;
+  dmBody = h('div', { class: 'dm-list', 'aria-live': 'polite' });
+  const input = h('input', { type: 'text', maxlength: CHAT_MAX, autocomplete: 'off', enterkeyhint: 'send', placeholder: `${p.name}에게 할 말`, 'aria-label': `${p.name}에게 할 말` });
+  let sending = false;
+  const form = h('form', { class: 'say-write' }, input, h('button', { class: 'btn btn-go btn-small', type: 'submit', 'data-quiet': '' }, '보내기'));
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const t0 = cleanChat(input.value);
+    if (!t0 || sending) return;
+    if (!online.has(id)) { toast(`${josa(p.name, '이', '가')} 지금 마을에 없어요.`); return; }
+    sending = true;
+    try {
+      const r = await rpc('kids_dm_send', { p_token: token(), p_to: id, p_text: input.value });
+      const t = cleanChat(r && r.text);
+      if (t) { input.value = ''; addDm(id, t, true); sfx.pop(); if (net) net.send('dm', { to: id, m: t }); }
+    } catch (err) {
+      if (err.code === 'SESSION') { sessionLost(); return; }
+      toast(message(err));
+    } finally { sending = false; }
+  });
+  openSheet(`💌 ${josa(p.name, '과', '와')} 둘이 이야기`, h('div', { class: 'talk dm' },
+    dmBody, form, h('p', { class: 'note' }, '둘만 보이는 이야기예요. 안전을 위해 선생님은 볼 수 있어요.')), 'talk-sheet');
+  const m = document.getElementById('modal');
+  const obs = new MutationObserver(() => { if (m.hidden || !document.body.contains(dmBody)) { dmOpenWith = null; dmBody = null; obs.disconnect(); } });
+  obs.observe(m, { attributes: true, attributeFilter: ['hidden'] });
+  drawDm();
+  if (matchMedia('(pointer: fine)').matches) setTimeout(() => input.focus({ preventScroll: true }), 60);
 }
 
 // ---------- 화면 ----------

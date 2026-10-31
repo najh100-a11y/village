@@ -957,6 +957,13 @@ export function createPlay3D(ctx) {
       h('div', { class: 'mode-pick' },
         h('button', { class: 'mode', type: 'button', onclick: () => { menuTok++; modal.close(); omok({}); } },
           h('b', {}, '숲지기 솔과 두기'), h('span', {}, '컴퓨터와 연습해요. 내가 먼저 검은 돌이에요.'))),
+      ...(() => {
+        const games = ctx.watchable ? ctx.watchable() : [];
+        if (!games.length) return [];
+        return [h('div', { class: 'sub-head' }, h('h3', {}, '지금 두고 있는 판 구경하기')),
+          h('div', { class: 'watch-list' }, games.map((gm) => h('button', { class: 'mode', type: 'button', onclick: () => { menuTok++; modal.close(); omokWatch(gm.id); } },
+            h('b', {}, `👀 ${gm.name}의 판`), h('span', {}, gm.vs ? `${josa(gm.vs, '과', '와')} 두고 있어요` : '탁자 옆에서 응원하며 구경해요'))))];
+      })(),
       h('div', { class: 'sub-head' }, h('h3', {}, '마을 친구와 두기'), h('p', {}, friends.length ? `${friends.length}명` : '')),
       friendPicker(friends, (f) => {
         modal.setTitle('오목 놀이터');
@@ -1047,6 +1054,15 @@ export function createPlay3D(ctx) {
     let g = null;
     let meLabel = null, opLabel = null;
     const colorName = (c) => (c === 1 ? '검은 돌' : '흰 돌');
+    // 구경하는 친구들에게 판을 알린다 (친구와 둘 때는 초대한 쪽만)
+    const myId = ctx.myId ? ctx.myId() : null;
+    const oppId = session ? session.peer : 'g';
+    function broadcast() {
+      if (!g || !myId || !ctx.onOmokState || (session && !session.host)) return;
+      const last = g.moves.length ? g.moves[g.moves.length - 1][1] * N + g.moves[g.moves.length - 1][0] : -1;
+      ctx.onOmokState({ b: Array.from(g.board).join(''), k: g.me === 1 ? myId : oppId, w: g.me === 1 ? oppId : myId, x: g.winner || 0, r: g.round, l: last });
+    }
+    const beat = setInterval(() => { if (live(game)) broadcast(); }, 8000);
 
     function newRound(me, round) {
       for (const s of stones) s.removeFromParent();
@@ -1056,6 +1072,7 @@ export function createPlay3D(ctx) {
       const prevLeft = g ? g.peerLeft : false;
       g = { me, round, board: new Int8Array(N * N), moves: [], turn: 1, over: false, sel: null, wantAgain: false, peerAgain: false, peerLeft: prevLeft };
       ghostStone.material.color.set(me === 1 ? '#2E2A2A' : '#FFFDF7');
+      setTimeout(broadcast, 50);
       if (meLabel) { meLabel.remove(); opLabel.remove(); }
       meLabel = ui.label(`나 · ${colorName(me)}`);
       opLabel = ui.label(`${oppName} · ${colorName(me === 1 ? 2 : 1)}`);
@@ -1116,10 +1133,12 @@ export function createPlay3D(ctx) {
       if (ln) finish(c, ln);
       else if (g.moves.length === N * N) finish(0, null);
       else turnText();
+      broadcast();
     }
 
     function finish(winner, ln) {
       g.over = true;
+      g.winner = winner === 0 ? 3 : winner;
       ghost.visible = false;
       game.cam = camWide;
       if (ln) {
@@ -1224,6 +1243,7 @@ export function createPlay3D(ctx) {
     game.cellScreen = (x, y) => screenOf(v, grp.localToWorld(cellPos(x, y)));
 
     game.stop = () => {
+      clearInterval(beat);
       if (session && !session.closed) session.close();
       if (guideSave) {
         const gd = v.guide;
@@ -1239,6 +1259,127 @@ export function createPlay3D(ctx) {
 
     begin('omok', `오목 · ${josa(oppName, '과', '와')} 한 판`, game);
     newRound(session ? (session.host ? 1 : 2) : 1, 1);
+  }
+
+  // =====================================================================
+  // 오목 구경하기: 친구가 두는 판을 탁자 옆에 서서 본다
+  // =====================================================================
+  let watchUpdate = null;
+  function omokWatch(hostId) {
+    stopAll();
+    const sp = v.spots.omok;
+    const N = 13, BS = 1.08, C = BS / (N + 1);
+    const grp = new THREE.Group();
+    grp.position.set(sp.x, 0, sp.z);
+    grp.rotation.y = sp.rot;
+    v.scene.add(grp);
+    grp.updateMatrixWorld(true);
+    grp.add(mk(new THREE.BoxGeometry(BS + 0.07, 0.03, BS + 0.07), toon('#C99862'), 0, 0.862, 0));
+    const tex = canvasTex(512, 512, (c, w) => {
+      c.fillStyle = '#EBC889'; c.fillRect(0, 0, w, w);
+      c.strokeStyle = '#7A5233'; c.lineWidth = 2.4;
+      const u = w / (N + 1);
+      for (let i = 1; i <= N; i++) {
+        c.beginPath(); c.moveTo(u, i * u); c.lineTo(N * u, i * u); c.stroke();
+        c.beginPath(); c.moveTo(i * u, u); c.lineTo(i * u, N * u); c.stroke();
+      }
+      c.fillStyle = '#7A5233';
+      for (const [x, y] of [[3, 3], [9, 3], [3, 9], [9, 9], [6, 6]]) { c.beginPath(); c.arc((x + 1) * u, (y + 1) * u, 6, 0, 7); c.fill(); }
+    });
+    const board = new THREE.Mesh(new THREE.PlaneGeometry(BS, BS), ownMat('#FFFFFF', { map: tex }));
+    board.rotation.x = -Math.PI / 2;
+    board.position.y = 0.879;
+    grp.add(board);
+    const R = C * 0.45, SY = 0.879 + R * 0.42;
+    const stoneGeo = new THREE.SphereGeometry(R, 20, 12);
+    const stoneMat = { 1: toon('#2E2A2A'), 2: toon('#FFFDF7') };
+    const mark = new THREE.Mesh(new THREE.SphereGeometry(R * 0.28, 10, 8), basicMat('#EF6461'));
+    mark.visible = false;
+    grp.add(mark);
+    const stones = new Map(); // 칸 번호 → 돌
+    const anims = [];
+    let shown = '0'.repeat(169), round = 0, winner = 0, lastAt = performance.now();
+    const pl = v.player;
+    const st = spotPoint(sp, 1.4, 0, -1.5);
+    const ctr = spotPoint(sp, 0, 0, 0);
+    v.placePlayer(st.x, st.z, Math.atan2(ctr.x - st.x, ctr.z - st.z), 0);
+    pl.pose = restPose;
+    const game = { cam: camAt(sp, [2.9, 3.5, 0.15], [0, 0.95, 0], 1.25), camSpeed: 2.6 };
+    let guideSave = null;
+    const labels = [];
+    const nameOf = (id) => (id === 'g' ? '숲지기 솔' : (ctx.personName && ctx.personName(id)) || '친구');
+    const seats = omokSeats();
+
+    function apply(s) {
+      lastAt = performance.now();
+      if (s.r !== round) {
+        for (const m of stones.values()) m.removeFromParent();
+        stones.clear();
+        shown = '0'.repeat(169);
+        round = s.r;
+        winner = 0;
+        // 자리 이름표: 초대한 아이(또는 혼자 두는 아이)가 앞쪽 의자, 맞은편이 친구나 숲지기 솔
+        const other = s.k === hostId ? s.w : s.k;
+        for (const l of labels) l.remove();
+        labels.length = 0;
+        const a = ui.label(`${nameOf(hostId)} · ${s.k === hostId ? '검은 돌' : '흰 돌'}`);
+        const b = ui.label(`${nameOf(other)} · ${s.k === hostId ? '흰 돌' : '검은 돌'}`);
+        labels.push(a, b);
+        if (other === 'g' && !guideSave) {
+          const gd = v.guide;
+          guideSave = { pos: gd.root.position.clone(), rot: gd.root.rotation.y, pose: gd.pose };
+          gd.root.position.set(seats[1].x, SEAT_Y, seats[1].z);
+          gd.root.rotation.y = seats[1].rot;
+          gd.pose = seatPose({});
+        }
+      }
+      for (let i = 0; i < 169; i++) {
+        if (s.b[i] === shown[i]) continue;
+        if (s.b[i] === '0') { const m = stones.get(i); if (m) { m.removeFromParent(); stones.delete(i); } continue; }
+        const x = i % N, y = Math.floor(i / N);
+        const m = new THREE.Mesh(stoneGeo, stoneMat[s.b[i]]);
+        m.scale.y = 0.42;
+        m.position.set((x - 6) * C, SY + 0.3, (y - 6) * C);
+        grp.add(m);
+        stones.set(i, m);
+        anims.push({ m, t: 0 });
+        sfx.stone();
+      }
+      shown = s.b;
+      if (s.l >= 0) { mark.position.set((s.l % N - 6) * C, SY + R * 0.42, (Math.floor(s.l / N) - 6) * C); mark.visible = true; } else mark.visible = false;
+      if (s.x && !winner) {
+        winner = s.x;
+        if (s.x === 3) ui.banner('비겼어요!', '둘 다 잘했어요');
+        else ui.banner(`${josa(nameOf(s.x === 1 ? s.k : s.w), '이', '가')} 이겼어요!`, '다섯 개를 이었어요');
+        sfx.success();
+      }
+      const turnB = (s.b.match(/[12]/g) || []).length % 2 === 0;
+      ui.say(s.x ? '다음 판도 구경할 수 있어요.' : `${nameOf(turnB ? s.k : s.w)} 차례예요. (${turnB ? '검은 돌' : '흰 돌'})`, `오목 구경 · ${nameOf(hostId)}의 판`);
+    }
+    watchUpdate = (id, s) => { if (id === hostId && live(game)) apply(s); };
+    game.update = (dt) => {
+      for (let i = anims.length - 1; i >= 0; i--) {
+        const a = anims[i];
+        a.t += dt;
+        const k = clamp01(a.t / 0.28);
+        a.m.position.y = SY + (1 - ease(k)) * 0.3;
+        if (k >= 1) anims.splice(i, 1);
+      }
+      if (labels[0]) ui.place(labels[0], V(seats[0].x, 0, seats[0].z), 0.75);
+      if (labels[1]) ui.place(labels[1], V(seats[1].x, 0, seats[1].z), 0.75);
+      if (performance.now() - lastAt > 25000 && !game.ended) { game.ended = true; ui.say('친구가 오목을 마쳤나 봐요. ‘그만’을 눌러 마을로 돌아가요.'); }
+    };
+    game.stop = () => {
+      watchUpdate = null;
+      if (guideSave) { const gd = v.guide; gd.root.position.copy(guideSave.pos); gd.root.rotation.y = guideSave.rot; gd.pose = guideSave.pose; }
+      stoneGeo.dispose();
+      disposeTree(grp);
+      pl.pose = null;
+    };
+    begin('watch', `오목 구경 · ${nameOf(hostId)}의 판`, game);
+    ui.setMain('응원하기', { onClick: () => { pl.celebrate(); sfx.pop(); } });
+    const s0 = ctx.getObserve ? ctx.getObserve(hostId) : null;
+    if (s0) apply(s0); else ui.say('판을 불러오고 있어요…', `오목 구경 · ${nameOf(hostId)}의 판`);
   }
 
   // =====================================================================
@@ -2393,7 +2534,8 @@ export function createPlay3D(ctx) {
   }
 
   return {
-    fishing, omokMenu, omok, cookMenu, cook, cookFree, easel, artSaved,
+    fishing, omokMenu, omok, omokWatch, cookMenu, cook, cookFree, easel, artSaved,
+    observe(id, st) { if (watchUpdate) watchUpdate(id, st); },
     stop: stopAll, decorateRemote,
     get active() { return cur && cur.id; },
     get game() { return cur && cur.game; },
