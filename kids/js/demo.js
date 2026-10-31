@@ -85,6 +85,23 @@ function seedDrawings() {
   return [church, rainbow];
 }
 
+// 이 기기에 남은 체험판 자료에 새 계획(이야기, 묵상 해설)을 덮어쓴다. 아이들이 쓴 글은 그대로 둔다.
+function syncPlan(db) {
+  if (!db || db.planVersion === PLAN.version) return db; // 한 번만 (선생님이 고친 내용은 남긴다)
+  db.planVersion = PLAN.version;
+  try {
+    for (const w of PLAN.weeks) {
+      const x = (db.weeks || []).find((y) => y.week_start === w.week_start);
+      if (x) Object.assign(x, { theme: w.theme, copy_ref: w.copy.ref, copy_intro: w.copy.intro, copy_passage: w.copy.verses });
+      for (const d of w.days) {
+        const q = (db.qt || []).find((y) => y.day === d.date);
+        if (q) Object.assign(q, { title: d.title, ref: d.ref, passage: d.verses, questions: d.questions, prayer: d.prayer, action: d.action, note: d.note || '' });
+      }
+    }
+  } catch (e) { /* 그대로 쓴다 */ }
+  return db;
+}
+
 export class DemoBackend {
   constructor() {
     this.key = 'kv.demo.db.v4';
@@ -93,7 +110,7 @@ export class DemoBackend {
   load() {
     try {
       const s = localStorage.getItem(this.key);
-      if (s) return JSON.parse(s);
+      if (s) return syncPlan(JSON.parse(s));
     } catch (e) { /* 무시 */ }
     const db = this.seed();
     try {
@@ -118,11 +135,12 @@ export class DemoBackend {
       copy_passage: w.copy.verses, is_published: true,
     }));
     const qt = PLAN.weeks.flatMap((w) => w.days.map((d) => ({
-      day: d.date, week_start: w.week_start, title: d.title, ref: d.ref, passage: d.verses, questions: d.questions, prayer: d.prayer, action: d.action,
+      day: d.date, week_start: w.week_start, title: d.title, ref: d.ref, passage: d.verses, questions: d.questions, prayer: d.prayer, action: d.action, note: d.note || '',
     })));
     const wk = weekOf(t);
     const curVerse = weeks.find((w) => w.week_start === wk).verse_id;
     return {
+      planVersion: PLAN.version,
       verses, weeks, qt,
       children: [
         { id: 'c1', login_id: '체험', pin: '1234', name: '체험 어린이', birthdate: '2017-05-05', consent_date: t, village_name: null, avatar: null, fruits: 0, last_seen_at: null, memory: {} },
@@ -199,7 +217,7 @@ export class DemoBackend {
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true }; }
   kids_dm_send({ p_token, p_to, p_text }) {
     const me = this.session(p_token, 'child');
     if (!this.villageConf().chat_open) fail('CHAT_OFF');
@@ -458,24 +476,29 @@ export class DemoBackend {
     const mine = this.db.qtEntries.find((e) => e.child === me && e.day === day);
     const i = days.indexOf(day);
     return {
-      qt: { day, title: q.title, ref: q.ref, passage: q.passage, questions: q.questions, prayer: q.prayer, action: q.action, theme: w.theme, is_today: day === t },
+      qt: { day, title: q.title, ref: q.ref, passage: q.passage, questions: q.questions, prayer: q.prayer, action: q.action, note: q.note || '', theme: w.theme, is_today: day === t },
       prev: i > 0 ? days[i - 1] : null,
       next: i < days.length - 1 ? days[i + 1] : null,
-      mine: mine ? { answer: mine.answer, prayer: mine.prayer, shared: mine.shared, hidden: mine.hidden } : null,
-      friends: this.entriesFor(this.db.qtEntries, day, 'day', 'qt', me, 'answer'),
+      mine: mine ? { answer: mine.answer, prayer: mine.prayer, word: mine.word || null, shared: mine.shared, hidden: mine.hidden } : null,
+      friends: this.entriesFor(this.db.qtEntries, day, 'day', 'qt', me, 'answer').map((f) => {
+        const e = this.db.qtEntries.find((x) => x.child === f.id && x.day === day);
+        return { ...f, word: f.me || (e.shared && !e.hidden) ? (e.word || null) : null };
+      }),
     };
   }
-  kids_qt_save({ p_token, p_day, p_answer, p_prayer, p_shared }) {
+  kids_qt_save({ p_token, p_day, p_answer, p_prayer, p_shared, p_word }) {
     const me = this.session(p_token, 'child');
     if (!this.publishedDays().includes(p_day) || p_day > today()) fail('NOT_FOUND');
     const answer = String(p_answer || '').trim(), prayer = String(p_prayer || '').trim();
     if (!answer) fail('EMPTY_ANSWER');
-    if (answer.length > 400 || prayer.length > 400) fail('TOO_LONG');
+    const word = String(p_word || '').trim() || null;
+    if (answer.length > 400 || prayer.length > 400 || (word && word.length > 60)) fail('TOO_LONG');
     const c = this.child(me);
     let e = this.db.qtEntries.find((x) => x.child === me && x.day === p_day);
     let gained = 0;
     if (!e) { e = { child: me, day: p_day, hidden: false, at: nowIso() }; this.db.qtEntries.push(e); gained = 1; c.fruits += 1; }
     Object.assign(e, { answer, prayer, shared: p_shared !== false, updatedAt: nowIso() });
+    if (word) e.word = word;
     return { gained, fruits: c.fruits };
   }
   kids_copy_week({ p_token, p_week }) {
@@ -859,7 +882,7 @@ export class DemoBackend {
       copy_intro: String(p_copy_intro || '').trim(), copy_passage: p_copy_passage });
     return { ok: true };
   }
-  kids_t_save_qt({ p_token, p_day, p_title, p_ref, p_passage, p_questions, p_prayer, p_action }) {
+  kids_t_save_qt({ p_token, p_day, p_title, p_ref, p_passage, p_questions, p_prayer, p_action, p_note }) {
     this.session(p_token, 'teacher');
     const ws = weekOf(p_day);
     if (!this.db.weeks.some((w) => w.week_start === ws)) fail('NO_WEEK');
@@ -868,6 +891,7 @@ export class DemoBackend {
     let q = this.db.qt.find((x) => x.day === p_day);
     if (!q) { q = { day: p_day, week_start: ws }; this.db.qt.push(q); }
     Object.assign(q, { title: p_title, ref: p_ref, passage: p_passage, questions: p_questions, prayer: p_prayer, action: p_action });
+    if (p_note != null) q.note = String(p_note).trim();
     return { ok: true };
   }
   kids_t_publish_week({ p_token, p_week, p_published }) {

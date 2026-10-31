@@ -119,7 +119,7 @@ async function boot() {
     onDone: (k) => { if (net) net.send('done', { k }); refreshToday(); },
   };
   memory = createMemory({ ...common, onBoard: (cur) => village.setBoard(cur ? cur.ref : '') });
-  qt = createQt(common);
+  qt = createQt({ ...common, features: () => state.features || {} });
   copy = createCopy(common);
   const onlineFriends = () => [...online].map((id) => state.people.get(id)).filter(Boolean);
   hub = createPlayHub({
@@ -1051,12 +1051,12 @@ function onNpc() {
   const name = josa(me.village_name, '아', '야');
   const lines = [];
   if (me.is_birthday) lines.push(`${name}, 생일 축하해! 오늘은 마을이 더 반짝이는 것 같아.`);
-  else lines.push(`안녕, ${name}!${t.theme ? ` 이번 주 주제는 '${t.theme}'이야.` : ''}`);
+  else lines.push(`안녕, ${name}!${t.theme ? ` 이번 주 이야기는 '${t.theme}'이야.` : ''}`);
   let go = null;
   if (!playOpen()) lines.push('말씀 활동을 하나 마치면 놀이 마당과 놀이동산 섬이 열려. 낚시도 하고 바이킹도 탈 수 있어!');
   if (t.qt && !t.qt.done) { lines.push(`오늘 묵상은 '${t.qt.title}'이야. 묵상의 숲에 가 볼래?`); go = ['묵상의 숲으로', 'qt']; }
   else if (cur && !cur.practiced_today && !cur.passed) { lines.push(`이번 주 말씀은 ${cur.ref}이야. 암송의 집에서 연습해 볼까?`); go = ['암송의 집으로', 'memory']; }
-  else if (t.copy && !t.copy.done) { lines.push(`이번 주 필사는 ${t.copy.ref}이야. 필사 도서관에서 따라 써 볼래?`); go = ['필사 도서관으로', 'library']; }
+  else if (t.copy && !t.copy.done) { lines.push(t.theme ? `이번 주 필사는 '${t.theme}' 이야기야(${t.copy.ref}). 필사 도서관에서 읽고 따라 써 볼래?` : `이번 주 필사는 ${t.copy.ref}이야. 필사 도서관에서 따라 써 볼래?`); go = ['필사 도서관으로', 'library']; }
   else if (t.qt || cur) { lines.push('오늘 할 일을 벌써 다 했구나. 정말 멋지다! 친구들 글에 응원도 보내 봐.'); lines.push('남쪽 다리를 건너면 놀이동산 섬이야. 친구랑 회전목마나 바이킹을 타도 좋아. 동쪽 다리 건너 수영장 섬에서 헤엄쳐도 좋고!'); }
   else lines.push('마을을 천천히 둘러보렴. 남쪽 다리를 건너면 놀이동산 섬, 동쪽 다리를 건너면 수영장 섬이야. 열매가 달린 나무를 누르면 열매를 따 먹을 수 있어.');
   openSheet('숲지기 솔', h('div', { class: 'talk' },
@@ -1070,13 +1070,13 @@ function openBoard() {
   const cur = memory.current();
   const t = state.today || {};
   openSheet('마을 게시판', h('div', { class: 'mem' },
-    t.theme ? h('p', { class: 'board-theme' }, h('span', { class: 'tag' }, '이번 주 주제'), ' ', t.theme) : null,
+    t.theme ? h('p', { class: 'board-theme' }, h('span', { class: 'tag' }, '이번 주 이야기'), ' ', t.theme) : null,
     cur ? memory.verseCard(cur) : h('div', { class: 'empty' }, h('p', { class: 'empty-big' }, '이번 주 말씀이 곧 올라와요.')),
     h('div', { class: 'board-todo' },
       t.qt ? h('button', { class: 'todo', type: 'button', onclick: () => { modal.close(); openHouse(() => qt.open()); } },
         h('b', {}, '오늘 묵상'), h('span', {}, t.qt.title), h('em', {}, t.qt.done ? '마침' : '아직')) : null,
       t.copy ? h('button', { class: 'todo', type: 'button', onclick: () => { modal.close(); openHouse(() => copy.open()); } },
-        h('b', {}, '이번 주 필사'), h('span', {}, t.copy.ref), h('em', {}, t.copy.done ? '마침' : '아직')) : null,
+        h('b', {}, '이번 주 필사'), h('span', {}, t.theme || t.copy.ref), h('em', {}, t.copy.done ? '마침' : '아직')) : null,
       cur ? h('button', { class: 'todo', type: 'button', onclick: () => { modal.close(); openHouse(() => memory.open('practice', cur.id)); } },
         h('b', {}, '이번 주 암송'), h('span', {}, cur.ref), h('em', {}, cur.passed ? '도장' : cur.practice_count ? '연습 중' : '아직')) : null)));
 }

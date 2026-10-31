@@ -24,21 +24,21 @@ export const GUIDES = {
   },
   qt: {
     title: '묵상은 이렇게 해요',
-    lead: '묵상은 하나님 말씀을 천천히 읽고, 마음에 담고, 하나님께 이야기하는 시간이에요.',
+    lead: '묵상은 하나님 말씀을 천천히 읽고, 그 말씀에 머물고, 하나님께 이야기하는 시간이에요. 교회는 아주 오래전부터 이렇게 말씀을 읽어 왔어요. 이것을 렉시오 디비나(거룩한 읽기)라고 불러요.',
     steps: [
-      ['조용히 시작해요', '눈을 감고 "하나님, 말씀해 주세요." 하고 짧게 기도해요.'],
-      ['두 번 읽어요', '오늘 말씀을 천천히 두 번 읽어요. 한 번은 소리 내어 읽어도 좋아요.'],
-      ['생각해 봐요', '질문을 읽고 말씀 속에서 답을 찾아요. 정답이 하나만 있는 건 아니에요.'],
-      ['적어 봐요', '내 생각을 한두 줄로 짧게 써요. 길게 쓰지 않아도 괜찮아요.'],
-      ['기도하고 해 봐요', '하나님께 내 마음을 이야기하고, 오늘 해 볼 일 하나를 정해요.'],
+      ['읽어요', '"하나님, 말씀해 주세요." 하고 짧게 기도한 뒤, 오늘 말씀을 천천히 두 번 읽어요. 한 번은 소리 내어 읽어도 좋아요.'],
+      ['머물러요', '마음에 닿은 낱말이나 말 하나를 눌러 골라요. 그 말을 마음속으로 몇 번 되뇌어 봐요.'],
+      ['생각해요', '짧은 해설을 읽고, 질문에 내 생각을 한두 줄 써요. 정답이 하나만 있는 건 아니에요.'],
+      ['기도해요', '고른 말을 넣어 하나님께 내 마음을 이야기해요.'],
+      ['쉬어요', '잠깐 조용히 하나님과 함께 있어요. 그리고 오늘 해 볼 일 하나를 정해요.'],
     ],
   },
   copy: {
     title: '필사는 이렇게 해요',
-    lead: '필사는 말씀을 한 글자씩 따라 쓰면서 마음에 새기는 거예요.',
+    lead: '주마다 하나님 나라 이야기 한 편을 읽고 한 글자씩 따라 쓰며 마음에 새겨요. 성경의 이야기들은 모두 하나의 큰 이야기로 이어져 있어요.',
     steps: [
-      ['먼저 읽어요', '이번 주 이야기를 처음부터 끝까지 한 번 읽어요.'],
-      ['한 절씩 천천히', '화면에 손가락으로 따라 쓰거나, 공책에 연필로 한 절씩 써요. 공책에 썼다면 사진을 찍어 올려도 돼요.'],
+      ['먼저 읽어요', '이번 주 이야기를 처음부터 끝까지 한 번 읽어요. 지난 이야기와 어떻게 이어지는지도 떠올려 봐요.'],
+      ['한 문단씩 천천히', '화면에 손가락으로 따라 쓰거나, 공책에 연필로 한 문단씩 써요. 공책에 썼다면 사진을 찍어 올려도 돼요.'],
       ['예쁘게보다 정성껏', '글씨가 삐뚤어도 괜찮아요. 천천히 마음을 담아 써요.'],
       ['나눠 써도 돼요', '하루에 다 못 써도 괜찮아요. 일주일 동안 나눠 써요.'],
       ['한 줄 느낌', '다 쓰고 나면 마음에 남은 말을 한 줄로 적어요.'],
@@ -129,7 +129,7 @@ export function friendBoard({ title, empty, entries, kind, key, rpc, getToken, o
   entries.forEach((e, i) => {
     const rank = i < 3 ? h('span', { class: `fb-rank r${i + 1}`, title: `${i + 1}번째` }, String(i + 1)) : h('span', { class: 'fb-rank' }, String(i + 1));
     let body = null;
-    if (e.text) body = h('p', { class: 'fb-text' }, e.text);
+    if (e.text) body = h('p', { class: 'fb-text' }, e.word ? h('span', { class: 'fb-word' }, `마음에 닿은 말 · ${e.word}`) : null, e.text);
     else if (e.hidden && e.me) body = h('p', { class: 'fb-note' }, '선생님이 이 글을 친구들에게 보이지 않게 해 두었어요.');
     else if (e.private) body = h('p', { class: 'fb-note' }, e.me ? '나만 보기로 했어요.' : '글은 나만 보기로 했대요.');
     list.append(h('li', { class: 'fb-item' + (e.me ? ' me' : '') },
@@ -146,7 +146,10 @@ export function friendBoard({ title, empty, entries, kind, key, rpc, getToken, o
   return wrap;
 }
 
+// 이야기(필사)는 절 번호 없이 문단으로 쓴다
+export const isStory = (passage) => Array.isArray(passage) && passage.length > 0 && passage.every((v) => !v.n);
 export function passageBlock(passage) {
+  if (isStory(passage)) return h('div', { class: 'passage story' }, passage.map((v) => h('p', {}, v.t)));
   return h('div', { class: 'passage' }, passage.map((v) => h('p', {}, h('sup', {}, v.n), v.t)));
 }
 

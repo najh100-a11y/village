@@ -2,7 +2,7 @@
 import { h, icon, modal, toast, confetti, showImage } from './ui.js';
 import { loadImageFile, toJpeg, jpegUrl } from './images.js';
 import { message } from './api.js';
-import { guideCard, firstVisit, friendBoard, passageBlock, dayLabel } from './social.js';
+import { guideCard, firstVisit, friendBoard, passageBlock, dayLabel, isStory } from './social.js';
 
 const FONT = '"Maplestory", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
 
@@ -121,22 +121,31 @@ export function createCopy({ rpc, getToken, onFruits, onCelebrate, onDone, onSes
     }
     const w = data.week;
     const mine = data.mine;
+    const story = isStory(w.passage);
     modal.setBody(h('div', { class: 'mem copy' },
       h('div', { class: 'day-nav' },
         h('button', { class: 'btn btn-plain', type: 'button', disabled: !data.prev, onclick: () => load(data.prev) }, icon('back'), '지난주'),
         h('span', { class: 'day-now' }, w.is_current ? `이번 주 · ${weekLabel(w.week_start)}` : weekLabel(w.week_start)),
         h('button', { class: 'btn btn-plain next', type: 'button', disabled: !data.next, onclick: () => load(data.next) }, '다음 주', icon('back'))),
-      h('article', { class: 'verse-card' },
-        h('div', { class: 'verse-tags' }, w.theme ? h('span', { class: 'tag' }, w.theme) : null, mine ? h('span', { class: 'tag tag-red' }, '필사 마침') : null),
-        h('h3', { class: 'verse-ref' }, w.ref),
-        w.intro ? h('p', { class: 'copy-intro' }, w.intro) : null,
-        passageBlock(w.passage),
-        h('p', { class: 'verse-ver' }, 'NJHV · 나종현 번역')),
+      story
+        ? h('article', { class: 'verse-card story-card' },
+          h('div', { class: 'verse-tags' }, h('span', { class: 'tag' }, '하나님 나라 이야기'), mine ? h('span', { class: 'tag tag-red' }, '필사 마침') : null),
+          h('h3', { class: 'story-title' }, w.theme),
+          h('p', { class: 'qt-ref' }, `성경 ${w.ref}`),
+          w.intro ? h('p', { class: 'copy-intro' }, w.intro) : null,
+          passageBlock(w.passage),
+          h('p', { class: 'verse-ver' }, '진숲 어린이 마을 · 하나님 나라 이야기'))
+        : h('article', { class: 'verse-card' },
+          h('div', { class: 'verse-tags' }, w.theme ? h('span', { class: 'tag' }, w.theme) : null, mine ? h('span', { class: 'tag tag-red' }, '필사 마침') : null),
+          h('h3', { class: 'verse-ref' }, w.ref),
+          w.intro ? h('p', { class: 'copy-intro' }, w.intro) : null,
+          passageBlock(w.passage),
+          h('p', { class: 'verse-ver' }, 'NJHV · 나종현 번역')),
       h('div', { class: 'mode-pick three' },
         h('button', { class: 'mode', type: 'button', onclick: () => trace(0) },
           h('b', {}, '화면에 따라 쓰기'), h('span', {}, '연하게 보이는 글씨 위를 손가락이나 펜으로 따라 써요.')),
         h('button', { class: 'mode', type: 'button', onclick: notebook },
-          h('b', {}, '공책에 쓰기'), h('span', {}, '내 공책에 연필로 한 절씩 쓰고, 다 쓴 절을 눌러 표시해요.')),
+          h('b', {}, '공책에 쓰기'), h('span', {}, story ? '내 공책에 연필로 한 문단씩 쓰고, 다 쓴 문단을 눌러 표시해요.' : '내 공책에 연필로 한 절씩 쓰고, 다 쓴 절을 눌러 표시해요.')),
         h('button', { class: 'mode', type: 'button', onclick: () => photoPick() },
           h('b', {}, '공책 사진 올리기'), h('span', {}, '공책에 다 쓴 다음, 사진을 찍어 올려요.'))),
       h('div', { class: 'row' }, h('button', { class: 'btn btn-plain btn-small', type: 'button', onclick: () => guideView(home) }, '필사는 어떻게 해요?')),
@@ -278,9 +287,10 @@ export function createCopy({ rpc, getToken, onFruits, onCelebrate, onDone, onSes
     const v = p[i];
     const pad = tracePad(v.t);
     const last = i === p.length - 1;
+    const story = isStory(p);
     modal.setTitle(`따라 쓰기 ${i + 1} / ${p.length}`);
     modal.setBody(h('div', { class: 'mem copy' },
-      h('p', { class: 'qt-ref' }, `${data.week.ref} · ${v.n}절`),
+      h('p', { class: 'qt-ref' }, story ? `${data.week.theme} · ${i + 1}번째 문단` : `${data.week.ref} · ${v.n}절`),
       pad.el,
       h('div', { class: 'row end' },
         h('button', { class: 'btn btn-plain', type: 'button', onclick: () => { pad.stop(); home(); } }, '그만하기'),
@@ -290,18 +300,19 @@ export function createCopy({ rpc, getToken, onFruits, onCelebrate, onDone, onSes
           if (!pad.used) { toast('글씨를 따라 써 볼까요?'); return; }
           pad.stop();
           if (last) finish(); else trace(i + 1);
-        } }, last ? '다 썼어요!' : '다음 절'))));
+        } }, last ? '다 썼어요!' : story ? '다음 문단' : '다음 절'))));
   }
 
   function notebook() {
     const p = data.week.passage;
+    const story = isStory(p);
     const done = new Set();
     const go = h('button', { class: 'btn btn-go', type: 'button', disabled: true, onclick: finish }, '다 썼어요!');
     modal.setTitle('공책에 쓰기');
     modal.setBody(h('div', { class: 'mem copy' },
-      h('p', { class: 'hint-line' }, '한 절씩 공책에 쓰고, 다 쓴 절을 눌러 주세요.'),
+      h('p', { class: 'hint-line' }, story ? '한 문단씩 공책에 쓰고, 다 쓴 문단을 눌러 주세요.' : '한 절씩 공책에 쓰고, 다 쓴 절을 눌러 주세요.'),
       h('div', { class: 'nb-list' }, p.map((v, k) => {
-        const b = h('button', { class: 'nb-item', type: 'button', 'aria-pressed': 'false' }, h('sup', {}, v.n), h('span', {}, v.t));
+        const b = h('button', { class: 'nb-item', type: 'button', 'aria-pressed': 'false' }, h('sup', {}, v.n || String(k + 1)), h('span', {}, v.t));
         b.addEventListener('click', () => {
           if (done.has(k)) done.delete(k); else done.add(k);
           b.setAttribute('aria-pressed', String(done.has(k)));
@@ -355,7 +366,7 @@ export function createCopy({ rpc, getToken, onFruits, onCelebrate, onDone, onSes
       return home();
     }
     modal.setBody(h('div', { class: 'mem copy' },
-      h('p', { class: 'result-big' }, '말씀을 끝까지 따라 썼어요!'),
+      h('p', { class: 'result-big' }, isStory(data.week.passage) ? '이야기를 끝까지 따라 썼어요!' : '말씀을 끝까지 따라 썼어요!'),
       finishForm(false)));
   }
 

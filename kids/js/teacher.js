@@ -171,6 +171,7 @@ function logoutLocal() {
 }
 
 async function refresh() {
+  await checkLectio();
   const [o, w, p, st, su] = await Promise.all([
     rpc('kids_t_overview', { p_token: token }),
     rpc('kids_t_weeks', { p_token: token }),
@@ -525,13 +526,18 @@ function dayName(day) {
   const d = new Date(day + 'T00:00:00');
   return `${d.getMonth() + 1}월 ${d.getDate()}일 ${['주일', '월', '화', '수', '목', '금', '토'][d.getDay()]}`;
 }
-const passageToText = (p) => (p || []).map((v) => `${v.n} ${v.t}`).join('\n');
+// 성경 본문은 "1 본문"처럼 한 줄에 한 절, 이야기는 번호 없이 한 줄에 한 문단
+const passageToText = (p) => (p || []).map((v) => (v.n ? `${v.n} ${v.t}` : v.t)).join('\n');
+// 서버에 묵상 해설 칸이 있는지 (sql/2026-11-01-kingdom-stories-lectio.sql)
+let lectio = false;
+async function checkLectio() {
+  try { const f = await rpc('kids_features'); lectio = !!(f && f.lectio); } catch (e) { lectio = false; }
+}
 function textToPassage(t) {
   const out = [];
   for (const line of String(t).split('\n').map((x) => x.trim()).filter(Boolean)) {
-    const m = line.match(/^(\d+[a-z]?)\s+(.+)$/);
-    if (!m) throw Object.assign(new Error('BAD_PASSAGE'), { code: 'BAD_PASSAGE' });
-    out.push({ n: m[1], t: m[2] });
+    const m = line.match(/^(\d+(?::\d+)?[a-z]?)\s+(.+)$/);
+    out.push(m ? { n: m[1], t: m[2] } : { n: '', t: line });
   }
   return out;
 }
@@ -551,6 +557,7 @@ async function importPlan() {
   box.replaceChildren(status);
   let PLAN;
   try { PLAN = (await import('./plan-data.js')).default; } catch (e) { status.textContent = '계획 파일을 열지 못했어요.'; return; }
+  await checkLectio();
   const total = PLAN.verses.length + PLAN.weeks.length + PLAN.weeks.reduce((s, w) => s + w.days.length, 0);
   let n = 0;
   const tick = () => { n++; status.textContent = `불러오는 중… ${n} / ${total}`; };
@@ -573,8 +580,10 @@ async function importPlan() {
     // 3) 날마다 묵상
     for (const w of PLAN.weeks) {
       for (const d of w.days) {
-        await rpc('kids_t_save_qt', { p_token: token, p_day: d.date, p_title: d.title, p_ref: d.ref, p_passage: d.verses,
-          p_questions: d.questions, p_prayer: d.prayer, p_action: d.action });
+        const args = { p_token: token, p_day: d.date, p_title: d.title, p_ref: d.ref, p_passage: d.verses,
+          p_questions: d.questions, p_prayer: d.prayer, p_action: d.action };
+        if (lectio) args.p_note = d.note || '';
+        await rpc('kids_t_save_qt', args);
         tick();
       }
     }
@@ -647,12 +656,12 @@ function weekEditor(w) {
   return h('div', { class: 'week-edit' },
     h('h4', {}, '이번 주 암송과 필사'),
     h('div', { class: 'grid2' },
-      h('label', { class: 'field' }, h('span', {}, '주제'), fTheme),
+      h('label', { class: 'field' }, h('span', {}, '주제 (필사 이야기 제목)'), fTheme),
       h('label', { class: 'field' }, h('span', {}, '암송 구절'), fVerse)),
     verse ? h('p', { class: 'note' }, h('b', {}, verse.ref), ' ', verse.body, ' — 암송 구절 본문은 ‘암송 구절’ 탭에서 고쳐요.') : null,
-    h('label', { class: 'field' }, h('span', {}, '필사 본문 위치'), fRef),
+    h('label', { class: 'field' }, h('span', {}, '필사 성경 범위'), fRef),
     h('label', { class: 'field' }, h('span', {}, '필사 앞 소개 글'), fIntro),
-    h('label', { class: 'field' }, h('span', {}, '필사 본문 (한 줄에 한 절: "1 본문")'), fPassage),
+    h('label', { class: 'field' }, h('span', {}, '필사 본문 (이야기는 한 줄에 한 문단, 성경 본문은 한 줄에 한 절: "1 본문")'), fPassage),
     err,
     h('div', { class: 'form-actions' }, h('button', { class: 'btn btn-go btn-sm', type: 'button', onclick: async () => {
       let passage;
@@ -679,12 +688,15 @@ function dayEditor(d) {
   const fPrayer = h('textarea', { class: 'small', maxlength: 400 });
   fPrayer.value = d.prayer;
   const fAction = h('input', { value: d.action, maxlength: 300 });
+  const fNote = h('textarea', { class: 'small', maxlength: 600 });
+  fNote.value = d.note || '';
   return h('div', { class: 'day-edit' },
     h('div', { class: 'dhead' }, h('span', {}, dayName(d.day)), h('span', { class: 'pill' }, `묵상한 아이 ${d.done_count}명`)),
     h('div', { class: 'grid2' },
       h('label', { class: 'field' }, h('span', {}, '제목'), fTitle),
       h('label', { class: 'field' }, h('span', {}, '본문 위치'), fRef)),
     h('label', { class: 'field' }, h('span', {}, '본문 (한 줄에 한 절: "1 본문")'), fPassage),
+    lectio ? h('label', { class: 'field' }, h('span', {}, '짧은 해설'), fNote) : null,
     h('label', { class: 'field' }, h('span', {}, '생각해 봐요 (한 줄에 질문 하나)'), fQ),
     h('label', { class: 'field' }, h('span', {}, '따라 해 보는 기도'), fPrayer),
     h('label', { class: 'field' }, h('span', {}, '오늘 해 볼까요?'), fAction),
@@ -694,8 +706,10 @@ function dayEditor(d) {
       try { passage = textToPassage(fPassage.value); } catch (e) { err.textContent = message(e); return; }
       const questions = fQ.value.split('\n').map((x) => x.trim()).filter(Boolean);
       try {
-        await call('kids_t_save_qt', { p_day: d.day, p_title: fTitle.value, p_ref: fRef.value, p_passage: passage,
-          p_questions: questions, p_prayer: fPrayer.value, p_action: fAction.value }, err);
+        const args = { p_day: d.day, p_title: fTitle.value, p_ref: fRef.value, p_passage: passage,
+          p_questions: questions, p_prayer: fPrayer.value, p_action: fAction.value };
+        if (lectio) args.p_note = fNote.value;
+        await call('kids_t_save_qt', args, err);
       } catch (e) { return; }
       toast(`${dayName(d.day)} 묵상을 저장했어요.`);
       await refresh();
