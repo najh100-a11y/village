@@ -59,6 +59,7 @@ async function boot() {
     placePrompt: (x, y) => { $('#prompt').style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`; },
     onMove: () => hideHint(),
     onLocalMove: (p) => net && net.send('mv', p),
+    onViewChange: (changed) => { $('#btnView').hidden = !changed; },
     onLocalStop: (p) => net && net.send('st', p),
   });
   try {
@@ -133,6 +134,7 @@ function bindUi() {
   $('#btnDress').addEventListener('click', () => openMaker(false));
   $('#btnOut').addEventListener('click', askLogout);
   $('#btnSay').addEventListener('click', toggleSay);
+  $('#btnView').addEventListener('click', () => village.resetView());
   $('#btnSound').addEventListener('click', () => { cycleSound(); drawSoundBtn(); toast({ all: '음악과 효과음을 켰어요', sfx: '음악은 끄고 효과음만 들려요', off: '소리를 모두 껐어요' }[soundMode()]); });
   $('#modalClose').addEventListener('click', () => modal.close());
   $('#modal').addEventListener('click', (e) => { if (e.target.id === 'modal') modal.close(); });
@@ -294,6 +296,7 @@ async function join() {
 
 function showLogin() {
   if (play3d) play3d.stop();
+  $('#btnView').hidden = true;
   stopNet();
   stopMusic();
   rpc('kids_signup_open').then((open) => { $('#joinOpen').hidden = !open; }).catch(() => { $('#joinOpen').hidden = true; });
@@ -344,6 +347,7 @@ async function enterVillage(greet) {
   village.setHome(me.village_name, normalizeAvatar(me.avatar));
   village.setMyName(me.village_name);
   village.setMode('play');
+  village.viewChanged();
   rpc('kids_chat_open').then(showChatInput).catch(() => showChatInput(false));
   village.setPaused(false);
   updateHud();

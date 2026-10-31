@@ -123,6 +123,7 @@ button { font: inherit; color: inherit; }
 @keyframes float { 50% { transform: translateY(-5px); } }
 #hint { position: fixed; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 9; font-family: var(--display); font-size: 18px; background: rgba(90, 61, 43, .78); color: #fff; padding: 10px 20px; border-radius: 999px; white-space: nowrap; transition: opacity .6s; pointer-events: none; }
 #hint.gone { opacity: 0; }
+#hint { max-width: calc(100% - 32px); width: max-content; white-space: normal; text-align: center; }
 
 /* 창 */
 .modal { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; background: rgba(46, 74, 96, .45); padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left)); }
@@ -242,6 +243,10 @@ button { font: inherit; color: inherit; }
 
 /* 함께 접속 */
 .kv-tag.kv-friend { background: rgba(62, 143, 74, .88); }
+.view-reset { position: fixed; right: max(12px, env(safe-area-inset-right)); top: 50%; transform: translateY(-50%); z-index: 13; display: grid; justify-items: center; gap: 2px; width: 62px; padding: 8px 0 6px; border-radius: 20px; border: 3px solid #fff; background: var(--paper); box-shadow: 0 6px 18px rgba(70, 50, 30, .16); font-family: var(--display); font-size: 12px; color: var(--ink-soft); cursor: pointer; }
+.view-reset svg { width: 26px; height: 26px; color: var(--leaf-deep); }
+.view-reset[hidden] { display: none; }
+.view-reset:active { transform: translateY(-50%) scale(.95); }
 .kv-tag.kv-me { background: rgba(229, 96, 47, .9); }
 /* ---------- 마을 안 3D 놀이 화면 ---------- */
 #gameUi { position: fixed; inset: 0; z-index: 12; pointer-events: none; }
@@ -584,7 +589,8 @@ button.g-chip:active { transform: scale(.96); }
 </header>
 
 <div id="prompt" hidden><button id="promptBtn" class="bubble" type="button"><span id="promptName"></span><b id="promptAct">들어가기</b></button></div>
-<div id="hint" hidden>가고 싶은 곳을 눌러 보세요</div>
+<div id="hint" hidden>가고 싶은 곳을 눌러요 · 화면을 끌면 빙글 돌아가요</div>
+<button id="btnView" class="view-reset" type="button" hidden aria-label="처음 시점으로 돌아가기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 1 0 2.3-5.4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M4 4.5v4.2h4.2" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>처음 시점</span></button>
 <div id="sayPanel" class="say-panel" hidden aria-label="친구들에게 말하기"></div>
 <div id="chatLog" class="chat-log" aria-live="polite"></div>
 

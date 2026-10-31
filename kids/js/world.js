@@ -134,7 +134,9 @@ export class Village {
     this.glowMats = [];
     this.keys = new Set();
     this.target = null;
-    this.zoom = 1;
+    // 시점: 마을(play)과 놀이(game) 따로. yaw는 옆으로 돈 각도, elev는 위아래로 더한 각도, zoom은 거리 배율
+    this.view = { play: { yaw: 0, elev: 0, zoom: 1 }, game: { yaw: 0, elev: 0, zoom: 1 } };
+    this.rotating = false;
     this.camPos = new THREE.Vector3(0, 30, 40);
     this.camLook = new THREE.Vector3(0, 0, -4);
     this.time = 0;
@@ -1201,7 +1203,9 @@ export class Village {
   bindInput() {
     const el = this.canvas;
     const pointers = new Map();
-    let down = null, pinch = null;
+    let down = null, pinch = null, rot = null;
+    // 한 손가락(마우스)으로 끌면 빙글 돌리고, 두 손가락으로 벌리거나 오므리면 가까이·멀리, 비틀면 돌린다
+    const gameOwnsDrag = () => this.mode === 'game' && this.game && this.game.ownsDrag && this.game.ownsDrag();
     const toGame = (type, e) => { if (this.mode === 'game' && this.game && this.game.onPointer) this.game.onPointer(type, e.clientX, e.clientY, e); };
     el.addEventListener('pointerdown', (e) => {
       toGame('down', e);
@@ -1210,45 +1214,116 @@ export class Village {
       if (pointers.size === 1) down = { x: e.clientX, y: e.clientY, t: performance.now() };
       if (pointers.size === 2) {
         const [a, b] = [...pointers.values()];
-        pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: this.zoom };
+        const v = this.viewNow();
+        pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: v ? v.zoom : 1, a: Math.atan2(b.y - a.y, b.x - a.x) };
         down = null;
+        rot = null;
       }
     });
     el.addEventListener('pointermove', (e) => {
       if (!pointers.has(e.pointerId)) return;
       toGame('move', e);
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const v = this.viewNow();
+      if (!v) return;
       if (pinch && pointers.size === 2) {
         const [a, b] = [...pointers.values()];
         const d = Math.hypot(a.x - b.x, a.y - b.y);
-        if (this.mode !== 'game') this.zoom = THREE.MathUtils.clamp(pinch.z * (pinch.d / d), 0.62, 1.35);
+        this.setZoom(pinch.z * (pinch.d / Math.max(1, d)));
+        const ang = Math.atan2(b.y - a.y, b.x - a.x);
+        let da = ang - pinch.a;
+        if (da > Math.PI) da -= Math.PI * 2;
+        if (da < -Math.PI) da += Math.PI * 2;
+        v.yaw -= da;
+        pinch.a = ang;
+        this.rotating = true;
+        this.viewChanged();
+      } else if (pointers.size === 1 && down) {
+        if (!rot && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 12 && !gameOwnsDrag()) rot = { x: e.clientX, y: e.clientY };
+        if (rot) {
+          v.yaw -= (e.clientX - rot.x) * 0.0085;
+          this.addElev((e.clientY - rot.y) * 0.006);
+          rot = { x: e.clientX, y: e.clientY };
+          this.rotating = true;
+          this.viewChanged();
+        }
       }
     });
     const up = (e) => {
       toGame('up', e);
       pointers.delete(e.pointerId);
       if (pointers.size < 2) pinch = null;
-      if (down && e.type === 'pointerup') {
+      if (down && e.type === 'pointerup' && !rot) {
         const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
         if (moved < 12 && performance.now() - down.t < 600) this.tap(e.clientX, e.clientY);
       }
-      down = null;
+      if (!pointers.size) { down = null; rot = null; this.rotating = false; }
     };
     el.addEventListener('pointerup', up);
     el.addEventListener('pointercancel', up);
     el.addEventListener('wheel', (e) => {
       e.preventDefault();
-      this.zoom = THREE.MathUtils.clamp(this.zoom * (e.deltaY > 0 ? 1.08 : 0.93), 0.62, 1.35);
+      const v = this.viewNow();
+      if (v) this.setZoom(v.zoom * (e.deltaY > 0 ? 1.08 : 0.93));
     }, { passive: false });
     const map = { ArrowUp: 'u', KeyW: 'u', ArrowDown: 'd', KeyS: 'd', ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r' };
     window.addEventListener('keydown', (e) => {
-      if (this.mode !== 'play' || this.paused) return;
       if (e.target && ['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      // Q, E: 옆으로 돌리기 / R, F: 위아래 / +, -: 가까이·멀리
+      const v = this.viewNow();
+      if (v && !this.paused) {
+        if (e.code === 'KeyQ') { v.yaw += 0.12; this.viewChanged(); }
+        if (e.code === 'KeyE') { v.yaw -= 0.12; this.viewChanged(); }
+        if (e.code === 'KeyR') this.addElev(0.08);
+        if (e.code === 'KeyF') this.addElev(-0.08);
+        if (e.code === 'Equal' || e.code === 'NumpadAdd') this.setZoom(v.zoom * 0.9);
+        if (e.code === 'Minus' || e.code === 'NumpadSubtract') this.setZoom(v.zoom * 1.1);
+      }
+      if (this.mode !== 'play' || this.paused) return;
       if (map[e.code]) { this.keys.add(map[e.code]); this.target = null; e.preventDefault(); }
       if ((e.code === 'Enter' || e.code === 'Space') && this.nearDoor) { e.preventDefault(); this.enter(this.nearDoor.id); }
     });
     window.addEventListener('keyup', (e) => { if (map[e.code]) this.keys.delete(map[e.code]); });
     window.addEventListener('blur', () => this.keys.clear());
+  }
+
+  // ---------- 시점 ----------
+  viewNow() { return this.mode === 'play' ? this.view.play : this.mode === 'game' ? this.view.game : null; }
+  setZoom(z) {
+    const v = this.viewNow();
+    if (!v) return;
+    v.zoom = THREE.MathUtils.clamp(z, this.mode === 'game' ? 0.45 : 0.35, this.mode === 'game' ? 2.4 : 1.6);
+    this.viewChanged();
+  }
+  // 위아래 각도: 실제 높이각이 8도~84도 안에 있도록 더한다
+  addElev(d) {
+    const v = this.viewNow();
+    if (!v) return;
+    const base = this.baseElev == null ? 0.7 : this.baseElev;
+    v.elev = THREE.MathUtils.clamp(v.elev + d, 0.14 - base, 1.47 - base);
+    this.viewChanged();
+  }
+  isDefaultView(v = this.viewNow()) {
+    return !v || (Math.abs(v.yaw) < 0.02 && Math.abs(v.elev) < 0.02 && Math.abs(v.zoom - 1) < 0.02);
+  }
+  viewChanged() { if (this.on.onViewChange) this.on.onViewChange(!this.isDefaultView()); }
+  resetView() {
+    const v = this.viewNow();
+    if (!v) return;
+    // 같은 방향으로 가장 가깝게 돌아오도록 yaw를 -π~π로 맞춘 뒤 0으로
+    v.yaw = 0; v.elev = 0; v.zoom = 1;
+    this.viewChanged();
+  }
+  // look을 중심으로 base 위치를 시점(v)만큼 돌리고 당긴 카메라 위치
+  orbit(look, base, v, out) {
+    const ox = base.x - look.x, oy = base.y - look.y, oz = base.z - look.z;
+    const len = Math.hypot(ox, oy, oz) || 1;
+    const el0 = Math.atan2(oy, Math.hypot(ox, oz));
+    this.baseElev = el0;
+    const yaw = Math.atan2(ox, oz) + v.yaw;
+    const el = THREE.MathUtils.clamp(el0 + v.elev, 0.14, 1.47);
+    const d = len * v.zoom;
+    return out.set(look.x + Math.sin(yaw) * Math.cos(el) * d, look.y + Math.sin(el) * d, look.z + Math.cos(yaw) * Math.cos(el) * d);
   }
 
   rayAt(cx, cy) {
@@ -1380,6 +1455,8 @@ export class Village {
     if (this.game && this.game !== ctrl && this.game.stop) this.game.stop();
     this.game = ctrl;
     this.mode = 'game';
+    this.view.game = { yaw: 0, elev: 0, zoom: 1 };
+    this.viewChanged();
     this.target = null;
     this.keys.clear();
     this.nearDoor = null;
@@ -1390,6 +1467,7 @@ export class Village {
     const g = this.game;
     this.game = null;
     if (this.mode === 'game') this.mode = 'play';
+    this.viewChanged();
     if (this.player) {
       this.player.pose = null;
       this.player.drop();
@@ -1466,16 +1544,25 @@ export class Village {
     if (this.mode === 'game' && this.game && this.game.update) this.game.update(dt, t);
 
     // 카메라
+    if (!this.wantPos) { this.wantPos = new THREE.Vector3(); this.wantLook = new THREE.Vector3(); }
     if (this.mode === 'game' && this.game && this.game.cam) {
-      const k = 1 - Math.exp(-dt * (this.game.camSpeed || 3));
-      this.camPos.lerp(this.game.cam.pos, k);
+      const k = 1 - Math.exp(-dt * (this.rotating ? 14 : this.game.camSpeed || 3));
+      this.orbit(this.game.cam.look, this.game.cam.pos, this.view.game, this.wantPos);
+      this.camPos.lerp(this.wantPos, k);
       this.camLook.lerp(this.game.cam.look, k);
     } else if (this.mode === 'play' && this.player) {
+      // 기본: 주민 뒤쪽 위(남쪽)에서 앞을 조금 넓게 내려다본다. 끌어서 돌리면 그 방향에서 본다.
       const p = this.player.root.position;
-      const z = this.zoom * (this.camera.aspect < 1 ? 1.25 : 1);
-      const want = new THREE.Vector3(p.x, 16 * z, p.z + 15 * z);
-      this.camPos.lerp(want, 1 - Math.exp(-dt * 4));
-      this.camLook.lerp(new THREE.Vector3(p.x, 0.6, p.z - 3.2), 1 - Math.exp(-dt * 6));
+      const v = this.view.play;
+      const near = Math.min(1, v.zoom);
+      const ahead = 3.2 * near;
+      this.wantLook.set(p.x - Math.sin(v.yaw) * ahead, 0.6 + (1 - near) * 0.9, p.z - Math.cos(v.yaw) * ahead);
+      const dist = 23.83 * (this.camera.aspect < 1 ? 1.25 : 1);
+      const base = this.wantPos.set(this.wantLook.x, this.wantLook.y + 15.4 / 23.83 * dist, this.wantLook.z + 18.2 / 23.83 * dist);
+      this.orbit(this.wantLook, base.clone(), v, this.wantPos);
+      const k = this.rotating ? 14 : 4;
+      this.camPos.lerp(this.wantPos, 1 - Math.exp(-dt * k));
+      this.camLook.lerp(this.wantLook, 1 - Math.exp(-dt * Math.max(6, k)));
     } else {
       const a = t * 0.05;
       this.camPos.set(Math.sin(a) * 30, 20, Math.cos(a) * 30 + 2);
@@ -1488,12 +1575,21 @@ export class Village {
     this.sun.target.position.set(focus.x, 0, focus.z);
 
     // 가리는 물체 흐리게
-    const pp = this.mode === 'play' && this.player ? this.player.root.position : null;
+    // 카메라와 내 주민 사이에 있는 나무·집을 흐리게 (카메라를 어느 쪽으로 돌려도)
+    const pp = (this.mode === 'play' || this.mode === 'game') && this.player ? this.player.root.position : null;
+    let cdx = 0, cdz = 1, cdist = 20;
+    if (pp) {
+      cdx = this.camPos.x - pp.x; cdz = this.camPos.z - pp.z;
+      cdist = Math.hypot(cdx, cdz) || 1;
+      cdx /= cdist; cdz /= cdist;
+    }
     for (const f of this.fadeables) {
       let want = 1;
       if (pp) {
-        const dz = f.z - pp.z;
-        if (dz > -0.5 && dz < f.r + 7 && Math.abs(f.x - pp.x) < f.r + 0.6) want = 0.32;
+        const rx = f.x - pp.x, rz = f.z - pp.z;
+        const along = rx * cdx + rz * cdz;
+        const across = Math.abs(rx * cdz - rz * cdx);
+        if (along > -0.5 && along < Math.min(cdist, f.r + 7) && across < f.r + 0.6) want = 0.32;
       }
       if (Math.abs(f.op - want) > 0.01) {
         f.op += (want - f.op) * Math.min(1, dt * 8);
@@ -1519,10 +1615,15 @@ export class Village {
     const p = pl.root.position;
     let dx = 0, dz = 0;
     if (this.keys.size) {
-      if (this.keys.has('u')) dz -= 1;
-      if (this.keys.has('d')) dz += 1;
-      if (this.keys.has('l')) dx -= 1;
-      if (this.keys.has('r')) dx += 1;
+      let kx = 0, kz = 0;
+      if (this.keys.has('u')) kz -= 1;
+      if (this.keys.has('d')) kz += 1;
+      if (this.keys.has('l')) kx -= 1;
+      if (this.keys.has('r')) kx += 1;
+      // 화살표는 지금 보는 방향 기준으로 움직인다
+      const yw = this.view.play.yaw, c = Math.cos(yw), sn = Math.sin(yw);
+      dx = kx * c + kz * sn;
+      dz = -kx * sn + kz * c;
     } else if (this.target) {
       dx = this.target.pos.x - p.x;
       dz = this.target.pos.z - p.z;

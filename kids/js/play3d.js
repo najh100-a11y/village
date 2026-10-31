@@ -410,7 +410,7 @@ export function createPlay3D(ctx) {
   // 낚시
   // =====================================================================
   const POND = { x: -9.5, z: 13, rx: 3.6, rz: 3.06 };
-  const CAM_F = [4.8, 5.4, 3.4]; // 낚시 카메라: 아이 뒤쪽 위에서 연못을 내려다본다
+  const CAM_F = [3.4, 6.4, 5.0]; // 낚시 카메라: 아이 뒤쪽 옆 높은 곳에서 연못을 내려다본다 (머리가 찌를 가리지 않게)
   function fishStands() {
     const sp = v.spots.fish;
     return [[0.36, -1.85], [-0.36, -1.85]].map(([lx, lz]) => spotPoint(sp, lx, 0.2, lz));
@@ -447,6 +447,7 @@ export function createPlay3D(ctx) {
     bob.add(mk(new THREE.SphereGeometry(0.065, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), toon('#EF6461')));
     bob.add(mk(new THREE.SphereGeometry(0.065, 12, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), toon('#FFFDF7')));
     bob.add(mk(new THREE.CylinderGeometry(0.008, 0.008, 0.09, 5), toon('#2E2A2A'), 0, 0.09, 0));
+    bob.scale.setScalar(1.6); // 멀리서도 잘 보이게
     bob.visible = false;
     grp.add(bob);
     const LP = new Float32Array(18 * 3);
@@ -1784,6 +1785,7 @@ export function createPlay3D(ctx) {
     };
     game.onTap = (ray, x, y) => { if (step && step.tap) step.tap(ray, x, y); };
     game.onPointer = (type, x, y) => { if (step && step.pointer) step.pointer(type, x, y); };
+    game.ownsDrag = () => !!(step && step.pointer); // 냄비 젓기 중에는 끌어도 화면이 돌지 않는다
     game.state = () => ({ i: run.i, scores: run.scores, alone: run.alone, over: run.over, step: r.steps[run.i] && r.steps[run.i].type, owner: run.i < r.steps.length ? owner(run.i) : '' });
     game.screenOf = (lx, ly, lz) => screenOf(v, local(V(lx, ly, lz)));
     game.targets = () => (step && step.targets ? step.targets() : []);
