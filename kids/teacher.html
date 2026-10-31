@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>진숲 마을 선생님 화면</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#FFF3DA">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 29V15' stroke='%236B4429' stroke-width='2.4' stroke-linecap='round'/%3E%3Cpath d='M16 16C9 16 4.5 11.5 4.5 5.5 11.5 5.5 16 9 16 16z' fill='%236CC24A'/%3E%3Cpath d='M16 13.5c.5-6 4.5-9.8 11.5-9.8 0 6-4.6 10-11.5 9.8z' fill='%238BD46A'/%3E%3C/svg%3E">
+<link rel="preload" href="fonts/maplestory-bold.otf" as="font" type="font/otf" crossorigin>
+<link rel="preload" href="fonts/maplestory-light.otf" as="font" type="font/otf" crossorigin>
+<style>
+/* 메이플스토리 서체 (© NEXON Korea). 넥슨 이용 조건에 따라 글꼴 파일은 고치지 않은 원본 그대로 쓴다. */
+@font-face { font-family: "Maplestory"; src: url("fonts/maplestory-light.otf") format("opentype"); font-weight: 100 500; font-display: swap; }
+@font-face { font-family: "Maplestory"; src: url("fonts/maplestory-bold.otf") format("opentype"); font-weight: 600 900; font-display: swap; }
+@font-face { font-family: "Maplestory Bold"; src: url("fonts/maplestory-bold.otf") format("opentype"); font-display: swap; }
+</style>
+<style>
+/* 선생님 화면: 마을과 같은 크림색 종이와 나뭇잎 초록, 정보는 빽빽하지 않게 */
+:root {
+  --bg: #FBF6EA;
+  --paper: #FFFDF7;
+  --paper-2: #FFF3DA;
+  --ink: #4E3626;
+  --ink-soft: #85664C;
+  --line: #E9DCC4;
+  --leaf: #4FA857;
+  --leaf-deep: #377F40;
+  --leaf-wash: #EAF6E3;
+  --sun: #F6D55C;
+  --sun-wash: #FFF6CC;
+  --apple: #E25B57;
+  --apple-wash: #FFE7E4;
+  --display: "Maplestory Bold", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --body: "Maplestory", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 16px; line-height: 1.55; }
+body { min-height: 100%; }
+[hidden] { display: none !important; }
+button, input, textarea, select { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+.wrap { max-width: 1080px; margin: 0 auto; padding-block: 20px 60px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-block: 6px 18px; }
+.logo { display: flex; align-items: center; gap: 10px; }
+.logo svg { width: 38px; height: 38px; }
+.logo h1 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 26px; color: var(--leaf-deep); line-height: 1.1; }
+.logo small { display: block; font-family: var(--body); font-size: 14px; color: var(--ink-soft); }
+.me { display: flex; align-items: center; gap: 10px; color: var(--ink-soft); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 0 18px; border-radius: 999px; border: 2px solid transparent; font-family: var(--display); font-size: 17px; cursor: pointer; background: var(--paper); border-color: var(--line); white-space: nowrap; }
+a.btn { text-decoration: none; color: inherit; }
+.btn:hover { background: var(--paper-2); }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn-go { background: var(--leaf); border-color: var(--leaf); color: #fff; }
+.btn-go:hover { background: var(--leaf-deep); }
+.btn-danger { background: var(--apple); border-color: var(--apple); color: #fff; }
+.btn-danger:hover { background: #C7443F; }
+.btn-sm { min-height: 36px; padding: 0 12px; font-size: 15px; }
+.btn-ghost { background: transparent; border-color: transparent; color: var(--ink-soft); }
+.card { background: var(--paper); border: 2px solid var(--line); border-radius: 22px; padding: 20px; }
+.narrow { max-width: 440px; margin: 6vh auto 0; display: grid; gap: 14px; }
+.narrow h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 26px; }
+.field { display: grid; gap: 4px; min-width: 0; }
+.field > span { font-family: var(--display); font-size: 15px; color: var(--ink-soft); }
+.field input, .field textarea, .field select { width: 100%; min-height: 46px; border: 2px solid var(--line); border-radius: 14px; background: #fff; padding: 8px 12px; }
+.field textarea { min-height: 110px; resize: vertical; line-height: 1.7; font-size: 17px; }
+.field input:focus, .field textarea:focus { border-color: var(--leaf); outline: none; }
+.field .help { font-size: 13px; color: var(--ink-soft); }
+.check { display: flex; gap: 10px; align-items: flex-start; font-size: 15px; }
+.check input { width: 22px; height: 22px; margin-top: 2px; accent-color: var(--leaf); flex: none; }
+.err { margin: 0; min-height: 1.3em; color: var(--apple); font-weight: 700; }
+.note { margin: 0; background: var(--paper-2); border-radius: 14px; padding: 12px 14px; font-size: 15px; color: var(--ink-soft); }
+.note b { color: var(--ink); }
+.note.warn { background: var(--sun-wash); color: var(--ink); }
+
+.tabs { display: flex; gap: 6px; border-bottom: 2px solid var(--line); margin-bottom: 18px; overflow-x: auto; }
+.tab { border: 2px solid transparent; border-bottom: 0; background: none; padding: 10px 18px; border-radius: 14px 14px 0 0; font-family: var(--display); font-size: 18px; color: var(--ink-soft); cursor: pointer; margin-bottom: -2px; white-space: nowrap; }
+.tab[aria-selected="true"] { background: var(--paper); border-color: var(--line); color: var(--leaf-deep); border-bottom: 2px solid var(--paper); }
+.tab .count { font-family: var(--body); font-size: 14px; margin-left: 4px; }
+.bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.bar h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 22px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.form-actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; align-items: center; }
+
+/* 아이 목록 */
+.kids { display: grid; gap: 10px; }
+.kid { display: grid; grid-template-columns: 52px minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) auto; gap: 14px; align-items: center; background: var(--paper); border: 2px solid var(--line); border-radius: 18px; padding: 10px 14px; cursor: pointer; text-align: left; width: 100%; }
+.kid:hover { border-color: #D8C5A2; }
+.kid canvas { width: 52px; height: 52px; border-radius: 50%; background: var(--leaf-wash); }
+.kid .nm { font-family: var(--display); font-size: 19px; line-height: 1.2; }
+.kid .sub { font-size: 14px; color: var(--ink-soft); overflow-wrap: anywhere; }
+.kid .stat { font-size: 14px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.kid .stat b { color: var(--ink); font-family: var(--display); font-weight: 400; font-size: 17px; }
+.pill { display: inline-block; font-family: var(--display); font-size: 13px; padding: 2px 10px; border-radius: 999px; background: var(--paper-2); color: var(--ink-soft); }
+.pill.green { background: var(--leaf-wash); color: var(--leaf-deep); }
+.pill.red { background: var(--apple-wash); color: var(--apple); }
+.pill.sun { background: var(--sun-wash); color: #8A6A10; }
+.empty { text-align: center; padding: 30px 20px; color: var(--ink-soft); }
+
+/* 구절 */
+.verses { display: grid; gap: 14px; }
+.verse { display: grid; gap: 10px; }
+.verse.is-current { border-color: var(--sun); box-shadow: 0 0 0 3px var(--sun-wash); }
+.verse-head { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.verse-head .field:first-child { width: 76px; flex: none; }
+.verse-head .field:nth-child(2) { flex: 1; min-width: 200px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.verse-foot { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+/* 대화상자 */
+dialog { border: 0; padding: 0; border-radius: 26px; width: min(720px, calc(100% - 24px)); max-height: calc(100% - 24px); background: var(--paper); color: var(--ink); box-shadow: 0 20px 60px rgba(60, 40, 20, .3); }
+dialog::backdrop { background: rgba(60, 45, 30, .35); }
+.dlg-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 16px 18px 12px 22px; border-bottom: 2px dashed var(--line); background: var(--paper-2); position: sticky; top: 0; z-index: 1; }
+.dlg-head h3 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 22px; }
+.dlg-body { padding: 18px 22px 22px; display: grid; gap: 18px; }
+.dlg-body h4 { margin: 0 0 8px; font-family: var(--display); font-weight: 400; font-size: 18px; color: var(--leaf-deep); }
+.x { width: 42px; height: 42px; border-radius: 50%; border: 2px solid var(--line); background: #fff; font-size: 24px; cursor: pointer; }
+.stamp-list { display: grid; gap: 6px; }
+.stamp-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 8px 12px; border-radius: 14px; background: #fff; border: 2px solid var(--line); }
+.stamp-row .r { font-family: var(--display); }
+.stamp-row .m { font-size: 13px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-family: var(--display); font-size: 15px; }
+.switch input { appearance: none; width: 50px; height: 30px; border-radius: 999px; background: var(--line); position: relative; cursor: pointer; transition: background .2s; margin: 0; }
+.switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; transition: transform .2s; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+.switch input:checked { background: var(--apple); }
+.switch input:checked::after { transform: translateX(20px); }
+.cardline { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; background: #fff; border: 2px dashed var(--leaf); border-radius: 16px; padding: 12px 16px; font-family: var(--display); font-size: 20px; }
+.cardline span { font-family: var(--body); font-size: 14px; color: var(--ink-soft); }
+.teachers { display: grid; gap: 8px; }
+.trow { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: #fff; border: 2px solid var(--line); border-radius: 14px; padding: 10px 14px; }
+
+/* 주간 계획 */
+.weeks { display: grid; gap: 12px; }
+.week { display: grid; gap: 12px; }
+.week.is-now { border-color: var(--sun); box-shadow: 0 0 0 3px var(--sun-wash); }
+.week-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.week-head h3 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 20px; }
+.week-head .when { font-size: 14px; color: var(--ink-soft); }
+.week-sum { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 15px; color: var(--ink-soft); }
+.week-sum b { color: var(--ink); font-weight: 400; font-family: var(--display); }
+.week-edit { display: grid; gap: 14px; border-top: 2px dashed var(--line); padding-top: 14px; }
+.week-edit h4 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 18px; color: var(--leaf-deep); }
+.day-edit { display: grid; gap: 10px; background: #fff; border: 2px solid var(--line); border-radius: 18px; padding: 14px; }
+.day-edit .dhead { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-family: var(--display); }
+.field textarea.small { min-height: 70px; font-size: 16px; }
+.importing { font-family: var(--display); color: var(--leaf-deep); }
+/* 아이들 글 */
+.posts { display: grid; gap: 10px; }
+.post { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 14px; align-items: start; background: var(--paper); border: 2px solid var(--line); border-radius: 18px; padding: 12px 16px; }
+.post.is-hidden { opacity: .65; }
+.post .meta { font-size: 14px; color: var(--ink-soft); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.post .who { font-family: var(--display); font-size: 17px; color: var(--ink); }
+.post .txt { grid-column: 1 / 2; margin: 0; line-height: 1.6; overflow-wrap: anywhere; }
+.post-sw { display: grid; gap: 6px; justify-items: end; }
+.post .pic { grid-column: 1 / 2; justify-self: start; border: 0; padding: 0; background: none; cursor: zoom-in; }
+.post .pic img { width: 160px; height: 120px; object-fit: cover; border-radius: 12px; display: block; border: 2px solid var(--line); }
+.viewer { position: fixed; inset: 0; z-index: 60; background: rgba(30, 30, 30, .82); display: grid; place-items: center; align-content: center; gap: 10px; padding: 16px; cursor: zoom-out; }
+.viewer img { max-width: 100%; max-height: 80vh; border-radius: 14px; background: #fff; }
+.viewer p { margin: 0; color: #fff; font-family: var(--display); font-size: 18px; text-align: center; }
+.viewer-x { position: absolute; top: 12px; right: 12px; width: 48px; height: 48px; border-radius: 50%; border: 0; background: #fff; font-size: 30px; line-height: 1; cursor: pointer; }
+#toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 20px); opacity: 0; transition: .3s; background: var(--ink); color: #fff; padding: 12px 20px; border-radius: 999px; z-index: 50; pointer-events: none; max-width: calc(100% - 32px); text-align: center; }
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+@media (max-width: 720px) {
+  .kid { grid-template-columns: 48px minmax(0, 1fr) auto; }
+  .kid .col3, .kid .col4 { grid-column: 2 / 4; }
+  .kid canvas { width: 48px; height: 48px; }
+  .stamp-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .stamp-row .m { grid-column: 1 / 2; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="logo">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 29V15" stroke="#6B4429" stroke-width="2.4" stroke-linecap="round"/><path d="M16 16C9 16 4.5 11.5 4.5 5.5 11.5 5.5 16 9 16 16z" fill="#6CC24A"/><path d="M16 13.5c.5-6 4.5-9.8 11.5-9.8 0 6-4.6 10-11.5 9.8z" fill="#8BD46A"/></svg>
+      <h1>진숲 어린이 마을<small>선생님 화면</small></h1>
+    </div>
+    <div class="me" id="meBox" hidden><span id="meName"></span><a class="btn btn-sm" href="index.html">마을 보기</a><button class="btn btn-sm" id="logoutBtn" type="button">로그아웃</button></div>
+  </header>
+
+  <section id="setupView" class="card narrow" hidden>
+    <h2>처음 설정</h2>
+    <p class="note">아직 선생님 계정이 없어요. 받은 <b>설정 코드</b>를 넣고 첫 선생님 계정을 만들어 주세요. 이 코드는 첫 계정을 만들 때 한 번만 쓰이고 바로 사라집니다.</p>
+    <form id="setupForm" class="narrow" style="margin:0">
+      <label class="field"><span>설정 코드</span><input id="setupCode" autocomplete="off" autocapitalize="characters" placeholder="XXXX-XXXX" required></label>
+      <label class="field"><span>선생님 이름</span><input id="setupName" maxlength="20" required placeholder="예: 나종현 목사"></label>
+      <label class="field"><span>로그인 아이디</span><input id="setupId" maxlength="12" autocomplete="username" required><span class="help">한글·영문·숫자 2~12글자</span></label>
+      <label class="field"><span>비밀번호</span><input id="setupPw" type="password" minlength="8" autocomplete="new-password" required><span class="help">8글자 이상</span></label>
+      <p class="err" id="setupErr" role="alert"></p>
+      <button class="btn btn-go" type="submit">선생님 계정 만들기</button>
+    </form>
+  </section>
+
+  <section id="loginView" class="card narrow" hidden>
+    <h2>선생님 로그인</h2>
+    <p class="note" id="demoNote" hidden>체험판이에요. 아이디 <b>선생님</b>, 비밀번호 <b>demo1234</b>로 들어갈 수 있어요. 바꾼 내용은 이 기기에만 남아요.</p>
+    <form id="loginForm" class="narrow" style="margin:0">
+      <label class="field"><span>아이디</span><input id="loginId" autocomplete="username" required></label>
+      <label class="field"><span>비밀번호</span><input id="loginPw" type="password" autocomplete="current-password" required></label>
+      <p class="err" id="loginErr" role="alert"></p>
+      <button class="btn btn-go" type="submit">들어가기</button>
+    </form>
+  </section>
+
+  <main id="mainView" hidden>
+    <nav class="tabs" role="tablist">
+      <button class="tab" role="tab" data-tab="kids" aria-selected="true" type="button">아이들<span class="count" id="kidCount"></span></button>
+      <button class="tab" role="tab" data-tab="weeks" aria-selected="false" type="button">주간 계획<span class="count" id="weekCount"></span></button>
+      <button class="tab" role="tab" data-tab="posts" aria-selected="false" type="button">아이들 글<span class="count" id="postCount"></span></button>
+      <button class="tab" role="tab" data-tab="verses" aria-selected="false" type="button">암송 구절<span class="count" id="verseCount"></span></button>
+      <button class="tab" role="tab" data-tab="teachers" aria-selected="false" type="button">선생님 계정</button>
+    </nav>
+
+    <section id="tab-kids">
+      <div class="bar"><h2>아이들</h2><button class="btn btn-go" id="addKidBtn" type="button">아이 계정 만들기</button></div>
+      <form id="kidForm" class="card" hidden style="display:grid;gap:14px;margin-bottom:16px">
+        <p class="note">이 마을은 아이의 <b>이름과 생년월일만</b> 저장합니다. 만 14세 미만 아이는 계정을 만들기 전에 보호자 동의서를 꼭 받아 주세요.</p>
+        <div class="grid2">
+          <label class="field"><span>이름</span><input id="kName" maxlength="20" required></label>
+          <label class="field"><span>생년월일</span><input id="kBirth" type="date" required></label>
+          <label class="field"><span>로그인 아이디</span><input id="kId" maxlength="12" autocomplete="off" required><span class="help">한글·영문·숫자 2~12글자 (예: 주원)</span></label>
+          <label class="field"><span>비밀번호 (숫자 4~6자리)</span><input id="kPin" inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" autocomplete="off" required></label>
+          <label class="field"><span>보호자 동의서 받은 날</span><input id="kConsent" type="date" required></label>
+        </div>
+        <label class="check"><input type="checkbox" id="kConsentOk" required><span>보호자에게 개인정보(이름·생년월일) 수집·이용 동의서를 받았습니다.</span></label>
+        <p class="err" id="kErr" role="alert"></p>
+        <div class="form-actions"><button class="btn btn-ghost" type="button" id="kCancel">취소</button><button class="btn btn-go" type="submit">만들기</button></div>
+      </form>
+      <div id="newCard" hidden style="margin-bottom:16px"></div>
+      <div class="kids" id="kidList"></div>
+    </section>
+
+    <section id="tab-weeks" hidden>
+      <div class="bar"><h2>주간 계획</h2><div id="importBox"></div></div>
+      <p class="note warn" id="weeksNote" style="margin-bottom:14px"></p>
+      <div class="weeks" id="weekList"></div>
+    </section>
+
+    <section id="tab-posts" hidden>
+      <div class="bar"><h2>아이들이 나눈 글</h2></div>
+      <p class="note" style="margin-bottom:8px">최근 60일 동안 아이들이 쓴 묵상 글, 필사 느낌과 공책 사진, 그림 공방의 그림이에요. 친구들에게 보이면 안 될 것은 ‘숨기기’를 켜 주세요. 숨겨도 쓴 아이 자신은 볼 수 있고, 이름은 기록판에 그대로 남아요. 아이가 따로 적은 ‘나의 기도’는 여기에도 보이지 않아요.</p>
+      <p class="note" style="margin-bottom:14px">공책 사진은 선생님이 ‘사진 확인’을 켜야 친구들에게 보여요. 얼굴, 이름표, 주소 같은 것이 찍혀 있지 않은지 봐 주세요.</p>
+      <p class="note" id="storageNote" style="margin-bottom:14px"></p>
+      <div class="posts" id="postList"></div>
+    </section>
+
+    <section id="tab-verses" hidden>
+      <div class="bar"><h2>암송 구절 (개역한글판)</h2><button class="btn btn-go" id="addVerseBtn" type="button">새 구절 넣기</button></div>
+      <p class="note warn" id="draftNote" style="margin-bottom:14px"></p>
+      <div class="verses" id="verseList"></div>
+    </section>
+
+    <section id="tab-teachers" hidden>
+      <div class="bar"><h2>선생님 계정</h2></div>
+      <div class="teachers" id="teacherList" style="margin-bottom:18px"></div>
+      <div class="grid2">
+        <form class="card" id="teacherForm" style="display:grid;gap:12px">
+          <h3 style="margin:0;font-family:var(--display);font-weight:400">선생님 더하기</h3>
+          <label class="field"><span>이름</span><input id="tName" maxlength="20" required></label>
+          <label class="field"><span>로그인 아이디</span><input id="tId" maxlength="12" required></label>
+          <label class="field"><span>처음 비밀번호 (8글자 이상)</span><input id="tPw" type="password" minlength="8" autocomplete="new-password" required></label>
+          <p class="err" id="tErr" role="alert"></p>
+          <button class="btn btn-go" type="submit">더하기</button>
+        </form>
+        <form class="card" id="pwForm" style="display:grid;gap:12px">
+          <h3 style="margin:0;font-family:var(--display);font-weight:400">내 비밀번호 바꾸기</h3>
+          <label class="field"><span>지금 비밀번호</span><input id="pOld" type="password" autocomplete="current-password" required></label>
+          <label class="field"><span>새 비밀번호 (8글자 이상)</span><input id="pNew" type="password" minlength="8" autocomplete="new-password" required></label>
+          <p class="err" id="pErr" role="alert"></p>
+          <button class="btn btn-go" type="submit">바꾸기</button>
+        </form>
+      </div>
+    </section>
+  </main>
+</div>
+
+<dialog id="kidDlg">
+  <div class="dlg-head"><h3 id="dlgTitle"></h3><button class="x" type="button" id="dlgClose" aria-label="닫기">×</button></div>
+  <div class="dlg-body" id="dlgBody"></div>
+</dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+<script type="module" src="js/teacher.js"></script>
+</body>
+</html>

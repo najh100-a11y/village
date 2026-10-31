@@ -1,0 +1,89 @@
+// 진숲 어린이 마을 — 서버 호출
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
+
+export const DEMO = new URLSearchParams(location.search).has('demo') || window.KV_FORCE_DEMO === true;
+const demo = DEMO ? new (await import('./demo.js')).DemoBackend() : null;
+
+export class ApiError extends Error {
+  constructor(code) {
+    super(code);
+    this.code = code;
+  }
+}
+
+export async function rpc(fn, args = {}) {
+  if (demo) {
+    await new Promise((r) => setTimeout(r, 120));
+    return demo.call(fn, JSON.parse(JSON.stringify(args)));
+  }
+  let res;
+  try {
+    res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+      body: JSON.stringify(args),
+    });
+  } catch (e) {
+    throw new ApiError('NETWORK');
+  }
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch (e) { data = null; }
+  if (!res.ok) throw new ApiError((data && data.message) || `HTTP_${res.status}`);
+  return data;
+}
+
+const MESSAGES = {
+  LOGIN_FAILED: '아이디나 비밀번호가 맞지 않아요.',
+  LOCKED: '여러 번 틀려서 잠시 잠겼어요. 10분 뒤에 다시 하거나 선생님께 말해 주세요.',
+  SESSION: '다시 로그인해 주세요.',
+  NETWORK: '마을에 연결하지 못했어요. 인터넷을 확인해 주세요. 계속 안 되면 선생님께 알려 주세요.',
+  BAD_NAME: '이름은 1~10글자로 써 주세요.',
+  BAD_AVATAR: '꾸민 모습을 저장하지 못했어요. 다시 해 볼까요?',
+  NOT_FOUND: '찾을 수 없어요. 화면을 새로 고쳐 주세요.',
+  // 선생님 화면
+  BAD_LOGIN_ID: '아이디는 한글·영문·숫자 2~12글자로 정해 주세요.',
+  BAD_PIN: '아이 비밀번호는 숫자 4~6자리로 정해 주세요.',
+  BAD_BIRTHDATE: '생년월일을 다시 확인해 주세요.',
+  NO_CONSENT: '보호자 동의서를 받은 날짜를 넣어 주세요.',
+  DUPLICATE_ID: '이미 쓰고 있는 아이디예요. 다른 아이디를 정해 주세요.',
+  WEAK_PASSWORD: '비밀번호는 8글자 이상으로 정해 주세요.',
+  WRONG_PASSWORD: '지금 비밀번호가 맞지 않아요.',
+  BAD_CODE: '설정 코드가 맞지 않아요.',
+  ALREADY: '이미 선생님 계정이 있어요. 로그인해 주세요.',
+  BAD_REF: '구절 위치를 1~60글자로 써 주세요.',
+  BAD_BODY: '구절 내용을 써 주세요. (1000글자까지)',
+  NOT_PUBLISHED: '아이들에게 공개한 구절만 이번 주 말씀으로 정할 수 있어요.',
+  CANNOT_DELETE_SELF: '지금 로그인한 선생님 계정은 지울 수 없어요.',
+  EMPTY_ANSWER: '내 생각을 한 줄이라도 써 주세요.',
+  TOO_LONG: '글이 너무 길어요. 조금 줄여 주세요.',
+  SELF_REACTION: '내 글에는 응원을 보낼 수 없어요.',
+  BAD_REACTION: '응원을 보내지 못했어요.',
+  BAD_WEEK: '주간 계획은 주일(일요일) 날짜로 시작해야 해요.',
+  NO_WEEK: '먼저 그 주의 주간 계획을 저장해 주세요.',
+  BAD_PASSAGE: '본문은 한 줄에 한 절씩, "1 본문" 모양으로 써 주세요.',
+  BAD_QUESTIONS: '질문은 한 줄에 하나씩, 다섯 개까지 쓸 수 있어요.',
+  BAD_IMAGE: '사진이나 그림을 읽지 못했어요. 다시 해 볼까요?',
+  IMAGE_TOO_BIG: '사진이 너무 커요. 다른 사진으로 해 볼까요?',
+  ART_FULL: '그림을 40장까지 둘 수 있어요. 내 그림에서 하나를 지우고 다시 해 봐요.',
+  ART_DAY: '오늘은 그림을 10장 그렸어요. 내일 또 그려요!',
+  TOO_FAST: '조금만 쉬었다가 해요.',
+  FISH_TIRED: '오늘은 물고기들이 쉬고 싶대요. 내일 또 와요!',
+  BAD_STARS: '요리 기록을 저장하지 못했어요.',
+};
+
+export function message(err) {
+  const code = (err && (err.code || err.message)) || '';
+  if (MESSAGES[code]) return MESSAGES[code];
+  if (String(code).startsWith('HTTP_5')) return '마을 서버가 잠시 쉬고 있어요. 조금 뒤에 다시 해 주세요.';
+  return '문제가 생겼어요. 잠시 뒤 다시 해 주세요.';
+}
+
+const prefix = DEMO ? 'kv.demo.' : 'kv.';
+// 체험판은 탭마다 따로 로그인할 수 있게 (두 탭으로 함께 접속을 시험해 볼 수 있다)
+const box = () => (DEMO ? window.sessionStorage : window.localStorage);
+export const store = {
+  get(k) { try { return box().getItem(prefix + k); } catch (e) { return null; } },
+  set(k, v) { try { box().setItem(prefix + k, v); } catch (e) { /* 저장 못 해도 계속 */ } },
+  del(k) { try { box().removeItem(prefix + k); } catch (e) { /* 무시 */ } },
+};
