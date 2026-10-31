@@ -768,6 +768,64 @@ export class Village {
       g.add(sign);
       this.spot('art', '그림 공방', g, { x: 11.2, z: 11.5, rot: 0, door: 1.7, hw: 3.0, hd: 0.3 });
     }
+    // 마을 식탁: 아이들이 마음대로 만든 요리 네 접시를 올려 둔다
+    {
+      const g = new THREE.Group();
+      g.add(box(2.8, 0.08, 1.05, wood, 0, 0.76, 0));
+      g.add(box(2.86, 0.02, 1.11, cream, 0, 0.81, 0));
+      for (const sx of [-1.43, 1.43]) g.add(box(0.03, 0.12, 1.11, toon('#EF6461'), sx, 0.77, 0));
+      for (const sx of [-1.25, 1.25]) for (const sz of [-0.4, 0.4]) g.add(box(0.1, 0.76, 0.1, dark, sx, 0.38, sz));
+      const sign = this.postSign('마을 식탁', 1.5);
+      sign.position.set(-1.9, 0, 0.3);
+      g.add(sign);
+      g.position.set(11.2, 0, 20.6);
+      mergeStatic(g);
+      this.scene.add(g);
+      this.addObstacleBox(11.2, 20.6, 1.5, 0.62, 0);
+      this.addObstacleBox(9.3, 20.9, 0.15, 0.15, 0);
+      this.dishTable = new THREE.Group();
+      this.dishTable.position.set(11.2, 0, 20.6);
+      this.scene.add(this.dishTable);
+    }
+  }
+
+  // 마을 식탁 접시 (items: [{id, name, kind, items, cook}] 최근 4개)
+  setDishTable(list) {
+    if (!this.dishTable || !this.buildDish) return;
+    for (const c of [...this.dishTable.children]) {
+      c.traverse((o) => {
+        if (o.geometry) o.geometry.dispose();
+        const mt = o.material;
+        if (mt && mt.userData && mt.userData.own) { if (mt.map) mt.map.dispose(); mt.dispose(); }
+      });
+      c.removeFromParent();
+    }
+    (list || []).slice(0, 4).forEach((d, i) => {
+      const x = -1.0 + i * 0.67;
+      const dish = this.buildDish(d.kind, d.items || [], d.id || i + 1);
+      dish.scale.setScalar(1.25);
+      dish.position.set(x, 0.84, -0.05);
+      this.dishTable.add(dish);
+      const tex = canvasTexture(256, 96, (ctx, w, hh) => {
+        ctx.fillStyle = '#FFFDF7'; ctx.fillRect(0, 0, w, hh);
+        ctx.strokeStyle = '#E8B04A'; ctx.lineWidth = 6; ctx.strokeRect(3, 3, w - 6, hh - 6);
+        ctx.fillStyle = '#6B4429'; ctx.textAlign = 'center';
+        let size = 30;
+        ctx.font = `${size}px ${FONT}`;
+        const name = String(d.name || '');
+        while (ctx.measureText(name).width > w - 20 && size > 16) { size -= 1; ctx.font = `${size}px ${FONT}`; }
+        ctx.fillText(name, w / 2, 44);
+        ctx.font = `20px ${FONT}`;
+        ctx.globalAlpha = 0.8;
+        ctx.fillText(`${d.cook || '친구'}의 요리`, w / 2, 78);
+      });
+      const mat = new THREE.MeshBasicMaterial({ map: tex });
+      mat.userData.own = true;
+      const card = new THREE.Mesh(new THREE.PlaneGeometry(0.58, 0.22), mat);
+      card.position.set(x, 0.95, 0.42);
+      card.rotation.x = -0.55;
+      this.dishTable.add(card);
+    });
   }
 
   artTexture(item) {

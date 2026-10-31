@@ -5,7 +5,8 @@ import { toon, toonGradient } from './avatar.js';
 import { h, icon, modal, toast, confetti, josa } from './ui.js';
 import { message } from './api.js';
 import { sfx } from './sound.js';
-import { fishById, SHADOW_LEN, RARITY, RECIPES, INGREDIENTS } from './play-data.js';
+import { fishById, SHADOW_LEN, RARITY, RECIPES, INGREDIENTS, FISH, FRIDGE, NO_CUT, COOK_KIND, ingInfo, dishName } from './play-data.js';
+import { cleanChat } from './chatfilter.js';
 import { aiMove, lineAt } from './omok.js';
 import { friendPicker, waitInvite } from './play.js';
 import { renderFishBook } from './fishing.js';
@@ -242,6 +243,61 @@ function makeFish3D(f, len = 0.5) {
 function makeIngredient(id) {
   const g = new THREE.Group();
   const col = (INGREDIENTS[id] || ['', '#DDD'])[1];
+  if (id && id.startsWith('fish_')) {
+    const f = fishById(id.slice(5));
+    const m = makeFish3D(f || fishById('crucian'), 0.3);
+    m.position.y = 0.06;
+    g.add(m);
+    return g;
+  }
+  if (id === 'potato') {
+    for (const [x, z, r] of [[0, 0, 0.08], [0.05, 0.03, 0.06], [-0.05, -0.02, 0.055]]) { const b = mk(new THREE.SphereGeometry(r, 10, 8), toon(col), x, r * 0.8, z); b.scale.set(1.2, 0.85, 1); g.add(b); }
+    return g;
+  }
+  if (id === 'carrot') {
+    const c = mk(new THREE.ConeGeometry(0.045, 0.26, 10), toon(col), 0, 0.045, 0);
+    c.rotation.z = Math.PI / 2;
+    g.add(c);
+    for (const a of [-0.4, 0, 0.4]) { const l = mk(new THREE.ConeGeometry(0.015, 0.1, 5), toon('#5DB760'), -0.16, 0.05 + a * 0.05, a * 0.04); l.rotation.z = Math.PI / 2 + a; g.add(l); }
+    return g;
+  }
+  if (id === 'onion') {
+    const o = mk(new THREE.SphereGeometry(0.075, 14, 10), toon(col), 0, 0.075, 0);
+    o.scale.y = 0.9;
+    g.add(o);
+    g.add(mk(new THREE.ConeGeometry(0.02, 0.06, 6), toon('#C9A87A'), 0, 0.16, 0));
+    return g;
+  }
+  if (id === 'tomato') {
+    const t = mk(new THREE.SphereGeometry(0.075, 14, 10), toon(col), 0, 0.07, 0);
+    t.scale.y = 0.85;
+    g.add(t);
+    const star = mk(new THREE.CylinderGeometry(0.035, 0.035, 0.012, 5), toon('#5DB760'), 0, 0.135, 0);
+    g.add(star);
+    return g;
+  }
+  if (id === 'mushroom') {
+    g.add(mk(new THREE.CylinderGeometry(0.025, 0.03, 0.08, 10), toon('#F1E3C4'), 0, 0.04, 0));
+    g.add(mk(new THREE.SphereGeometry(0.07, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), toon(col), 0, 0.075, 0));
+    return g;
+  }
+  if (id === 'cabbage') {
+    g.add(mk(new THREE.SphereGeometry(0.09, 14, 10), toon(col), 0, 0.085, 0));
+    for (let i = 0; i < 4; i++) { const l = mk(new THREE.SphereGeometry(0.06, 10, 6), toon('#8CC56E'), Math.cos(i * 1.6) * 0.05, 0.06, Math.sin(i * 1.6) * 0.05); l.scale.y = 0.5; g.add(l); }
+    return g;
+  }
+  if (id === 'paprika') {
+    for (const a of [0, 2.1, 4.2]) g.add(mk(new THREE.SphereGeometry(0.05, 10, 8), toon(col), Math.cos(a) * 0.025, 0.07, Math.sin(a) * 0.025));
+    g.add(mk(new THREE.CylinderGeometry(0.01, 0.012, 0.04, 6), toon('#5DB760'), 0, 0.14, 0));
+    return g;
+  }
+  if (id === 'rice' || id === 'manna') {
+    g.add(mk(new THREE.CylinderGeometry(0.085, 0.06, 0.06, 16), toon(id === 'rice' ? '#8FCBEB' : '#E9C88F'), 0, 0.03, 0));
+    const top = mk(new THREE.SphereGeometry(0.08, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), toon(col), 0, 0.055, 0);
+    top.scale.y = 0.5;
+    g.add(top);
+    return g;
+  }
   if (id === 'apple') {
     g.add(mk(new THREE.SphereGeometry(0.08, 14, 10), toon(col), 0, 0.08, 0));
     g.add(mk(new THREE.CylinderGeometry(0.008, 0.008, 0.05, 5), toon('#6B4429'), 0, 0.17, 0));
@@ -331,6 +387,62 @@ function makeDish(r) {
   return g;
 }
 
+// 마음대로 요리한 음식 (마을 식탁과 완성 화면에서 같이 쓴다)
+function seeded(seed) { let x = (seed * 9301 + 49297) % 233280; return () => { x = (x * 9301 + 49297) % 233280; return x / 233280; }; }
+function avgColor(cols) {
+  const c = new THREE.Color(0, 0, 0);
+  cols.forEach((h0) => c.add(new THREE.Color(h0)));
+  return c.multiplyScalar(1 / Math.max(1, cols.length));
+}
+export function makeFreeDish(kind, items, seed = 1, done = 1) {
+  const g = new THREE.Group();
+  const rnd = seeded(Math.abs(Math.floor(seed)) % 233280 || 7);
+  const infos = items.map(ingInfo).filter(Boolean);
+  const brown = kind === 'grill' ? '#8A5A2B' : '#B9772F';
+  const cookK = kind === 'fry' ? 0.32 * done : kind === 'grill' ? 0.45 * done : 0;
+  if (kind === 'soup') {
+    g.add(mk(new THREE.CylinderGeometry(0.2, 0.13, 0.13, 22), toon('#FFF3DA'), 0, 0.065, 0));
+    const broth = avgColor(infos.map((i) => i.piece)).lerp(new THREE.Color('#E8C98F'), 0.45);
+    const top = mk(new THREE.CylinderGeometry(0.18, 0.18, 0.01, 22), ownMat(broth), 0, 0.125, 0);
+    g.add(top);
+    infos.forEach((inf, k) => {
+      for (let i = 0; i < 3; i++) {
+        const a = rnd() * Math.PI * 2, r = rnd() * 0.12;
+        const p = mk(new THREE.BoxGeometry(0.035, 0.02, 0.035), toon(inf.piece), Math.cos(a) * r, 0.132, Math.sin(a) * r);
+        p.rotation.y = rnd() * 3;
+        g.add(p);
+      }
+    });
+    return g;
+  }
+  g.add(mk(new THREE.CylinderGeometry(0.27, 0.21, 0.045, 24), toon('#8FCBEB')));
+  const rim = mk(new THREE.TorusGeometry(0.255, 0.014, 6, 28), toon('#FFFDF7'), 0, 0.022, 0);
+  rim.rotation.x = Math.PI / 2;
+  g.add(rim);
+  if (kind === 'salad') g.add(mk(new THREE.CylinderGeometry(0.17, 0.12, 0.02, 18), toon('#B5D86A'), 0, 0.03, 0));
+  let n = 0;
+  infos.forEach((inf) => {
+    const col = new THREE.Color(inf.piece).lerp(new THREE.Color(brown), cookK);
+    const mat = ownMat(col);
+    if (inf.fish) {
+      const f = makeFish3D({ ...inf.fish, mat: ownMat(new THREE.Color(inf.fish.body).lerp(new THREE.Color(brown), cookK)) }, 0.26);
+      f.position.set((rnd() - 0.5) * 0.12, 0.07, (rnd() - 0.5) * 0.1);
+      f.rotation.y = rnd() * 3;
+      g.add(f);
+      n += 3;
+      return;
+    }
+    for (let i = 0; i < 5; i++) {
+      const a = rnd() * Math.PI * 2, r = rnd() * 0.15;
+      const p = mk(i % 2 ? new THREE.BoxGeometry(0.05, 0.03, 0.05) : new THREE.CylinderGeometry(0.03, 0.03, 0.02, 10), mat, Math.cos(a) * r, 0.045 + (n % 3) * 0.012 + rnd() * 0.02, Math.sin(a) * r);
+      p.rotation.set(rnd() * 0.6, rnd() * 3, rnd() * 0.6);
+      g.add(p);
+      n++;
+    }
+  });
+  return g;
+}
+
 // 화면 좌표 구하기
 function screenOf(v, p) {
   const q = p.clone().project(v.camera);
@@ -346,6 +458,7 @@ const starText = (n) => '★'.repeat(n) + '☆'.repeat(3 - n);
 export function createPlay3D(ctx) {
   const { village: v, rpc, getToken, onSessionLost, onCelebrate, setActivity, setScene, hub, onlineFriends } = ctx;
   const ui = new GameUI(v);
+  v.buildDish = makeFreeDish; // 마을 식탁 접시 그리기
   let cur = null; // 지금 하는 놀이 { id, game }
   let menuTok = 0;
 
@@ -1132,15 +1245,21 @@ export function createPlay3D(ctx) {
   // 요리
   // =====================================================================
   let cookBook = {};
+  let freeReady = false;
   async function cookMenu() {
     const tok = ++menuTok;
     modal.open('숲속 부엌', h('div', { class: 'mem game cook' }, h('p', { class: 'empty-big' }, '요리책을 펴고 있어요…')), { cls: 'game-sheet', onClose: () => { if (tok === menuTok) menuTok++; } });
     try { cookBook = await rpc('kids_cook_book', { p_token: getToken() }); } catch (e) { if (lost(e)) return; cookBook = {}; }
+    // 서버에 '마음대로 요리' 기능이 준비되어 있을 때만 단추를 보인다
+    if (!freeReady) { try { await rpc('kids_dish_table', { p_token: getToken() }); freeReady = true; } catch (e) { if (lost(e)) return; } }
     if (tok !== menuTok) return;
     const starRow = (n) => h('span', { class: 'stars', 'aria-label': `별 ${n}개` }, Array.from({ length: 3 }, (_, i) => h('i', { class: i < n ? 'on' : '' }, '★')));
     modal.setTitle('숲속 부엌');
     modal.setBody(h('div', { class: 'mem game cook' },
-      h('p', { class: 'hint-line' }, '성경 이야기에 나오는 음식을 만들어 봐요. 요리법은 재미있게 꾸민 놀이예요.'),
+      !freeReady ? null : h('div', { class: 'mode-pick' },
+        h('button', { class: 'mode free-cook', type: 'button', onclick: () => { menuTok++; modal.close(); cookFree(); } },
+          h('b', {}, '🧑‍🍳 마음대로 요리하기'), h('span', {}, '냉장고에서 재료를 꺼내고, 내가 낚은 물고기도 넣어서 썰고, 끓이고, 볶아요. 다 만든 요리는 마을 식탁에 올려요.'))),
+      h('p', { class: 'hint-line' }, '성경 이야기에 나오는 음식도 만들어 봐요. 요리법은 재미있게 꾸민 놀이예요.'),
       h('div', { class: 'recipe-list' }, RECIPES.map((r) => h('button', { class: 'recipe', type: 'button', onclick: () => cookDetail(r, tok) },
         h('i', { class: 'dish', style: `background:${r.color}` }),
         h('b', {}, r.name), h('span', {}, r.ref),
@@ -1779,7 +1898,7 @@ export function createPlay3D(ctx) {
         if (k >= 1) { flying.splice(i, 1); if (f.done) f.done(); }
       }
       if (dish) {
-        dish.position.copy(handFront(pl, 0.5, 1.28));
+        dish.position.copy(handFront(pl, 0.78, 1.02));
         dish.rotation.y = sp.rot;
       }
     };
@@ -1802,6 +1921,426 @@ export function createPlay3D(ctx) {
     begin('cook', `숲속 부엌 · ${r.name}`, game);
     if (session) toast(owner(0) === 'me' ? `${josa(peerName, '과', '와')} 번갈아 만들어요. 1단계는 내 차례!` : `${josa(peerName, '과', '와')} 번갈아 만들어요. 2단계가 내 차례예요!`, 3400);
     play();
+  }
+
+  // =====================================================================
+  // 마음대로 요리하기: 냉장고에서 꺼내고, 도마에서 썰고, 끓이거나 볶거나 굽고, 접시에 담아 마을 식탁에
+  // =====================================================================
+  async function cookFree() {
+    stopAll();
+    const sp = v.spots.cook;
+    const pl = v.player;
+    const grp = new THREE.Group();
+    grp.position.set(sp.x, 0, sp.z);
+    grp.rotation.y = sp.rot;
+    v.scene.add(grp);
+    grp.updateMatrixWorld(true);
+    const TOP = 0.98;
+    const BOARD = V(0.2, TOP, -0.32);
+    const STOVE = V(0.95, TOP, -0.32);
+    const POT = V(1.85, 0.72, 0.5);
+    const local = (p) => grp.localToWorld(p.clone());
+    const camWide = camAt(sp, [-1.0, 3.6, 4.6], [-0.4, 0.85, -0.5], 1.6);
+    const camBoard = camAt(sp, [0.25, 2.35, 2.35], [0.22, 0.95, -0.38], 1.3);
+    const camStove = camAt(sp, [0.95, 2.4, 2.4], [0.95, 0.98, -0.35], 1.3);
+    const camPot = camAt(sp, [1.85, 3.0, 2.75], [1.85, 0.75, 0.3], 1.25);
+    const camPlate = camAt(sp, [0.2, 2.5, 3.8], [0.2, 1.25, -0.9], 1.45);
+    const game = { cam: camWide, camSpeed: 2.6 };
+    const flying = [], fx = [];
+    let phase = 'pick', dish = null, stepUpd = null, kind = null;
+    const chosen = []; // { id, info, mesh, pieces: [] }
+
+    // 냉장고 (조리대 왼쪽)
+    const fridge = new THREE.Group();
+    fridge.position.set(-2.2, 0, -1.25);
+    fridge.add(mk(new THREE.BoxGeometry(0.78, 1.7, 0.62), toon('#EEF3F6'), 0, 0.85, 0));
+    fridge.add(mk(new THREE.BoxGeometry(0.8, 0.04, 0.64), toon('#B7C3CB'), 0, 1.15, 0));
+    const hinge = new THREE.Group();
+    hinge.position.set(0.39, 0, 0.31);
+    const door = mk(new THREE.BoxGeometry(0.78, 1.66, 0.05), toon('#F7FAFC'), -0.39, 0.85, 0.025);
+    hinge.add(door);
+    hinge.add(mk(new THREE.BoxGeometry(0.04, 0.4, 0.04), toon('#9AA7B0'), -0.7, 1.0, 0.07));
+    fridge.add(hinge);
+    for (const [y, c] of [[1.42, '#EF6461'], [1.32, '#F6D55C'], [0.55, '#5DB760']]) fridge.add(mk(new THREE.SphereGeometry(0.06, 10, 8), toon(c), -0.2 + (y % 0.2), y, 0.2));
+    grp.add(fridge);
+    let doorOpen = 0, doorWant = 0;
+    // 도마와 칼
+    grp.add(mk(new THREE.BoxGeometry(0.56, 0.035, 0.38), toon('#D8A869'), BOARD.x, TOP + 0.017, BOARD.z));
+    const knife = new THREE.Group();
+    knife.add(mk(new THREE.BoxGeometry(0.24, 0.07, 0.008), toon('#D7DEE3'), -0.12, 0, 0));
+    knife.add(mk(new THREE.BoxGeometry(0.11, 0.035, 0.03), toon('#6B4429'), 0.055, 0.005, 0));
+    knife.position.set(BOARD.x + 0.1, TOP + 0.22, BOARD.z + 0.02);
+    knife.rotation.y = 0.2;
+    grp.add(knife);
+    let knifeT = 0;
+    const pieceMats = new Map();
+    const pieceMat = (col) => { if (!pieceMats.has(col)) pieceMats.set(col, ownMat(col)); return pieceMats.get(col); };
+
+    function fly(obj, to, { dur = 0.5, arc = 0.4, done, spin = 0 } = {}) { flying.push({ obj, from: obj.position.clone(), to: to.clone(), t: 0, dur, arc, done, spin }); }
+    const slot = (i) => V(0.62 + i * 0.17, TOP, -0.5);
+
+    v.placePlayer(...(() => { const p = spotPoint(sp, 0.25, 0, -1.15); return [p.x, p.z]; })(), sp.rot, 0);
+    pl.pose = restPose;
+
+    // 내가 낚아 본 물고기
+    let myFish = [];
+    try {
+      const b = await rpc('kids_fish_book', { p_token: getToken() });
+      myFish = FISH.filter((f) => f.rarity >= 0 && b && b.mine && b.mine[f.id] && b.mine[f.id].count > 0).map((f) => `fish_${f.id}`);
+    } catch (e) { if (lost(e)) return; }
+
+    // ---------- 1. 재료 꺼내기 ----------
+    function pickUi() {
+      phase = 'pick';
+      game.cam = camWide;
+      ui.say(chosen.length ? `재료 ${chosen.length}가지. 더 꺼내거나 ‘썰기’를 눌러요.` : '냉장고에서 재료를 꺼내요. 4가지까지 고를 수 있어요.', '숲속 부엌 · 마음대로 요리');
+      const chip = (id) => {
+        const inf = ingInfo(id);
+        const on = chosen.some((c) => c.id === id);
+        return h('button', { class: 'g-chip ing-chip' + (on ? ' on' : ''), type: 'button', 'data-ing': id, onclick: () => toggle(id) },
+          h('i', { style: `background:${inf.color}` }), inf.name);
+      };
+      ui.setPanel(h('div', { class: 'fridge-box' },
+        h('div', { class: 'fridge-grid' }, FRIDGE.map(chip)),
+        h('p', { class: 'fridge-sub' }, myFish.length ? '내가 낚은 물고기' : '연못에서 물고기를 낚으면 여기에 생겨요'),
+        myFish.length ? h('div', { class: 'fridge-grid' }, myFish.map(chip)) : null));
+      ui.setMain('썰기', { disabled: !chosen.length, pulse: chosen.length > 0, onClick: startChop });
+    }
+    function toggle(id) {
+      const at = chosen.findIndex((c) => c.id === id);
+      if (at >= 0) {
+        const c = chosen.splice(at, 1)[0];
+        disposeTree(c.mesh);
+        chosen.forEach((cc, i) => fly(cc.mesh, slot(i), { dur: 0.3, arc: 0.1 }));
+        sfx.pop(true);
+        pickUi();
+        return;
+      }
+      if (chosen.length >= 4) { toast('재료는 4가지까지예요.'); return; }
+      const mesh = makeIngredient(id);
+      mesh.position.set(fridge.position.x + 0.1, 1.0, fridge.position.z + 0.45);
+      grp.add(mesh);
+      const c = { id, info: ingInfo(id), mesh, pieces: [], chops: 0 };
+      chosen.push(c);
+      doorWant = 1;
+      sfx.door();
+      setTimeout(() => { doorWant = 0; }, 900);
+      fly(mesh, slot(chosen.length - 1), { dur: 0.6, arc: 0.6, done: () => sfx.pop() });
+      pickUi();
+    }
+
+    // ---------- 2. 썰기 ----------
+    let cur = -1;
+    function startChop() {
+      phase = 'chop';
+      game.cam = camBoard;
+      pl.pose = workPose;
+      cur = -1;
+      nextIngredient();
+    }
+    function nextIngredient() {
+      cur++;
+      if (cur >= chosen.length) { methodUi(); return; }
+      const c = chosen[cur];
+      fly(c.mesh, V(BOARD.x - 0.02, TOP + 0.035, BOARD.z + 0.06), { dur: 0.35, arc: 0.2 });
+      if (NO_CUT.includes(c.id)) {
+        ui.say(`${josa(c.info.name, '은', '는')} 썰지 않고 그대로 넣어요.`, '숲속 부엌 · 썰기');
+        ui.setMain('넣기', { pulse: true, onClick: () => { c.done = true; sfx.pop(); fly(c.mesh, V(BOARD.x - 0.18 + cur * 0.12, TOP + 0.035, BOARD.z - 0.1), { dur: 0.3, arc: 0.15 }); nextIngredient(); } });
+      } else {
+        ui.say(`${josa(c.info.name, '을', '를')} 싹둑싹둑 썰어요! ‘싹둑!’을 누르거나 도마를 눌러요.`, '숲속 부엌 · 썰기');
+        ui.setMain('싹둑!', { pulse: true, onClick: chop });
+      }
+      ui.setPanel(h('button', { class: 'g-chip', type: 'button', onclick: () => { for (const cc of chosen) cc.done = true; cur = chosen.length; methodUi(); } }, '다 썰었어요'));
+    }
+    function chop() {
+      if (phase !== 'chop' || cur < 0 || cur >= chosen.length) return;
+      const c = chosen[cur];
+      if (NO_CUT.includes(c.id) || c.done) return;
+      c.chops++;
+      knifeT = 1;
+      sfx.chop();
+      // 한 조각이 떨어져 나와 도마 뒤쪽으로
+      const isFish = c.id.startsWith('fish_');
+      const p = mk(isFish ? new THREE.BoxGeometry(0.06, 0.02, 0.04) : (c.chops % 2 ? new THREE.CylinderGeometry(0.03, 0.03, 0.018, 10) : new THREE.BoxGeometry(0.045, 0.03, 0.045)), pieceMat(c.info.piece), BOARD.x + 0.09, TOP + 0.05, BOARD.z + 0.06);
+      grp.add(p);
+      c.pieces.push(p);
+      fly(p, V(BOARD.x - 0.2 + (c.pieces.length % 4) * 0.035 + cur * 0.1, TOP + 0.045 + Math.floor(c.pieces.length / 4) * 0.02, BOARD.z - 0.12 + (cur % 2) * 0.03), { dur: 0.3, arc: 0.12 });
+      const k = Math.max(0.15, 1 - c.chops * 0.18);
+      c.mesh.scale.set(k, 1, 1);
+      for (let i = 0; i < 3; i++) {
+        const d = mk(new THREE.SphereGeometry(0.008, 4, 3), pieceMat(c.info.piece), BOARD.x + 0.08, TOP + 0.06, BOARD.z + 0.06);
+        grp.add(d);
+        fx.push({ m: d, life: 0, max: 0.4, vel: V((Math.random() - 0.5) * 0.8, 1 + Math.random(), (Math.random() - 0.5) * 0.8) });
+      }
+      if (c.chops >= 5) {
+        c.done = true;
+        disposeTree(c.mesh);
+        c.mesh = null;
+        sfx.ding();
+        setTimeout(() => { if (live(game) && phase === 'chop') nextIngredient(); }, 350);
+      }
+    }
+
+    // ---------- 3. 요리 방법 ----------
+    function methodUi() {
+      phase = 'method';
+      game.cam = camWide;
+      pl.pose = restPose;
+      ui.say('어떻게 요리할까요?', '숲속 부엌 · 요리하기');
+      ui.setMain('…', { disabled: true, hidden: true });
+      ui.setPanel(h('div', { class: 'g-row wrap' }, Object.entries(COOK_KIND).map(([k, [, label, ic]]) => h('button', { class: 'g-chip big', type: 'button', 'data-kind': k, onclick: () => startCook(k) }, `${ic} ${label}`))));
+    }
+    const allPieces = () => chosen.flatMap((c) => (c.pieces.length ? c.pieces : c.mesh ? [c.mesh] : []));
+
+    function startCook(k) {
+      kind = k;
+      ui.setPanel();
+      ui.setMain('…', { disabled: true });
+      if (k === 'soup') return soup();
+      if (k === 'salad') return salad();
+      return pan(k);
+    }
+
+    // 냄비에 끓이기
+    function soup() {
+      phase = 'soup';
+      game.cam = camPot;
+      const p0 = spotPoint(sp, 1.85, 0, -0.3);
+      v.placePlayer(p0.x, p0.z, sp.rot, 0);
+      pl.pose = workPose;
+      const spoon = makeSpoon();
+      grp.add(spoon);
+      const surface = mk(new THREE.CircleGeometry(0.34, 30), ownMat('#BFE3F2'), POT.x, POT.y + 0.006, POT.z);
+      surface.rotation.x = -Math.PI / 2;
+      grp.add(surface);
+      const target = avgColor(chosen.map((c) => c.info.piece)).lerp(new THREE.Color('#E8C98F'), 0.45);
+      const water = new THREE.Color('#BFE3F2');
+      allPieces().forEach((p, i) => {
+        const a = (i / 8) * Math.PI * 2, r = 0.08 + (i % 3) * 0.06;
+        setTimeout(() => { if (live(game)) fly(p, V(POT.x + Math.cos(a) * r, POT.y + 0.02, POT.z + Math.sin(a) * r), { dur: 0.55, arc: 0.5, done: () => sfx.blub() }); }, i * 60);
+      });
+      let acc = 0, lastA = null, taps = 0, vis = 0, over = false, lastQ = 0;
+      const need = 8;
+      const count = h('span', { class: 'g-chip' }, '보글보글 0%');
+      ui.setPanel(count, h('span', { class: 'g-chip' }, '냄비 둘레를 손가락으로 빙글빙글!'));
+      ui.say('국자로 빙글빙글 저어 끓여요.', '숲속 부엌 · 끓이기');
+      const update = () => {
+        const q = Math.floor(Math.abs(acc) / (Math.PI / 2)) + taps;
+        if (q !== lastQ) { lastQ = q; sfx.blub(); }
+        const k = Math.min(1, q / need);
+        count.textContent = `보글보글 ${Math.round(k * 100)}%`;
+        surface.material.color.copy(water.clone().lerp(target, k));
+        if (k >= 1 && !over) { over = true; ui.say('맛있게 끓었어요!'); setTimeout(() => plate(), 700); }
+      };
+      ui.setMain('젓기', { onClick: () => { if (!over) { taps++; update(); } } });
+      const angle = (x, y) => { const c = screenOf(v, local(POT)); return Math.atan2(y - c.y, x - c.x); };
+      game.ownsDrag = () => phase === 'soup';
+      game.onPointer = (type, x, y) => {
+        if (phase !== 'soup' || over) return;
+        if (type === 'down') { lastA = angle(x, y); } else if (type === 'move' && lastA !== null) {
+          const a = angle(x, y);
+          let d = a - lastA;
+          if (d > Math.PI) d -= Math.PI * 2;
+          if (d < -Math.PI) d += Math.PI * 2;
+          acc += d; lastA = a; update();
+        } else if (type === 'up') lastA = null;
+      };
+      let bubbleT = 0;
+      stepUpd = (dt, time) => {
+        vis = lerp(vis, acc + taps * (Math.PI / 2), 1 - Math.exp(-dt * 10));
+        spoon.position.set(POT.x + Math.cos(vis) * 0.2, POT.y + 0.32, POT.z + Math.sin(vis) * 0.2);
+        spoon.rotation.set(-Math.sin(vis) * 0.35, 0, Math.cos(vis) * 0.35);
+        for (const p of allPieces()) if (!flying.some((f) => f.obj === p)) p.position.y = POT.y + 0.02 + Math.sin(time * 4 + p.id) * 0.008;
+        bubbleT -= dt;
+        if (bubbleT <= 0) {
+          bubbleT = 0.25;
+          const b = mk(new THREE.SphereGeometry(0.025, 8, 6), basicMat('#FFFFFF', 0.7), POT.x + (Math.random() - 0.5) * 0.4, POT.y + 0.015, POT.z + (Math.random() - 0.5) * 0.4);
+          grp.add(b);
+          fx.push({ m: b, life: 0, max: 0.6, grow: true });
+        }
+      };
+      stepUpd.cleanup = () => { disposeTree(spoon); disposeTree(surface); game.ownsDrag = null; game.onPointer = null; };
+    }
+
+    // 프라이팬에 볶기, 화로에 굽기
+    function pan(k) {
+      phase = k;
+      game.cam = camStove;
+      const p0 = spotPoint(sp, 0.95, 0, -1.15);
+      v.placePlayer(p0.x, p0.z, sp.rot, 0);
+      pl.pose = workPose;
+      const stove = new THREE.Group();
+      stove.position.copy(STOVE);
+      stove.add(mk(new THREE.CylinderGeometry(0.26, 0.2, 0.14, 16), toon('#4A4A55'), 0, 0.07, 0));
+      for (let i = 0; i < 6; i++) stove.add(mk(new THREE.DodecahedronGeometry(0.045), basicMat('#F2753A'), Math.cos(i) * 0.12, 0.15, Math.sin(i) * 0.12));
+      if (k === 'fry') {
+        stove.add(mk(new THREE.CylinderGeometry(0.29, 0.25, 0.045, 22), toon('#3E3E46'), 0, 0.19, 0));
+        stove.add(mk(new THREE.BoxGeometry(0.34, 0.03, 0.05), toon('#6B4429'), 0.45, 0.2, 0));
+      } else {
+        for (let i = -2; i <= 2; i++) stove.add(mk(new THREE.BoxGeometry(0.5, 0.012, 0.012), toon('#5A5A5A'), 0, 0.2, i * 0.06));
+      }
+      grp.add(stove);
+      const base = k === 'fry' ? TOP + 0.235 : TOP + 0.225;
+      const ps = allPieces();
+      ps.forEach((p, i) => {
+        const a = (i / Math.max(1, ps.length)) * Math.PI * 2 * 2.3, r = 0.04 + (i % 4) * 0.045;
+        p.userData.home = V(STOVE.x + Math.cos(a) * r, base, STOVE.z + Math.sin(a) * r);
+        p.userData.vy = 0; p.userData.y = 0;
+        setTimeout(() => { if (live(game)) fly(p, p.userData.home, { dur: 0.5, arc: 0.45, done: () => sfx.sizzle() }); }, i * 50);
+      });
+      // 조각 색을 바꿀 수 있게 재료마다 따로 칠한다
+      const mats = [];
+      chosen.forEach((c) => {
+        const list = c.pieces.length ? c.pieces : c.mesh ? [c.mesh] : [];
+        list.forEach((p) => p.traverse((o) => {
+          if (o.isMesh) { const m = ownMat(o.material.color ? o.material.color.clone() : new THREE.Color(c.info.piece)); m.userData.base = m.color.clone(); o.material = m; mats.push(m); }
+        }));
+      });
+      const brown = new THREE.Color(k === 'fry' ? '#B9772F' : '#7A4A22');
+      let tosses = 0;
+      const need = 8;
+      const verb = k === 'fry' ? '볶기!' : '뒤집기!';
+      const count = h('span', { class: 'g-chip' }, `${k === 'fry' ? '볶기' : '굽기'} 0 / ${need}`);
+      ui.setPanel(count);
+      ui.say(k === 'fry' ? '지글지글! 프라이팬을 흔들어 골고루 볶아요.' : '화로에 올렸어요. 타지 않게 뒤집어 가며 구워요.', `숲속 부엌 · ${k === 'fry' ? '볶기' : '굽기'}`);
+      const toss = () => {
+        tosses++;
+        sfx.sizzle();
+        for (const p of ps) { p.userData.vy = 1.2 + Math.random() * 0.8; p.userData.spin = (Math.random() - 0.5) * 14; }
+        const kk = Math.min(1, tosses / need) * (k === 'fry' ? 0.38 : 0.5) + Math.max(0, tosses - need * 1.6) * 0.04;
+        for (const m of mats) m.color.copy(m.userData.base).lerp(brown, Math.min(0.85, kk));
+        count.textContent = tosses >= need ? (tosses > need * 1.6 ? '바삭바삭! 이제 담아요' : '알맞게 익었어요!') : `${k === 'fry' ? '볶기' : '굽기'} ${tosses} / ${need}`;
+        if (tosses === need) {
+          sfx.ding();
+          ui.setPanel(count, h('button', { class: 'g-chip', type: 'button', onclick: () => toss() }, k === 'fry' ? '조금 더 볶기' : '한 번 더 굽기'));
+          ui.setMain('접시에 담기', { pulse: true, onClick: () => plate() });
+        }
+      };
+      ui.setMain(verb, { pulse: true, onClick: toss });
+      game.onTap = () => { if (phase === k) toss(); };
+      let oilT = 0;
+      stepUpd = (dt) => {
+        for (const p of ps) {
+          if (flying.some((f) => f.obj === p) || !p.userData.home) continue;
+          const u = p.userData;
+          u.y += u.vy * dt; u.vy -= 6 * dt;
+          if (u.y < 0) { u.y = 0; u.vy = 0; u.spin = 0; }
+          p.position.set(u.home.x, u.home.y + u.y, u.home.z);
+          if (u.spin) p.rotation.x += u.spin * dt;
+        }
+        oilT -= dt;
+        if (oilT <= 0) {
+          oilT = 0.12;
+          const d = mk(new THREE.SphereGeometry(0.01, 4, 3), basicMat('#FFF3B0', 0.9), STOVE.x + (Math.random() - 0.5) * 0.4, base + 0.02, STOVE.z + (Math.random() - 0.5) * 0.3);
+          grp.add(d);
+          fx.push({ m: d, life: 0, max: 0.35, vel: V((Math.random() - 0.5) * 0.6, 0.8 + Math.random() * 0.6, (Math.random() - 0.5) * 0.6) });
+        }
+      };
+      stepUpd.cleanup = () => { disposeTree(stove); game.onTap = (ray, x, y) => onTapBase(ray, x, y); };
+    }
+
+    // 그대로 접시에 (샐러드)
+    function salad() {
+      phase = 'salad';
+      ui.say('싱싱한 그대로 담아요!', '숲속 부엌 · 샐러드');
+      setTimeout(() => plate(), 400);
+    }
+
+    // ---------- 4. 접시에 담기 ----------
+    function plate() {
+      if (stepUpd && stepUpd.cleanup) stepUpd.cleanup();
+      stepUpd = null;
+      phase = 'plate';
+      for (const c of chosen) { for (const p of c.pieces) disposeTree(p); if (c.mesh) disposeTree(c.mesh); c.pieces = []; c.mesh = null; }
+      const items = chosen.map((c) => c.id);
+      const p0 = spotPoint(sp, 0.25, 0, -1.15);
+      v.placePlayer(p0.x, p0.z, sp.rot, 0);
+      dish = makeFreeDish(kind, items, Date.now() % 10000);
+      v.scene.add(dish);
+      pl.pose = showPose;
+      game.cam = camPlate;
+      const name0 = dishName(items, kind);
+      ui.banner(`${name0} 완성!`, '이름을 붙여 마을 식탁에 올려 봐요', 2800);
+      confetti();
+      onCelebrate();
+      ui.say('요리 이름을 바꿔도 돼요. 다 되면 ‘식탁에 올리기’를 눌러요.', `숲속 부엌 · ${name0}`);
+      const input = h('input', { class: 'dish-name', maxlength: 12, value: name0, 'aria-label': '요리 이름' });
+      ui.setPanel(h('div', { class: 'g-row' }, input), h('div', { class: 'g-row wrap' },
+        h('button', { class: 'g-chip', type: 'button', onclick: () => { stopAll(); cookFree(); } }, '처음부터 다시'),
+        h('button', { class: 'g-chip', type: 'button', onclick: () => { stopAll(); cookMenu(); } }, '요리책 보기')));
+      let saving = false;
+      ui.setMain('식탁에 올리기', {
+        pulse: true,
+        onClick: async () => {
+          if (saving) return;
+          saving = true;
+          ui.setMain('…', { disabled: true });
+          try {
+            const r = await rpc('kids_dish_save', { p_token: getToken(), p_name: cleanChat(input.value) || name0, p_kind: kind, p_items: items });
+            if (!live(game)) return;
+            ui.banner('마을 식탁에 올렸어요!', r && r.name ? r.name : '', 2600);
+            sfx.success();
+            if (ctx.onDishShared) ctx.onDishShared();
+            ui.say('놀이 마당 남쪽 ‘마을 식탁’에 내 요리가 놓였어요. 친구들도 볼 수 있어요.');
+            ui.setPanel(h('div', { class: 'g-row wrap' }, h('button', { class: 'g-chip', type: 'button', onclick: () => { stopAll(); cookMenu(); } }, '요리책 보기')));
+            ui.setMain('또 만들기', { onClick: () => { stopAll(); cookFree(); } });
+          } catch (e) {
+            saving = false;
+            if (lost(e)) return;
+            toast(message(e));
+            ui.setMain('식탁에 올리기', { pulse: true });
+          }
+        },
+      });
+    }
+
+    const onTapBase = (ray, x, y) => {
+      if (phase === 'chop') { chop(); return; }
+      if (phase === 'pick') {
+        // 냉장고를 누르면 문이 열렸다 닫힌다
+        const s = screenOf(v, local(V(fridge.position.x, 1.0, fridge.position.z + 0.3)));
+        if (Math.hypot(s.x - x, s.y - y) < 90) { doorWant = 1; sfx.door(); setTimeout(() => { doorWant = 0; }, 900); }
+      }
+    };
+    game.onTap = onTapBase;
+    game.update = (dt, time) => {
+      doorOpen = lerp(doorOpen, doorWant, 1 - Math.exp(-dt * 8));
+      hinge.rotation.y = doorOpen * 1.6;
+      knifeT = Math.max(0, knifeT - dt * 6);
+      knife.position.y = TOP + 0.06 + (1 - Math.sin(knifeT * Math.PI)) * 0.16 * (knifeT > 0 ? 1 : 1);
+      knife.rotation.z = knifeT > 0 ? -Math.sin(knifeT * Math.PI) * 0.25 : 0;
+      if (stepUpd) stepUpd(dt, time);
+      for (let i = flying.length - 1; i >= 0; i--) {
+        const f = flying[i];
+        f.t += dt;
+        const k = clamp01(f.t / f.dur);
+        f.obj.position.lerpVectors(f.from, f.to, ease(k));
+        f.obj.position.y += Math.sin(k * Math.PI) * f.arc;
+        if (f.spin) f.obj.rotation.x += f.spin * dt;
+        if (k >= 1) { flying.splice(i, 1); if (f.done) f.done(); }
+      }
+      for (let i = fx.length - 1; i >= 0; i--) {
+        const p = fx[i];
+        p.life += dt;
+        if (p.vel) { p.vel.y -= 6 * dt; p.m.position.addScaledVector(p.vel, dt); }
+        if (p.grow) { p.m.scale.setScalar(1 + p.life * 2); p.m.material.opacity = 0.7 * (1 - p.life / p.max); }
+        if (p.life >= p.max) { disposeTree(p.m); fx.splice(i, 1); }
+      }
+      if (dish) { dish.position.copy(handFront(pl, 0.78, 1.02)); dish.rotation.y = sp.rot; }
+    };
+    game.state = () => ({ phase, chosen: chosen.map((c) => c.id), kind, cur, chops: chosen.map((c) => c.chops), done: chosen.map((c) => !!c.done) });
+    game.screenOf = (lx, ly, lz) => screenOf(v, local(V(lx, ly, lz)));
+    game.stop = () => {
+      if (stepUpd && stepUpd.cleanup) stepUpd.cleanup();
+      disposeTree(dish);
+      dish = null;
+      for (const f of fx) disposeTree(f.m);
+      disposeTree(grp);
+      for (const m of pieceMats.values()) m.dispose();
+      pl.pose = null;
+    };
+    begin('cook', '숲속 부엌 · 마음대로 요리', game);
+    pickUi();
   }
 
   // =====================================================================
@@ -1854,7 +2393,7 @@ export function createPlay3D(ctx) {
   }
 
   return {
-    fishing, omokMenu, omok, cookMenu, cook, easel, artSaved,
+    fishing, omokMenu, omok, cookMenu, cook, cookFree, easel, artSaved,
     stop: stopAll, decorateRemote,
     get active() { return cur && cur.id; },
     get game() { return cur && cur.game; },

@@ -101,6 +101,7 @@ async function boot() {
     setActivity, setScene, hub, onlineFriends,
     onRare: (f) => { if (net) net.send('fish', { f }); },
     openArt: (start, onClose) => art.open(start, { onClose }),
+    onDishShared: () => { if (net) net.send('dish', {}); dishAt = 0; refreshDishes(); },
   });
   village.decorateRemote = (r, act, hint) => play3d.decorateRemote(r, act, hint);
   bindUi();
@@ -362,6 +363,7 @@ async function enterVillage(greet) {
   memory.load().catch((e) => { if (e.code === 'SESSION') sessionLost(); });
   refreshToday();
   refreshWall();
+  refreshDishes();
   startNet();
   startMusic();
   setScene('village');
@@ -456,6 +458,10 @@ async function startNet() {
           toast(`${josa(person.name, '이가', '가')} ${josa(f.name, '을', '를')} 낚았어요!`, 3200);
           logLine(person.name, `🎣 ${f.name}!`, false);
         }
+      } else if (type === 'dish') {
+        dishAt = 0;
+        refreshDishes();
+        logLine(person.name, '🍽️ 마을 식탁에 요리를 올렸어요', false);
       } else if (type === 'art') {
         refreshWall();
         logLine(person.name, '🎨 전시관에 그림을 걸었어요', false);
@@ -476,6 +482,13 @@ function stopNet() {
   if (net) { const n = net; net = null; n.stop(); }
   online.clear();
   if (village) village.clearRemotes();
+}
+
+let dishAt = 0;
+async function refreshDishes() {
+  if (Date.now() - dishAt < 3000) return;
+  dishAt = Date.now();
+  try { village.setDishTable(await rpc('kids_dish_table', { p_token: token() })); } catch (e) { /* 서버가 아직이면 빈 식탁 */ }
 }
 
 let wallAt = 0;

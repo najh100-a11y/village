@@ -8,7 +8,7 @@ export const PHRASES = {
   bless: '축복해!', memory: '암송의 집에서 만나!', qt: '오늘 묵상했어?', copy: '필사 같이 하자!', wait: '잠깐 기다려 줘!', bye: '내일 또 만나!',
 };
 export const EMOTES = { heart: '❤️', clap: '👏', smile: '😊', wave: '👋', pray: '🙏', star: '⭐' };
-const EVENTS = ['mv', 'st', 'say', 'chat', 'done', 'av', 'inv', 'invr', 'act', 'fish', 'art'];
+const EVENTS = ['mv', 'st', 'say', 'chat', 'done', 'av', 'inv', 'invr', 'act', 'fish', 'art', 'dish'];
 export const GAME_KINDS = ['omok', 'cook'];
 export const ACTS = ['', 'fish', 'omok', 'cook', 'art', 'memory', 'qt', 'copy'];
 const ID_RE = /^[A-Za-z0-9-]{1,64}$/;
@@ -32,6 +32,7 @@ export function clean(type, p) {
   if (type === 'act') return ACTS.includes(p.a) ? { a: p.a } : null;
   if (type === 'fish') return WORD_RE.test(p.f) ? { f: p.f } : null;
   if (type === 'art') return {};
+  if (type === 'dish') return {};
   return null;
 }
 

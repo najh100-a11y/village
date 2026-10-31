@@ -165,4 +165,9 @@ export const sfx = {
   stone: play(() => { noise({ dur: 0.05, vol: 0.28, freq: 2600, q: 1.5, kind: 'highpass' }); tone({ f: 210, f2: 160, type: 'triangle', dur: 0.07, vol: 0.13 }); }),
   blub: play(() => tone({ f: rnd(260, 320), f2: rnd(640, 760), dur: 0.09, vol: 0.12 })),
   whoosh: play(() => noise({ dur: 0.3, vol: 0.08, freq: 400, freq2: 2400, q: 0.7 })),
+  // 칼질: 사각 소리와 도마에 닿는 통 소리
+  chop: play(() => { noise({ dur: 0.06, vol: 0.22, freq: rnd(3200, 4200), q: 2, kind: 'bandpass' }); tone({ f: rnd(170, 210), f2: 110, type: 'triangle', dur: 0.08, vol: 0.16, delay: 0.02 }); }),
+  // 지글지글
+  sizzle: play(() => { noise({ dur: 0.5, vol: 0.09, freq: 5200, q: 0.6, kind: 'highpass' }); noise({ dur: 0.35, vol: 0.05, freq: 2600, freq2: 4200, q: 1.2, delay: 0.12 }); }),
+  door: play(() => { tone({ f: 330, f2: 410, type: 'triangle', dur: 0.12, vol: 0.08 }); noise({ dur: 0.1, vol: 0.05, freq: 900, q: 1 }); }),
 };

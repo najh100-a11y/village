@@ -244,6 +244,19 @@ function renderVillage() {
         h('p', { class: 'note' }, v.play_free ? `오늘(${v.today})은 말씀 활동을 안 해도 누구나 낚시, 오목, 그림, 요리를 할 수 있어요. 내일부터는 저절로 평소대로 돌아가요.` : '평소에는 그날 암송 연습, 묵상, 필사 가운데 하나를 마쳐야 놀이 마당이 열려요. 첫날이나 행사 날처럼 오늘만 누구나 놀게 하려면 켜 주세요.')),
       sw(v.play_free, '오늘은 누구나 놀이 마당', (on) => call('kids_t_set_village', { p_chat_open: null, p_free_today: on }))),
     ...(v.muted.length ? [h('p', { class: 'note warn' }, '글 대화를 막아 둔 아이: ', v.muted.map((c) => `${c.name}(${c.village_name || '-'})`).join(', '))] : []));
+  const dl = $('#dishList');
+  const dishes = v.dishes || [];
+  const KIND = { soup: '국', fry: '볶음', grill: '구이', salad: '샐러드' };
+  dl.replaceChildren(...(dishes.length ? dishes.map((d) => h('div', { class: 'chat-row' },
+    h('time', { datetime: d.at }, timeOf(d.at)),
+    h('div', {}, h('span', { class: 'who' }, d.child_name || '-', h('small', {}, d.village_name || '')), ' ',
+      d.hidden ? h('span', { class: 'pill red' }, '숨김') : h('span', { class: 'pill green' }, KIND[d.kind] || ''),
+      h('div', { class: 'body' }, d.name)),
+    h('button', { class: 'btn btn-sm' + (d.hidden ? '' : ' btn-ghost'), type: 'button', onclick: async () => {
+      try { villageConf = await call('kids_t_dish_hide', { p_id: d.id, p_hidden: !d.hidden }); } catch (e) { return; }
+      toast(d.hidden ? '다시 식탁에 올렸어요.' : '식탁에서 숨겼어요.');
+      renderVillage();
+    } }, d.hidden ? '다시 보이기' : '숨기기'))) : [h('div', { class: 'card empty' }, '아직 올린 요리가 없어요.')]));
   if (!v.chat.length) { list.replaceChildren(h('div', { class: 'card empty' }, '아직 아이들이 쓴 글이 없어요.')); return; }
   list.replaceChildren(...v.chat.map((m) => h('div', { class: 'chat-row' },
     h('time', { datetime: m.at }, timeOf(m.at)),

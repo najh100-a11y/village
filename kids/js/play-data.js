@@ -81,6 +81,34 @@ export const INGREDIENTS = {
   lentil: ['렌틸콩', '#C8553D'], water: ['물', '#7EC8F2'], apple: ['사과', '#EF6461'], fish: ['생선', '#9FC9E6'],
   honey: ['꿀', '#F4C542'], bread: ['빵', '#D9A35C'], grape: ['포도', '#8E6BC9'], egg: ['달걀', '#FFF3DA'],
   flour: ['밀가루', '#F6F0E2'], yeast: ['누룩', '#C9B99A'],
+  potato: ['감자', '#D9B66A'], carrot: ['당근', '#F28B30'], onion: ['양파', '#EBD9C0'], tomato: ['토마토', '#E8413C'],
+  mushroom: ['버섯', '#C9A27A'], cabbage: ['양배추', '#A8D58A'], paprika: ['파프리카', '#F6C330'], rice: ['쌀', '#F7F3E8'],
+  manna: ['만나', '#FFF8E6'],
 };
+
+// 마음대로 요리: 냉장고 재료 (서버 kids_dish_save가 받는 목록과 같다). 낚은 물고기는 'fish_물고기id'로 쓴다.
+export const FRIDGE = ['potato', 'carrot', 'onion', 'tomato', 'mushroom', 'cabbage', 'paprika', 'egg', 'rice', 'bread', 'manna', 'lentil', 'flour', 'apple', 'grape', 'honey'];
+// 썰었을 때 속 색 (없으면 겉 색)
+export const PIECE_COLOR = {
+  potato: '#F2DFA0', carrot: '#F28B30', onion: '#F3EBDD', tomato: '#E8413C', mushroom: '#E6D2B5', cabbage: '#C7E6A6',
+  paprika: '#F6C330', egg: '#FFE07A', bread: '#E9C88F', apple: '#F5E6B8', grape: '#8E6BC9',
+};
+// 썰지 않고 그대로 넣는 재료 (가루, 곡식, 꿀)
+export const NO_CUT = ['rice', 'manna', 'lentil', 'flour', 'honey'];
+export const COOK_KIND = { soup: ['국', '냄비에 끓이기', '🍲'], fry: ['볶음', '프라이팬에 볶기', '🍳'], grill: ['구이', '화로에 굽기', '🔥'], salad: ['샐러드', '그대로 접시에', '🥗'] };
+export function ingInfo(id) {
+  if (id && id.startsWith('fish_')) {
+    const f = FISH.find((x) => x.id === id.slice(5));
+    return f ? { name: f.name, color: f.body, piece: '#F3D2C2', fish: f } : null;
+  }
+  const v = INGREDIENTS[id];
+  return v ? { name: v[0], color: v[1], piece: PIECE_COLOR[id] || v[1] } : null;
+}
+export function dishName(items, kind) {
+  const names = items.map((id) => (ingInfo(id) || {}).name).filter(Boolean);
+  const uniq = [...new Set(names)];
+  const head = uniq.slice(0, 2).join(' ');
+  return `${head}${uniq.length > 2 ? ' 듬뿍' : ''} ${COOK_KIND[kind][0]}`.trim();
+}
 
 export const ACT_ICON = { fish: '🎣', omok: '⚫', cook: '🍳', art: '🎨', memory: '📖', qt: '🌿', copy: '✏️' };

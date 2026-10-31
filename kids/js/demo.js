@@ -1,7 +1,7 @@
 // 진숲 어린이 마을 — 체험판 (서버 없이 이 브라우저 안에서만 돌아가는 가짜 서버)
 // 실제 서버의 RPC 함수와 같은 이름, 같은 규칙으로 흉내 낸다.
 import PLAN from './plan-data.js';
-import { FISH } from './play-data.js';
+import { FISH, FRIDGE as FRIDGE_IDS } from './play-data.js';
 import { toJpeg } from './images.js';
 import { cleanChat } from './chatfilter.js';
 
@@ -213,6 +213,44 @@ export class DemoBackend {
     this.db.chat.push({ id: Date.now() + Math.random(), child: me, body: t, masked: t !== raw, at: nowIso() });
     this.db.chat = this.db.chat.slice(-300);
     return { text: t };
+  }
+
+  // ---------- 마음대로 요리 ----------
+  kids_dish_save({ p_token, p_name, p_kind, p_items }) {
+    const me = this.session(p_token, 'child');
+    this.gate(me);
+    if (!['soup', 'fry', 'grill', 'salad'].includes(p_kind)) fail('BAD_DISH');
+    if (!Array.isArray(p_items) || p_items.length < 1 || p_items.length > 4) fail('BAD_DISH');
+    const caught = new Set(this.db.fish.filter((f) => f.child === me).map((f) => `fish_${f.fish}`));
+    for (const it of p_items) {
+      if (FRIDGE_IDS.includes(it)) continue;
+      const k = FISH.find((f) => `fish_${f.id}` === it);
+      if (k && k.rarity >= 0 && caught.has(it)) continue;
+      fail('BAD_DISH');
+    }
+    this.db.dishes = this.db.dishes || [];
+    const mine = this.db.dishes.filter((d) => d.child === me);
+    const last = mine.map((d) => d.at).sort().pop();
+    if (last && Date.now() - new Date(last).getTime() < 3000) fail('TOO_FAST');
+    if (mine.filter((d) => d.at >= startOfToday()).length >= 30) fail('DISH_DAY');
+    const name = [...cleanChat(p_name)].slice(0, 16).join('') || '나의 요리';
+    const id = Date.now();
+    this.db.dishes.push({ id, child: me, name, kind: p_kind, items: p_items, hidden: false, at: nowIso() });
+    this.db.dishes = this.db.dishes.slice(-200);
+    return { id, name };
+  }
+  kids_dish_table({ p_token }) {
+    const me = this.session(p_token, 'child');
+    return (this.db.dishes || []).filter((d) => !d.hidden).slice(-4).reverse().map((d) => {
+      const c = this.db.children.find((x) => x.id === d.child) || {};
+      return { id: d.id, name: d.name, kind: d.kind, items: d.items, cook: c.village_name, me: d.child === me };
+    });
+  }
+  kids_t_dish_hide({ p_token, p_id, p_hidden }) {
+    this.session(p_token, 'teacher');
+    const d = (this.db.dishes || []).find((x) => x.id === p_id) || fail('NOT_FOUND');
+    d.hidden = !!p_hidden;
+    return this.kids_t_village({ p_token });
   }
 
   // ---------- 아이 ----------
@@ -738,6 +776,10 @@ export class DemoBackend {
         return { id: m.id, child: m.child, name: c.name, village_name: c.village_name, body: m.body, masked: m.masked, muted: !!c.chat_muted, at: m.at };
       }),
       muted: this.db.children.filter((c) => c.chat_muted).map((c) => ({ id: c.id, name: c.name, village_name: c.village_name })),
+      dishes: (this.db.dishes || []).slice().reverse().slice(0, 60).map((d) => {
+        const c = this.db.children.find((x) => x.id === d.child) || {};
+        return { id: d.id, name: d.name, kind: d.kind, child_name: c.name, village_name: c.village_name, hidden: d.hidden, at: d.at };
+      }),
     };
   }
   kids_t_set_village({ p_token, p_chat_open, p_free_today }) {
