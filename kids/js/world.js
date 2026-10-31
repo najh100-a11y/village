@@ -5,6 +5,9 @@ import { randomAvatar, colorOf, shade } from './face.js';
 import { mergeStatic, Instancer } from './merge.js';
 import { Park, PARK, RIDE_IDS, NO_TREE, resetLimbs } from './park.js';
 import { Critters } from './critters.js';
+import { Pool, POOL, inPool, nearPool, SWIM_Y, swimPose } from './pool.js';
+import { Bugs, makeBug } from './bugs.js';
+import { Fireworks } from './fireworks.js';
 
 const WALK_R = 30.2;
 const PR = 0.42; // 사람 충돌 반지름
@@ -61,6 +64,54 @@ function remoteEatPose() {
   f.eat = true;
   return f;
 }
+// 곤충 그물 (손에 든다). hoop에 잡은 곤충을 넣어 보여 준다
+function makeNet() {
+  const g = new THREE.Group();
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, 1.3, 6), toon('#C99862'));
+  pole.position.y = 0.65;
+  g.add(pole);
+  const hoop = new THREE.Group();
+  hoop.position.y = 1.48;
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.2, 0.022, 6, 20), toon('#5FA9E0'));
+  hoop.add(ring);
+  const bagMat = new THREE.MeshToonMaterial({ color: '#FFFFFF', gradientMap: toonGradient(), transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false });
+  bagMat.userData.own = true;
+  const bag = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.34, 14, 1, true), bagMat);
+  bag.rotation.x = Math.PI / 2;
+  bag.position.z = -0.17;
+  hoop.add(bag);
+  g.add(hoop);
+  g.rotation.x = 1.9;
+  g.userData.isNet = true;
+  g.userData.hoop = hoop;
+  return g;
+}
+function disposeObj(o) {
+  o.traverse((x) => {
+    if (x.geometry) x.geometry.dispose();
+    const mt = x.material;
+    if (mt && mt.userData && mt.userData.own) mt.dispose();
+  });
+}
+// 그물질: 들었다가 휙 내리고, 잡으면 그물을 번쩍 든다
+function netPose(n) {
+  const f = (av, dt, t) => {
+    const k = n.t || 0;
+    let a;
+    if (k < 0.2) a = -1.2 - (k / 0.2) * 1.5;
+    else if (k < 0.4) a = -2.7 + ((k - 0.2) / 0.2) * 1.9;
+    else if (n.hit) a = -2.8 + Math.sin(t * 9) * 0.12;
+    else a = -0.9;
+    av.arms[1].rotation.x = a;
+    av.arms[1].rotation.z = 0.05;
+    av.arms[0].rotation.x = n.hit && k > 0.4 ? -2.6 : -0.4;
+    av.arms[0].rotation.z = n.hit && k > 0.4 ? -0.3 : -0.2;
+  };
+  f.net = true;
+  return f;
+}
+const netIdlePose = (av) => { av.arms[1].rotation.x = -1.2; av.arms[1].rotation.z = 0.05; };
+netIdlePose.net = true;
 function m(geo, mat, x = 0, y = 0, z = 0, shadow = true) {
   const o = new THREE.Mesh(geo, mat);
   o.position.set(x, y, z);
@@ -133,6 +184,7 @@ const PATHS = [
   [[4.5, -1.2], [9, 1.0], [13.7, 4.1]],
   [[0, 10.5], [-3, 11.7], [-5.4, 12.7]], // 연못 낚시터로
   [[0, 11], [5, 12.9], [9.4, 14.4]], // 놀이 마당으로
+  [[9, 1.0], [12.6, -2.4], [15.4, -4.9]], // 수영장으로
 ];
 const PLAZA = { x: 0, z: -2.5, r: 5.4 };
 const YARD = { x: 11.2, z: 16.4, r: 3.4 }; // 놀이 마당
@@ -148,6 +200,7 @@ function inPark(x, z, pad = 0) {
 function nearPath(x, z, pad) {
   if (Math.hypot(x - PLAZA.x, z - PLAZA.z) < PLAZA.r + pad) return true;
   if (inPark(x, z, pad)) return true;
+  if (nearPool(x, z, pad)) return true;
   if (Math.hypot(x - YARD.x, z - YARD.z) < YARD.r + pad) return true;
   for (const p of PATHS) for (let i = 0; i < p.length - 1; i++) {
     if (distToSeg(x, z, p[i][0], p[i][1], p[i + 1][0], p[i + 1][1]) < 1.2 + pad) return true;
@@ -203,6 +256,10 @@ export class Village {
     this.noFade = null;
     this.sitting = null;
     this.eating = null;
+    this.netting = null;
+    this.treeSpots = [];
+    this.flowerSpots = [];
+    this.grassSpots = [];
   }
 
   async init() {
@@ -242,9 +299,13 @@ export class Village {
     this.buildPlayground();
     this.buildBenches();
     this.park = new Park(this, { signMesh });
+    this.pool = new Pool(this);
     this.buildNature();
     this.critters = new Critters(this);
     this.critters.onSound = (kind, soft) => this.on.onCritterSound && this.on.onCritterSound(kind, soft);
+    this.bugs = new Bugs(this);
+    this.fireworks = new Fireworks(this);
+    this.fireworks.onBoom = (kind) => this.on.onBoom && this.on.onBoom(kind);
     this.buildNpcs();
     this.applyTimeOfDay();
     this.bindInput();
@@ -321,6 +382,23 @@ export class Village {
       }
       ctx.globalAlpha = 1;
       ctx.restore();
+      // 수영장: 둘레 바닥과 물빛 타일 바닥
+      {
+        const dx = POOL.hw + POOL.deck, dz = POOL.hd + POOL.deck;
+        ctx.fillStyle = '#CFC6B4';
+        ctx.beginPath(); ctx.roundRect(px(POOL.x - dx - 0.15), px(POOL.z - dz - 0.15), (dx + 0.15) * 2 * u, (dz + 0.15) * 2 * u, 0.6 * u); ctx.fill();
+        ctx.fillStyle = '#ECE7DC';
+        ctx.beginPath(); ctx.roundRect(px(POOL.x - dx), px(POOL.z - dz), dx * 2 * u, dz * 2 * u, 0.5 * u); ctx.fill();
+        ctx.fillStyle = '#2E9BD0';
+        ctx.fillRect(px(POOL.x - POOL.hw), px(POOL.z - POOL.hd), POOL.hw * 2 * u, POOL.hd * 2 * u);
+        ctx.strokeStyle = 'rgba(140,215,245,.7)';
+        ctx.lineWidth = 2;
+        for (let gx = -POOL.hw; gx <= POOL.hw + 0.01; gx += 0.55) { ctx.beginPath(); ctx.moveTo(px(POOL.x + gx), px(POOL.z - POOL.hd)); ctx.lineTo(px(POOL.x + gx), px(POOL.z + POOL.hd)); ctx.stroke(); }
+        for (let gz = -POOL.hd; gz <= POOL.hd + 0.01; gz += 0.55) { ctx.beginPath(); ctx.moveTo(px(POOL.x - POOL.hw), px(POOL.z + gz)); ctx.lineTo(px(POOL.x + POOL.hw), px(POOL.z + gz)); ctx.stroke(); }
+        ctx.strokeStyle = '#1F6FA0';
+        ctx.lineWidth = 5;
+        for (const lz of [-1.5, 1.5]) { ctx.beginPath(); ctx.moveTo(px(POOL.x - POOL.hw + 0.8), px(POOL.z + lz)); ctx.lineTo(px(POOL.x + POOL.hw - 0.8), px(POOL.z + lz)); ctx.stroke(); }
+      }
       // 입구에서 들어오는 길
       ctx.fillStyle = '#EAD7A8';
       ctx.fillRect(px(-1.15), px(15), 2.3 * u, 2.4 * u);
@@ -873,6 +951,7 @@ export class Village {
   // 마을 식탁 접시 (items: [{id, name, kind, items, cook}] 최근 4개)
   setDishTable(list) {
     if (!this.dishTable || !this.buildDish) return;
+    this.pickRoots = this.pickRoots.filter((o) => !(o.userData.pick && o.userData.pick.type === 'dish'));
     for (const c of [...this.dishTable.children]) {
       c.traverse((o) => {
         if (o.geometry) o.geometry.dispose();
@@ -881,28 +960,44 @@ export class Village {
       });
       c.removeFromParent();
     }
-    (list || []).slice(0, 4).forEach((d, i) => {
+    this.dishList = (list || []).slice(0, 4);
+    this.dishList.forEach((d, i) => {
       const x = -1.0 + i * 0.67;
       const dish = this.buildDish(d.kind, d.items || [], d.id || i + 1);
       dish.scale.setScalar(1.25);
       dish.position.set(x, 0.84, -0.05);
+      // 접시를 누르면 먹으러 간다 (손가락으로 누르기 쉽게 보이지 않는 공을 씌운다)
+      const hit = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), new THREE.MeshBasicMaterial({ visible: false }));
+      hit.position.y = 0.08;
+      dish.add(hit);
+      dish.userData.pick = { type: 'dish', i };
+      this.pickRoots.push(dish);
       this.dishTable.add(dish);
-      const tex = canvasTexture(256, 96, (ctx, w, hh) => {
+      // 이름표: 요리 이름, 만든 친구, 먹은 친구
+      const eaters = Array.isArray(d.eaters) ? d.eaters : null;
+      const tex = canvasTexture(256, eaters ? 132 : 96, (ctx, w, hh) => {
         ctx.fillStyle = '#FFFDF7'; ctx.fillRect(0, 0, w, hh);
         ctx.strokeStyle = '#E8B04A'; ctx.lineWidth = 6; ctx.strokeRect(3, 3, w - 6, hh - 6);
         ctx.fillStyle = '#6B4429'; ctx.textAlign = 'center';
-        let size = 30;
-        ctx.font = `${size}px ${FONT}`;
-        const name = String(d.name || '');
-        while (ctx.measureText(name).width > w - 20 && size > 16) { size -= 1; ctx.font = `${size}px ${FONT}`; }
-        ctx.fillText(name, w / 2, 44);
-        ctx.font = `20px ${FONT}`;
+        const fit = (text, size, min, y) => {
+          ctx.font = `${size}px ${FONT}`;
+          while (ctx.measureText(text).width > w - 20 && size > min) { size -= 1; ctx.font = `${size}px ${FONT}`; }
+          ctx.fillText(text, w / 2, y);
+        };
+        fit(String(d.name || ''), 30, 16, 44);
         ctx.globalAlpha = 0.8;
-        ctx.fillText(`${d.cook || '친구'}의 요리`, w / 2, 78);
+        fit(`${d.cook || '친구'}의 요리`, 20, 14, 76);
+        if (eaters) {
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = eaters.length ? '#3E8F4A' : '#9A7B5E';
+          const n = Number(d.eaten) || eaters.length;
+          const names = eaters.slice(0, 3).join(', ');
+          fit(n ? `냠냠: ${names}${n > 3 ? ` 외 ${n - 3}명` : ''}` : '아직 아무도 안 먹었어요', 19, 12, 112);
+        }
       });
       const mat = new THREE.MeshBasicMaterial({ map: tex });
       mat.userData.own = true;
-      const card = new THREE.Mesh(new THREE.PlaneGeometry(0.58, 0.22), mat);
+      const card = new THREE.Mesh(new THREE.PlaneGeometry(0.58, eaters ? 0.3 : 0.22), mat);
       card.position.set(x, 0.95, 0.42);
       card.rotation.x = -0.55;
       this.dishTable.add(card);
@@ -1121,9 +1216,9 @@ export class Village {
     this.setFruit(best);
     const held = handFruit(best.c);
     this.player.hold(held, 1);
-    this.eating = { t: 0, f: best, held, bites: 0, c: best.c };
+    this.eating = { t: 0, f: best, held, bites: 0, c: best.c, name: FRUIT_NAMES[best.c], what: 'fruit' };
     this.player.pose = eatPose(this.eating);
-    if (this.on.onFruit) this.on.onFruit('start', FRUIT_NAMES[best.c]);
+    if (this.on.onFruit) this.on.onFruit('start', this.eating.name, 'fruit');
   }
   tickEat(dt) {
     const e = this.eating;
@@ -1131,8 +1226,8 @@ export class Village {
     const bites = [0.85, 1.35, 1.85];
     while (e.bites < 3 && e.t >= bites[e.bites]) {
       e.bites++;
-      e.held.scale.setScalar(1 - e.bites * 0.3);
-      if (this.on.onFruit) this.on.onFruit('bite', FRUIT_NAMES[e.c]);
+      if (e.what === 'fruit') e.held.scale.setScalar(1 - e.bites * 0.3);
+      if (this.on.onFruit) this.on.onFruit('bite', e.name, e.what);
     }
     if (e.t >= 2.3) this.finishEat();
   }
@@ -1144,7 +1239,8 @@ export class Village {
     this.player.pose = null;
     resetLimbs(this.player);
     this.player.celebrate();
-    if (this.on.onFruit) this.on.onFruit('done', FRUIT_NAMES[e.c]);
+    if (e.what === 'dish') disposeObj(e.held);
+    if (this.on.onFruit) this.on.onFruit('done', e.name, e.what);
   }
   cancelEat() {
     if (!this.eating) return;
@@ -1152,8 +1248,9 @@ export class Village {
     this.eating = null;
     if (this.player) { this.player.drop(); if (this.player.pose && this.player.pose.eat) this.player.pose = null; resetLimbs(this.player); }
     // 다 못 먹은 열매는 나무로 돌아간다
-    if (e.bites === 0) { e.f.alive = true; e.f.grow = 1; this.setFruit(e.f); }
-    if (this.on.onFruit) this.on.onFruit('stop', FRUIT_NAMES[e.c]);
+    if (e.bites === 0 && e.f) { e.f.alive = true; e.f.grow = 1; this.setFruit(e.f); }
+    if (e.what === 'dish') disposeObj(e.held);
+    if (this.on.onFruit) this.on.onFruit('stop', e.name, e.what);
   }
   tickFruit(dt) {
     this.fruitClock = (this.fruitClock || 0) + dt;
@@ -1165,6 +1262,88 @@ export class Village {
       if (f.grow >= 1) f.alive = true;
       this.setFruit(f);
     }
+  }
+
+  // ---------- 곤충 채집: 다가가서 그물을 휘두른다 ----------
+  walkToBug(i) {
+    const sl = this.bugs && this.bugs.slots[i];
+    if (!sl || !sl.kind || !this.player || this.mode !== 'play') return;
+    const p = this.player.root.position, gp = sl.ground;
+    const dx = p.x - gp.x, dz = p.z - gp.z, d = Math.hypot(dx, dz) || 1;
+    const pos = sl.kind.habitat === 'tree' ? gp.clone() : new THREE.Vector3(gp.x + (dx / d) * 0.95, 0, gp.z + (dz / d) * 0.95);
+    this.resolve(pos);
+    const kind = sl.kind;
+    this.target = { pos, action: () => this.on.onBug && this.on.onBug(i, kind) };
+    this.showTapMark(pos);
+    this.reportMove(pos.x, pos.z);
+  }
+  // chance: 잡힐 확률, cb(hit, kind, window): 그물이 내려간 순간 알려 준다
+  startNet(i, chance, cb) {
+    const sl = this.bugs && this.bugs.slots[i];
+    if (this.mode !== 'play' || this.netting || !this.player || !sl || !sl.kind) return false;
+    this.cancelEat();
+    const p = this.player.root.position;
+    this.player.root.rotation.y = Math.atan2(sl.pos.x - p.x, sl.pos.z - p.z);
+    const net = makeNet();
+    this.player.hold(net, 1);
+    this.netting = { t: 0, i, w: sl.w, kind: sl.kind, chance, cb, net, hit: null };
+    this.player.pose = netPose(this.netting);
+    if (this.on.onNet) this.on.onNet(true);
+    return true;
+  }
+  tickNet(dt) {
+    const n = this.netting;
+    n.t += dt;
+    if (n.hit === null && n.t >= 0.36) {
+      const sl = this.bugs.slots[n.i];
+      const still = !!sl.kind && sl.w === n.w && sl.kind.id === n.kind.id;
+      n.hit = still && Math.random() < n.chance;
+      this.bugs.markCaught(n.i, n.w); // 잡았거나 날아갔다
+      if (n.hit) {
+        const mb = makeBug(n.kind);
+        mb.g.position.z = -0.12;
+        mb.g.scale.multiplyScalar(0.8);
+        n.net.userData.hoop.add(mb.g);
+      }
+      try { n.cb(n.hit, n.kind, n.w); } catch (e) { console.error(e); }
+    }
+    if (n.t >= (n.hit ? 2.4 : 1.1)) this.endNet();
+  }
+  endNet() {
+    const n = this.netting;
+    if (!n) return;
+    this.netting = null;
+    if (this.player) {
+      if (this.player.held && this.player.held.obj === n.net) this.player.drop();
+      if (this.player.pose && this.player.pose.net) this.player.pose = null;
+      resetLimbs(this.player);
+    }
+    disposeObj(n.net);
+    if (this.on.onNet) this.on.onNet(false);
+  }
+
+  // ---------- 마을 식탁: 친구 요리를 먹는다 ----------
+  walkToDish(i) {
+    const d = this.dishList && this.dishList[i];
+    if (!d || !this.player || this.mode !== 'play') return;
+    const pos = new THREE.Vector3(11.2 - 1.0 + i * 0.67, 0, 20.6 + 1.05);
+    this.resolve(pos);
+    this.target = { pos, action: () => { this.player.root.rotation.y = Math.PI; if (this.on.onDish) this.on.onDish(i, d); } };
+    this.showTapMark(pos);
+    this.reportMove(pos.x, pos.z);
+  }
+  // 요리를 한 그릇 떠서 냠냠 (서버에 기록한 뒤 부른다)
+  eatDish(d) {
+    if (this.mode !== 'play' || this.eating || !this.player || !this.buildDish) return;
+    const bowl = this.buildDish(d.kind, d.items || [], d.id || 1);
+    bowl.scale.setScalar(0.5);
+    bowl.position.set(0, -0.5, 0.06);
+    const held = new THREE.Group();
+    held.add(bowl);
+    this.player.hold(held, 1);
+    this.eating = { t: 0.45, f: null, held, bites: 0, c: 0, name: d.name || '요리', what: 'dish' };
+    this.player.pose = eatPose(this.eating);
+    if (this.on.onFruit) this.on.onFruit('start', this.eating.name, 'dish');
   }
 
   // ---------- 나무, 꽃, 돌 ----------
@@ -1233,6 +1412,7 @@ export class Village {
       t.rotation.y = r() * Math.PI * 2;
       inst.addGroup(t);
       this.addObstacleCircle(x, z, 0.38 * s);
+      if (!isPine) this.treeSpots.push([x, z, s]);
       if (fruitLocal) {
         t.updateMatrixWorld(true);
         this.fruitTrees.push({ x, z, s, c: fruitLocal.c, pts: fruitLocal.pts.map(([lx, ly, lz]) => new THREE.Vector3(lx, ly, lz).applyMatrix4(t.matrixWorld)) });
@@ -1299,6 +1479,7 @@ export class Village {
       const near = nearPath(cx, cz, 1.6);
       if (!near && r() < 0.65) continue;
       const col = flowerCols[Math.floor(r() * flowerCols.length)];
+      this.flowerSpots.push([cx, cz]);
       const n = 2 + Math.floor(r() * 4);
       for (let k = 0; k < n; k++) spots.push([cx + (r() - 0.5) * 1.2, cz + (r() - 0.5) * 1.2, col]);
     }
@@ -1329,6 +1510,7 @@ export class Village {
     for (let i = 0; i < 3000 && ti < 500; i++) {
       const x = (r() - 0.5) * 58, z = (r() - 0.5) * 58;
       if (Math.hypot(x, z) > 29 || nearPath(x, z, 0.1)) continue;
+      if (i % 5 === 0) this.grassSpots.push([x, z]);
       for (let k = 0; k < 3 && ti < 500; k++) {
         mat4.makeRotationZ((k - 1) * 0.35);
         mat4.setPosition(x + (k - 1) * 0.1, 0.12, z);
@@ -1394,7 +1576,7 @@ export class Village {
     this.remotes.set(id, r);
     return r;
   }
-  drawRemoteTag(r) { r.tag.textContent = r.act ? `${r.act} ${r.name}` : r.name; }
+  drawRemoteTag(r) { r.tag.textContent = r.act ? `${r.act} ${r.name}` : r.swim ? `🏊 ${r.name}` : r.name; }
   setRemoteActivity(id, icon, act = '', seat = -1) {
     const r = this.remotes.get(id);
     if (!r) return;
@@ -1419,6 +1601,13 @@ export class Village {
       if (r.pin && r.pin.kind === 'bench' && r.pin.seat === r.actSeat) return;
       if (this.decorateRemote) this.decorateRemote(r, '');
       this.pinBench(r, r.actSeat);
+      return;
+    }
+    if (act !== 'bug' && av.held && av.held.obj.userData.isNet) { const o = av.held.obj; av.drop(); disposeObj(o); if (av.pose && av.pose.net) { av.pose = null; resetLimbs(av); } }
+    if (act === 'bug') {
+      if (this.decorateRemote) this.decorateRemote(r, '');
+      if (!av.held || !av.held.obj.userData.isNet) av.hold(makeNet(), 1);
+      av.pose = netIdlePose;
       return;
     }
     if (act === 'eat') {
@@ -1556,6 +1745,7 @@ export class Village {
           if (r.stuck > 0.6) r.target = null;
         }
       }
+      if (!r.pin) this.swimTick(r.av, pos, moving, dt, r);
       r.av.update(dt, moving, 1.2);
       this.placeLabel(r.tag, pos, 2.45);
       if (r.bubble) this.tickBubble(r, pos, 3.05, dt);
@@ -1744,6 +1934,8 @@ export class Village {
       if (p.type === 'bench') { this.walkToBench(p.i); return; }
       if (p.type === 'fruit') { this.walkToFruit(p.i); return; }
       if (p.type === 'pet') { this.petAnimal(p.i); return; }
+      if (p.type === 'bug') { this.walkToBug(p.i); return; }
+      if (p.type === 'dish') { this.walkToDish(p.i); return; }
     }
     const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     const pt = new THREE.Vector3();
@@ -1875,6 +2067,7 @@ export class Village {
     if (this.game && this.game !== ctrl && this.game.stop) this.game.stop();
     if (this.sitting) this.standUp(true);
     if (this.eating) this.cancelEat();
+    if (this.netting) this.endNet();
     this.game = ctrl;
     this.mode = 'game';
     this.view.game = { yaw: 0, elev: 0, zoom: 1 };
@@ -1951,8 +2144,20 @@ export class Village {
       const T = this.park.now();
       this.park.update(T, dt);
       if (this.critters) this.critters.update(T, dt);
+      if (this.pool) this.pool.update(T, dt);
+      if (this.bugs) this.bugs.update(T, dt);
     }
     this.tickFruit(dt);
+    // 불꽃놀이: 터질 때 마을이 잠깐 환해진다 (밤에 더)
+    if (this.fireworks) {
+      this.fireworks.update(dt);
+      const f = this.fireworks.flash;
+      if (f > 0 || this.flashOn) {
+        const base = SKY[this.phase || 'day'].hemi;
+        this.hemi.intensity = base + f * (this.phase === 'night' || this.phase === 'dusk' ? 0.8 : 0.25);
+        this.flashOn = f > 0;
+      }
+    }
 
     this.updateRemotes(dt);
 
@@ -1985,10 +2190,15 @@ export class Village {
     } else if (this.mode === 'play' && this.player) {
       // 기본: 주민 뒤쪽 위(남쪽)에서 앞을 조금 넓게 내려다본다. 끌어서 돌리면 그 방향에서 본다.
       const p = this.player.root.position;
-      const v = this.view.play;
+      const v0 = this.view.play;
+      // 불꽃놀이를 할 때는 잠깐 하늘을 올려다본다
+      this.lookUpT = Math.max(0, (this.lookUpT || 0) - dt);
+      this.skyLook = (this.skyLook || 0) + ((this.lookUpT > 0 ? 1 : 0) - (this.skyLook || 0)) * Math.min(1, dt * 2.5);
+      const sky = this.skyLook;
+      const v = sky > 0.001 ? { yaw: v0.yaw, zoom: v0.zoom, elev: v0.elev - sky * 0.45 } : v0;
       const near = Math.min(1, v.zoom);
       const ahead = 3.2 * near;
-      this.wantLook.set(p.x - Math.sin(v.yaw) * ahead, 0.6 + (1 - near) * 0.9, p.z - Math.cos(v.yaw) * ahead);
+      this.wantLook.set(p.x - Math.sin(v.yaw) * ahead, 0.6 + (1 - near) * 0.9 + sky * 4.5, p.z - Math.cos(v.yaw) * ahead);
       const dist = 23.83 * (this.camera.aspect < 1 ? 1.25 : 1);
       const base = this.wantPos.set(this.wantLook.x, this.wantLook.y + 15.4 / 23.83 * dist, this.wantLook.z + 18.2 / 23.83 * dist);
       this.orbit(this.wantLook, base.clone(), v, this.wantPos);
@@ -2054,6 +2264,10 @@ export class Village {
       if (this.keys.size || this.target) this.cancelEat();
       else { this.tickEat(dt); pl.update(dt, false); return; }
     }
+    if (this.netting) {
+      if (this.netting.hit === null || !(this.keys.size || this.target)) { this.tickNet(dt); pl.update(dt, false); if (this.netting) return; }
+      else this.endNet();
+    }
     let dx = 0, dz = 0;
     if (this.keys.size) {
       let kx = 0, kz = 0;
@@ -2079,7 +2293,7 @@ export class Village {
     const len = Math.hypot(dx, dz);
     let moving = false;
     if (len > 0.001) {
-      const speed = 5.2;
+      const speed = inPool(p.x, p.z) ? 3.2 : 5.2; // 물속에서는 천천히
       const before = p.clone();
       p.x += (dx / len) * speed * dt;
       p.z += (dz / len) * speed * dt;
@@ -2099,6 +2313,7 @@ export class Village {
       }
       if (moving && this.on.onMove) this.on.onMove();
     }
+    this.swimTick(pl, p, moving, dt, this);
     pl.update(dt, moving, 1.2);
     // 친구들에게 알리기: 자판으로 걸을 때는 조금 앞을 목표로 자주, 멈추면 한 번
     if (this.keys.size && len > 0.001) {
@@ -2126,6 +2341,35 @@ export class Village {
   }
 
   celebrate() { if (this.player) this.player.celebrate(); }
+  // 잠깐 하늘을 올려다보기 (불꽃놀이)
+  lookUp(sec = 4.5) { this.lookUpT = Math.max(this.lookUpT || 0, sec); }
+  // 지금 보는 쪽으로 d만큼 앞 (땅 위)
+  aheadOf(d) {
+    const p = this.player.root.position, yw = this.view.play.yaw;
+    return { x: p.x - Math.sin(yw) * d, z: p.z - Math.cos(yw) * d };
+  }
+
+  // 수영장: 물에 들어가면 머리와 어깨만 나오게 낮추고 헤엄친다 (나와 친구 모두). st에 swim, rip을 기억한다
+  swimTick(av, pos, moving, dt, st) {
+    if (!this.pool) return;
+    const sw = inPool(pos.x, pos.z);
+    if (sw !== !!st.swim) {
+      st.swim = sw;
+      if (sw) {
+        this.pool.splash(pos.x, pos.z);
+        if (st === this && this.on.onSplash) this.on.onSplash();
+        if (!av.pose) av.pose = swimPose;
+      } else if (av.pose === swimPose) { av.pose = null; resetLimbs(av); }
+      if (st !== this) this.drawRemoteTag(st);
+    }
+    av.swimMoving = moving;
+    pos.y += ((sw ? SWIM_Y : 0) - pos.y) * Math.min(1, dt * 6);
+    if (Math.abs(pos.y) < 0.002) pos.y = 0;
+    if (sw) {
+      st.rip = (st.rip || 0) - dt;
+      if (st.rip <= 0) { this.pool.ripple(pos.x, pos.z, moving ? 1 : 0.7); st.rip = moving ? 0.35 : 1.2; }
+    }
+  }
 }
 
 function turn(cur, want, k) {

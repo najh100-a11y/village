@@ -178,5 +178,12 @@ export const sfx = {
   // 동물 소리 (soft면 작게)
   bark: play((soft = false) => { const v = soft ? 0.07 : 0.13; tone({ f: 520, f2: 330, type: 'sawtooth', dur: 0.09, vol: v * 0.6 }); tone({ f: 470, f2: 300, type: 'triangle', dur: 0.1, vol: v, delay: 0.16 }); }),
   meow: play((soft = false) => { const v = soft ? 0.06 : 0.11; tone({ f: 620, f2: 880, type: 'triangle', dur: 0.16, vol: v }); tone({ f: 880, f2: 520, type: 'triangle', dur: 0.26, vol: v, delay: 0.15 }); }),
+  // 불꽃 터지는 소리 (soft: 두 번째 작은 꽃)
+  boom: play((soft = false) => {
+    const v = soft ? 0.5 : 1;
+    tone({ f: 120, f2: 45, type: 'sine', dur: 0.5, vol: 0.22 * v });
+    noise({ dur: 0.45, vol: 0.14 * v, freq: 900, freq2: 200, q: 0.6, kind: 'lowpass' });
+    for (let i = 0; i < 6; i++) noise({ dur: 0.04, vol: 0.05 * v, freq: rnd(3000, 6000), q: 2, kind: 'bandpass', delay: 0.25 + i * rnd(0.05, 0.12) });
+  }),
   tweet: play(() => { [0, 0.13, 0.24].forEach((d, i) => tone({ f: 2600 + i * 300, f2: 3600 + i * 200, dur: 0.06, vol: 0.035, delay: d })); }),
 };

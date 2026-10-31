@@ -4,6 +4,8 @@ import PLAN from './plan-data.js';
 import { FISH, FRIDGE as FRIDGE_IDS } from './play-data.js';
 import { toJpeg } from './images.js';
 import { cleanChat } from './chatfilter.js';
+const BUG_KINDS = ['cabbage_white', 'swallowtail', 'honeybee', 'ladybug', 'grasshopper', 'red_dragonfly', 'mantis', 'cicada', 'stag_beetle', 'rhino_beetle', 'firefly'];
+const ITEM_PRICE = { fw_spark: 1, fw_flower: 3, fw_heart: 5 };
 
 const FIRST = PLAN.weeks[0].week_start;
 const LAST = PLAN.weeks[PLAN.weeks.length - 1].days.slice(-1)[0].date;
@@ -197,7 +199,7 @@ export class DemoBackend {
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true }; }
   kids_dm_send({ p_token, p_to, p_text }) {
     const me = this.session(p_token, 'child');
     if (!this.villageConf().chat_open) fail('CHAT_OFF');
@@ -256,12 +258,84 @@ export class DemoBackend {
     this.db.dishes = this.db.dishes.slice(-200);
     return { id, name };
   }
+  dishEaters(id) {
+    return (this.db.dishEats || []).filter((e) => e.dish === id).map((e) => (this.db.children.find((x) => x.id === e.child) || {}).village_name).filter(Boolean);
+  }
   kids_dish_table({ p_token }) {
     const me = this.session(p_token, 'child');
     return (this.db.dishes || []).filter((d) => !d.hidden).slice(-4).reverse().map((d) => {
       const c = this.db.children.find((x) => x.id === d.child) || {};
-      return { id: d.id, name: d.name, kind: d.kind, items: d.items, cook: c.village_name, me: d.child === me };
+      const eaters = this.dishEaters(d.id);
+      return { id: d.id, name: d.name, kind: d.kind, items: d.items, cook: c.village_name, me: d.child === me,
+        eaters: eaters.slice(0, 10), eaten: eaters.length, ate: (this.db.dishEats || []).some((e) => e.dish === d.id && e.child === me) };
     });
+  }
+  kids_dish_eat({ p_token, p_dish }) {
+    const me = this.session(p_token, 'child');
+    const d = (this.db.dishes || []).find((x) => x.id === p_dish && !x.hidden) || fail('NOT_FOUND');
+    if (d.child === me) fail('OWN_DISH');
+    this.db.dishEats = this.db.dishEats || [];
+    if (!this.db.dishEats.some((e) => e.dish === d.id && e.child === me)) this.db.dishEats.push({ dish: d.id, child: me, at: nowIso() });
+    const eaters = this.dishEaters(d.id);
+    return { id: d.id, name: d.name, eaters: eaters.slice(0, 10), eaten: eaters.length };
+  }
+
+  // ---------- 곤충 채집 ----------
+  kids_bug_book({ p_token }) {
+    const me = this.session(p_token, 'child');
+    const mine = {};
+    for (const b of (this.db.bugs || []).filter((x) => x.child === me)) {
+      const m = mine[b.bug] || (mine[b.bug] = { count: 0, first: b.at });
+      m.count++;
+    }
+    return { mine, my_today: (this.db.bugs || []).filter((x) => x.child === me && x.at >= startOfToday()).length };
+  }
+  kids_bug_catch({ p_token, p_bug }) {
+    const me = this.session(p_token, 'child');
+    this.gate(me);
+    if (!BUG_KINDS.includes(p_bug)) fail('BAD_BUG');
+    this.db.bugs = this.db.bugs || [];
+    const mine = this.db.bugs.filter((x) => x.child === me);
+    const last = mine.map((x) => x.at).sort().pop();
+    if (last && Date.now() - new Date(last).getTime() < 2000) fail('TOO_FAST');
+    if (mine.filter((x) => x.at >= startOfToday()).length >= 60) fail('BUG_DAY');
+    this.db.bugs.push({ child: me, bug: p_bug, at: nowIso() });
+    const all = this.db.bugs.filter((x) => x.child === me);
+    return { bug: p_bug, count: all.filter((x) => x.bug === p_bug).length, kinds: new Set(all.map((x) => x.bug)).size };
+  }
+
+  // ---------- 열매 상점: 불꽃놀이 ----------
+  kids_shop({ p_token }) {
+    const me = this.session(p_token, 'child');
+    const items = {};
+    for (const [k, n] of Object.entries((this.db.items || {})[me] || {})) if (n > 0) items[k] = n;
+    return { fruits: this.child(me).fruits, items, prices: { ...ITEM_PRICE } };
+  }
+  kids_shop_buy({ p_token, p_item, p_n }) {
+    const me = this.session(p_token, 'child');
+    const price = ITEM_PRICE[p_item];
+    const n = p_n || 1;
+    if (!price || n < 1 || n > 5) fail('BAD_ITEM');
+    this.db.items = this.db.items || {};
+    const bag = this.db.items[me] || (this.db.items[me] = {});
+    if ((bag[p_item] || 0) + n > 99) fail('BAG_FULL');
+    const c = this.child(me);
+    if (c.fruits < price * n) fail('NO_FRUIT');
+    c.fruits -= price * n;
+    bag[p_item] = (bag[p_item] || 0) + n;
+    this.db.shopLog = this.db.shopLog || [];
+    this.db.shopLog.push({ id: Date.now(), child: me, item: p_item, n, price: price * n, at: nowIso() });
+    return this.kids_shop({ p_token });
+  }
+  kids_item_use({ p_token, p_item }) {
+    const me = this.session(p_token, 'child');
+    const bag = ((this.db.items || {})[me]) || {};
+    this.usedAt = this.usedAt || {};
+    if (this.usedAt[me] && Date.now() - this.usedAt[me] < 2000) fail('TOO_FAST');
+    if (!(bag[p_item] > 0)) fail('NO_ITEM');
+    bag[p_item] -= 1;
+    this.usedAt[me] = Date.now();
+    return { item: p_item, left: bag[p_item] };
   }
   kids_t_dish_hide({ p_token, p_id, p_hidden }) {
     this.session(p_token, 'teacher');
@@ -834,7 +908,11 @@ export class DemoBackend {
       }),
       dishes: (this.db.dishes || []).slice().reverse().slice(0, 60).map((d) => {
         const c = this.db.children.find((x) => x.id === d.child) || {};
-        return { id: d.id, name: d.name, kind: d.kind, child_name: c.name, village_name: c.village_name, hidden: d.hidden, at: d.at };
+        return { id: d.id, name: d.name, kind: d.kind, child_name: c.name, village_name: c.village_name, hidden: d.hidden, at: d.at, eaten: this.dishEaters(d.id).length };
+      }),
+      shop: (this.db.shopLog || []).slice().reverse().slice(0, 100).map((l) => {
+        const c = this.db.children.find((x) => x.id === l.child) || {};
+        return { id: l.id, name: c.name, village_name: c.village_name, item: l.item, n: l.n, price: l.price, fruits_left: c.fruits, at: l.at };
       }),
     };
   }

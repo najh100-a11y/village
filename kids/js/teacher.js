@@ -251,12 +251,20 @@ function renderVillage() {
     h('time', { datetime: d.at }, timeOf(d.at)),
     h('div', {}, h('span', { class: 'who' }, d.child_name || '-', h('small', {}, d.village_name || '')), ' ',
       d.hidden ? h('span', { class: 'pill red' }, '숨김') : h('span', { class: 'pill green' }, KIND[d.kind] || ''),
-      h('div', { class: 'body' }, d.name)),
+      h('div', { class: 'body' }, d.name, d.eaten ? h('small', { class: 'muted' }, `  · 먹은 친구 ${d.eaten}명`) : null)),
     h('button', { class: 'btn btn-sm' + (d.hidden ? '' : ' btn-ghost'), type: 'button', onclick: async () => {
       try { villageConf = await call('kids_t_dish_hide', { p_id: d.id, p_hidden: !d.hidden }); } catch (e) { return; }
       toast(d.hidden ? '다시 식탁에 올렸어요.' : '식탁에서 숨겼어요.');
       renderVillage();
     } }, d.hidden ? '다시 보이기' : '숨기기'))) : [h('div', { class: 'card empty' }, '아직 올린 요리가 없어요.')]));
+  const sl = $('#shopList');
+  const ITEM = { fw_spark: '반짝 불꽃', fw_flower: '꽃 불꽃', fw_heart: '하트 불꽃' };
+  const shop = v.shop || [];
+  if (sl) sl.replaceChildren(...(shop.length ? shop.map((l) => h('div', { class: 'chat-row' },
+    h('time', { datetime: l.at }, timeOf(l.at)),
+    h('div', {}, h('span', { class: 'who' }, l.name || '-', h('small', {}, l.village_name || '')), ' ',
+      h('span', { class: 'pill' }, `열매 ${l.price}개`),
+      h('div', { class: 'body' }, `${ITEM[l.item] || l.item} ${l.n}개`, h('small', { class: 'muted' }, `  · 지금 남은 열매 ${l.fruits_left}개`))))) : [h('div', { class: 'card empty' }, '아직 산 것이 없어요.')]));
   const cl = $('#commentList');
   const cms = v.comments || [];
   if (cl) cl.replaceChildren(...(cms.length ? cms.map((c) => h('div', { class: 'chat-row' },

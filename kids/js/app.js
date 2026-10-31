@@ -11,6 +11,8 @@ import { createPlayHub } from './play.js';
 import { createArt } from './art.js';
 import { createPlay3D } from './play3d.js';
 import { ACT_ICON, ACT_TEXT, fishById, recipeById, RECIPES } from './play-data.js';
+import { BUGS, bugById, bugIcon, catchChance, RARITY_TEXT } from './bugs.js';
+import { FIREWORKS, FW_IDS, fireworkIcon } from './fireworks.js';
 import { initSound, startMusic, stopMusic, setScene, sfx, cycleSound, soundMode } from './sound.js';
 import { h, modal, toast, confetti, josa } from './ui.js';
 import { drawFaceIcon, normalizeAvatar, defaultAvatar } from './face.js';
@@ -69,14 +71,20 @@ async function boot() {
     },
     onBenchFull: () => toast('벤치에 자리가 없어요. 다른 벤치에 앉아 볼까요?', 2400),
     // 열매 따 먹기 (상점에서 쓰는 열매와는 따로예요)
-    onFruit: (what, name) => {
+    onFruit: (what, name, kind) => {
       if (what === 'start') { setActivity('eat'); sfx.pop(); }
       else if (what === 'bite') { sfx.munch(); if (!munchSaid) { munchSaid = true; village.say('me', SHOUTS.yum); } }
+      else if (what === 'done' && kind === 'dish') { setActivity(''); munchSaid = false; sfx.success(); toast(`${josa(name, '을', '를')} 맛있게 먹었어요! 만든 친구에게 고맙다고 말해 볼까요?`, 3200); }
       else if (what === 'done') { setActivity(''); munchSaid = false; sfx.fruit(); toast(`${josa(name, '을', '를')} 냠냠 먹었어요. 정말 맛있어요!`, 2400); }
       else if (what === 'stop') { setActivity(''); munchSaid = false; }
       else if (what === 'empty') toast('이 나무 열매는 다 땄어요. 조금 있으면 다시 열려요!', 2600);
     },
     onPet: (r) => { if (r.kind === 'cat') sfx.meow(); else sfx.bark(); },
+    onBug: (i, kind) => onBug(i, kind),
+    onNet: (on) => setActivity(on ? 'bug' : ''),
+    onDish: (i, d) => openDish(d),
+    onBoom: (kind) => sfx.boom(kind === 'flower2'),
+    onSplash: () => sfx.splash(),
     onCritterSound: (kind, soft) => { if (kind === 'bird') sfx.tweet(); else if (kind === 'cat') sfx.meow(soft); else sfx.bark(soft); },
   });
   try {
@@ -155,6 +163,7 @@ function bindUi() {
   });
   $('#btnStamps').addEventListener('click', () => openHouse(() => memory.open(), 'memory'));
   $('#btnDress').addEventListener('click', () => openMaker(false));
+  $('#btnBag').addEventListener('click', () => openBag());
   $('#btnOut').addEventListener('click', askLogout);
   $('#btnSay').addEventListener('click', toggleSay);
   $('#btnView').addEventListener('click', () => village.resetView());
@@ -502,6 +511,21 @@ async function startNet() {
       } else if (type === 'ob') {
         observes.set(id, { st: p, at: Date.now() });
         if (play3d) play3d.observe(id, p);
+      } else if (type === 'fw') {
+        if (village.fireworks) village.fireworks.launch(p.k, p.x, p.z);
+        const me = village.playerPos();
+        if (me && village.mode === 'play' && Math.hypot(me.x - p.x, me.z - p.z) < 22) village.lookUp(4.5);
+        const fw = FIREWORKS[p.k];
+        if (fw) logLine(person.name, `🎆 ${fw.name}을 터트렸어요`, false);
+      } else if (type === 'ate') {
+        const mine = (village.dishList || []).find((d) => d.id === p.d && d.me);
+        if (mine) { sfx.ding(); toast(`${josa(person.name, '이가', '가')} 내 ${josa(mine.name, '을', '를')} 먹었어요! 맛있대요.`, 3600); }
+        dishAt = 0;
+        refreshDishes();
+      } else if (type === 'bug') {
+        if (village.bugs) village.bugs.markCaught(p.s, p.w);
+        const b = bugById(p.b);
+        if (b && b.rarity >= 1) { toast(`${josa(person.name, '이가', '가')} ${josa(b.name, '을', '를')} 잡았어요!`, 3000); logLine(person.name, `🦋 ${b.name}`, false); }
       } else if (type === 'dish') {
         dishAt = 0;
         refreshDishes();
@@ -549,6 +573,203 @@ function setActivity(a, s = -1) {
   myAct = a;
   mySeat = s;
   if (net) net.send('act', s >= 0 ? { a, s } : { a });
+}
+
+// ---------- 곤충 채집 ----------
+let bugBook = null;
+async function loadBugBook() {
+  try { bugBook = await rpc('kids_bug_book', { p_token: token() }); } catch (e) { if (e.code === 'SESSION') sessionLost(); bugBook = bugBook || { mine: {} }; }
+  return bugBook;
+}
+function onBug(i, kind) {
+  if (!state.features.bugs) { toast('곤충 채집은 곧 열려요! 조금만 기다려 줘요.', 2600); return; }
+  if (!playOpen()) { toast('말씀 활동을 하나 마치면 곤충을 잡을 수 있어요!', 3000); return; }
+  village.startNet(i, catchChance(kind), async (hit, k, w) => {
+    sfx.whoosh();
+    if (!hit) { toast(`앗, ${josa(k.name, '이', '가')} 날아갔어요! 다른 곤충을 찾아봐요.`, 2400); return; }
+    try {
+      const r = await rpc('kids_bug_catch', { p_token: token(), p_bug: k.id });
+      sfx.success();
+      if (net) net.send('bug', { s: i, w, b: k.id });
+      if (bugBook) bugBook.mine[k.id] = { ...(bugBook.mine[k.id] || {}), count: r.count };
+      showCatchCard(k, r.count, r.kinds);
+    } catch (e) {
+      if (e.code === 'SESSION') { sessionLost(); return; }
+      toast(message(e), 2800);
+    }
+  });
+}
+let catchCard = null;
+function showCatchCard(k, count, kinds) {
+  if (catchCard) catchCard.remove();
+  const close = () => { if (catchCard === card) { card.remove(); catchCard = null; } };
+  const ic = h('div', { class: 'bug-ic', 'aria-hidden': 'true' });
+  ic.innerHTML = bugIcon(k.id);
+  const card = h('div', { class: 'invite-card catch-card', role: 'status' }, ic,
+    h('div', { class: 'inv-main' },
+      h('p', {}, h('b', {}, `${josa(k.name, '을', '를')} 잡았어요!`), ' ',
+        count === 1 ? `처음 잡았어요. 곤충 도감에 올랐어요! (${kinds}/${BUGS.length}가지)` : `지금까지 ${count}마리 잡았어요.`),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn btn-plain btn-small', type: 'button', onclick: close }, '닫기'),
+        h('button', { class: 'btn btn-go btn-small', type: 'button', onclick: () => { close(); openBag(k.id); } }, '도감 보기'))));
+  catchCard = card;
+  document.body.append(card);
+  setTimeout(close, 6500);
+}
+
+// ---------- 가방: 곤충 도감과 내 불꽃 ----------
+let shopData = null;
+async function loadShop() {
+  try { shopData = await rpc('kids_shop', { p_token: token() }); if (shopData && Number.isFinite(shopData.fruits)) setFruits(shopData.fruits); } catch (e) { if (e.code === 'SESSION') sessionLost(); }
+  return shopData;
+}
+async function openBag(focusBug) {
+  const body = h('div', { class: 'talk bag' }, h('p', { class: 'fb-empty' }, '가방을 여는 중…'));
+  openSheet('내 가방', body, 'bag-sheet');
+  const [book, shop] = await Promise.all([state.features.bugs ? loadBugBook() : null, state.features.shop ? loadShop() : null]);
+  if (!modal.isOpen) return;
+  const secs = [];
+  // 불꽃
+  const fw = h('section', { class: 'bag-sec' }, h('h3', {}, '🎆 내 불꽃'));
+  if (!state.features.shop) fw.append(h('p', { class: 'note' }, '열매 상점은 곧 문을 열어요.'));
+  else {
+    const items = (shop && shop.items) || {};
+    const owned = FW_IDS.filter((id) => items[id] > 0);
+    if (!owned.length) fw.append(h('p', { class: 'note' }, '아직 불꽃이 없어요. 열매 상점에서 열매로 살 수 있어요.'),
+      h('div', { class: 'row' }, h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => { modal.close(); village.walkTo('shop'); } }, '열매 상점으로 가기')));
+    else fw.append(h('div', { class: 'shop-list' }, owned.map((id) => fwRow(id, items[id], { launch: true }))));
+  }
+  secs.push(fw);
+  // 곤충 도감
+  const bugs = h('section', { class: 'bag-sec' });
+  if (!state.features.bugs) bugs.append(h('h3', {}, '🦋 곤충 도감'), h('p', { class: 'note' }, '곤충 채집은 곧 열려요.'));
+  else {
+    const mine = (book && book.mine) || {};
+    const got = BUGS.filter((b) => mine[b.id]).length;
+    const detail = h('div', { class: 'bug-detail', hidden: true });
+    const show = (b) => {
+      const m = mine[b.id];
+      detail.hidden = false;
+      const ic = h('div', {});
+      ic.innerHTML = bugIcon(b.id, !!m);
+      detail.replaceChildren(ic, h('div', {},
+        h('b', {}, m ? b.name : '아직 못 잡은 곤충'),
+        h('p', { class: 'note' }, `${{ flower: '꽃밭', grass: '풀밭', tree: '나무줄기', water: '물가' }[b.habitat]} · ${RARITY_TEXT[b.rarity]}${b.night ? ' · 밤에만' : ''}${m ? ` · ${m.count}마리 잡음` : ''}`),
+        h('p', {}, m ? b.desc : `${{ flower: '꽃밭', grass: '풀밭', tree: '나무줄기', water: '물가' }[b.habitat]}에서 찾아봐요.`)));
+    };
+    const grid = h('div', { class: 'bug-grid' }, BUGS.map((b) => {
+      const m = mine[b.id];
+      const cell = h('button', { class: 'bug-cell' + (b.id === focusBug ? ' new' : ''), type: 'button', onclick: () => show(b) });
+      cell.innerHTML = bugIcon(b.id, !!m);
+      cell.append(h('b', {}, m ? b.name : '???'), h('small', {}, m ? `${m.count}마리` : RARITY_TEXT[b.rarity]));
+      return cell;
+    }));
+    bugs.append(h('h3', {}, `🦋 곤충 도감 (${got}/${BUGS.length})`),
+      h('p', { class: 'note' }, '꽃밭, 풀밭, 나무줄기, 물가에서 반짝이는 곤충을 눌러 그물로 잡아요. 반딧불이는 밤에만 나와요.'), grid, detail);
+    if (focusBug) { const b = bugById(focusBug); if (b) show(b); }
+  }
+  secs.push(bugs);
+  body.replaceChildren(...secs);
+}
+// 불꽃 한 줄 (상점과 가방에서 같이 쓴다)
+function fwRow(id, count, { buy = false, launch = false, fruits = 0 } = {}) {
+  const f = FIREWORKS[id];
+  const ic = h('div', { class: 'fw-ic', 'aria-hidden': 'true' });
+  ic.innerHTML = fireworkIcon(id);
+  const acts = h('div', { class: 'acts' });
+  if (buy) acts.append(h('button', { class: 'btn btn-go btn-small', type: 'button', disabled: fruits < f.price, onclick: () => buyFirework(id) }, `열매 ${f.price}개로 사기`));
+  if (launch && count > 0) acts.append(h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => { modal.close(); launchFirework(id); } }, '펑! 터트리기'));
+  return h('div', { class: 'shop-item' }, ic,
+    h('div', {}, h('b', {}, f.name), h('p', {}, f.desc), h('p', {}, count ? `가방에 ${count}개` : '')), acts);
+}
+
+// ---------- 열매 상점 ----------
+async function openShop() {
+  const body = h('div', { class: 'talk shop' }, h('p', { class: 'fb-empty' }, '상점을 여는 중…'));
+  openSheet('열매 상점', body, 'shop-sheet');
+  const shop = await loadShop();
+  if (!modal.isOpen) return;
+  drawShop(body, shop);
+}
+function drawShop(body, shop) {
+  if (!shop) { body.replaceChildren(h('p', { class: 'note' }, '상점을 열지 못했어요. 잠시 뒤에 다시 와 주세요.')); return; }
+  const items = shop.items || {};
+  body.replaceChildren(
+    h('p', { class: 'shop-fruit' }, `내 열매 🍎 ${shop.fruits}개`),
+    h('div', { class: 'shop-list' }, FW_IDS.map((id) => fwRow(id, items[id] || 0, { buy: true, launch: true, fruits: shop.fruits }))),
+    h('p', { class: 'note' }, '열매는 암송 연습, 묵상, 필사를 하면 모여요. 산 불꽃은 가방에 들어가고, 마을 어디서나 터트릴 수 있어요. 친구들 하늘에도 같이 터져요.'));
+}
+let buying = false;
+async function buyFirework(id) {
+  if (buying) return;
+  buying = true;
+  try {
+    const r = await rpc('kids_shop_buy', { p_token: token(), p_item: id, p_n: 1 });
+    shopData = r;
+    setFruits(r.fruits);
+    sfx.success();
+    toast(`${josa(FIREWORKS[id].name, '을', '를')} 샀어요! 가방에서 언제든 터트릴 수 있어요.`, 2800);
+    const body = document.querySelector('#modalBody .talk.shop');
+    if (body) drawShop(body, r);
+  } catch (e) {
+    if (e.code === 'SESSION') { sessionLost(); return; }
+    toast(message(e), 3000);
+  } finally { buying = false; }
+}
+let launching = false;
+async function launchFirework(id) {
+  if (launching || !village.player) return;
+  launching = true;
+  try {
+    const r = await rpc('kids_item_use', { p_token: token(), p_item: id });
+    if (shopData && shopData.items) shopData.items[id] = r.left;
+    // 보는 쪽으로 조금 앞에서 쏘아 올리고, 잠깐 하늘을 올려다본다
+    const a = village.aheadOf(4);
+    const x = +a.x.toFixed(2), z = +a.z.toFixed(2);
+    village.fireworks.launch(id, x, z);
+    village.lookUp(4.8);
+    village.celebrate();
+    sfx.whoosh();
+    if (net) net.send('fw', { k: id, x, z });
+    toast(`${FIREWORKS[id].name}! 하늘을 봐요${r.left ? ` (가방에 ${r.left}개 남았어요)` : ''}`, 2600);
+  } catch (e) {
+    if (e.code === 'SESSION') { sessionLost(); return; }
+    toast(message(e), 2600);
+  } finally { setTimeout(() => { launching = false; }, 600); }
+}
+
+// ---------- 마을 식탁: 누가 먹었는지 보고, 친구 요리를 먹는다 ----------
+function openDish(d) {
+  const eaters = Array.isArray(d.eaters) ? d.eaters : [];
+  const canEat = !!state.features.eat && !d.me && !d.ate;
+  const body = h('div', { class: 'talk dish-eat' },
+    h('p', { class: 'result-big' }, d.name || '요리'),
+    h('p', {}, d.me ? '내가 만든 요리예요.' : `${d.cook || '친구'}${hasB(d.cook) ? '이가' : '가'} 만든 요리예요.`),
+    state.features.eat ? h('div', { class: 'eaters' }, eaters.length
+      ? [h('b', {}, `냠냠 먹은 친구 ${d.eaten || eaters.length}명`), h('p', {}, eaters.join(', ') + ((d.eaten || 0) > eaters.length ? ' …' : ''))]
+      : h('p', {}, '아직 아무도 안 먹었어요.')) : null,
+    d.ate ? h('p', { class: 'note' }, '나도 벌써 맛있게 먹었어요!') : null,
+    h('div', { class: 'row' },
+      h('button', { class: 'btn btn-plain', type: 'button', onclick: () => modal.close() }, '닫기'),
+      canEat ? h('button', { class: 'btn btn-go', type: 'button', onclick: () => eatDish(d) }, '냠냠 먹기') : null));
+  openSheet('마을 식탁', body, 'talk-sheet');
+}
+const hasB = (w) => { const c = String(w || '').slice(-1).charCodeAt(0); return c >= 0xAC00 && c <= 0xD7A3 && (c - 0xAC00) % 28 !== 0; };
+let eatingDish = false;
+async function eatDish(d) {
+  if (eatingDish) return;
+  eatingDish = true;
+  try {
+    await rpc('kids_dish_eat', { p_token: token(), p_dish: d.id });
+    modal.close();
+    village.eatDish(d);
+    if (net) net.send('ate', { d: d.id });
+    dishAt = 0;
+    setTimeout(refreshDishes, 2600);
+  } catch (e) {
+    if (e.code === 'SESSION') { sessionLost(); return; }
+    toast(message(e), 2800);
+  } finally { eatingDish = false; }
 }
 
 // ---------- 친구 목록, 둘이 대화, 오목 구경 ----------
@@ -723,6 +944,7 @@ function onEnter(id) {
   if (id === 'library') return openHouse(() => copy.open(), 'copy');
   if (GAMES[id]) return openGame(id);
   if (id === 'home') return openMaker(false);
+  if (id === 'shop' && state.features.shop) return openShop();
   const s = SOON[id];
   if (s) {
     openSheet(s[0], h('div', { class: 'talk' },

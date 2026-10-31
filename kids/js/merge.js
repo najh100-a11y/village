@@ -73,7 +73,7 @@ export function mergeColored(root, vcMat) {
   root.traverse((o) => {
     if (o === root || !o.isMesh || o.isInstancedMesh || Array.isArray(o.material) || o.userData.noMerge || !o.visible) return;
     const mt = o.material;
-    if (mt.map || mt.transparent || mt.alphaTest > 0 || mt.side !== THREE.FrontSide || !mt.color) return;
+    if (mt.map || mt.transparent || mt.alphaTest > 0 || mt.side !== vcMat.side || !mt.color) return;
     if (mt.emissive && mt.emissive.getHex() !== 0) return;
     items.push({ geo: o.geometry, m: new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld), color: mt.color });
     cast = cast || o.castShadow;

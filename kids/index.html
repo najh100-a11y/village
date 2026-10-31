@@ -319,6 +319,30 @@ button.g-chip:active { transform: scale(.96); }
 .kv-bubble.pet-say { font-size: 14px; padding: 4px 10px; background: #FFF6E0; }
 .kv-bubble.pet-say::after { background: #FFF6E0; }
 .kv-heart { position: absolute; left: 0; top: 0; font-size: 26px; pointer-events: none; }
+.kv-sparkle { position: absolute; left: 0; top: 0; font-size: 20px; pointer-events: none; animation: sparkle 1.1s ease-in-out infinite alternate; }
+@keyframes sparkle { from { opacity: .35; } to { opacity: 1; } }
+/* 곤충 잡은 소식, 가방, 열매 상점 */
+.catch-card { grid-template-columns: 64px minmax(0, 1fr); }
+.catch-card .bug-ic svg { width: 60px; height: 60px; display: block; }
+.bag-sec { margin: 4px 0 18px; }
+.bag-sec h3 { font-family: var(--display); font-weight: 400; font-size: 19px; margin: 0 0 8px; }
+.bug-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.bug-cell { background: #FFFDF7; border: 2px solid #F1E6CF; border-radius: 16px; padding: 8px 6px 7px; text-align: center; cursor: pointer; font: inherit; color: var(--ink); }
+.bug-cell svg { width: 54px; height: 54px; display: block; margin: 0 auto 2px; }
+.bug-cell b { display: block; font-family: var(--display); font-weight: 400; font-size: 14px; }
+.bug-cell small { color: var(--ink-soft); font-size: 12px; }
+.bug-cell.new { border-color: var(--sun); }
+.bug-detail { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 12px; align-items: center; background: #FFF8E7; border-radius: 18px; padding: 10px 14px; margin-top: 10px; }
+.bug-detail svg { width: 92px; height: 92px; }
+.bug-detail p { margin: 4px 0 0; }
+.shop-list { display: grid; gap: 10px; }
+.shop-item { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 12px; align-items: center; background: #FFFDF7; border: 2px solid #F1E6CF; border-radius: 18px; padding: 10px 12px; }
+.shop-item .fw-ic svg { width: 60px; height: 60px; display: block; background: #2E3E6E; border-radius: 14px; }
+.shop-item b { font-family: var(--display); font-weight: 400; font-size: 17px; }
+.shop-item p { margin: 2px 0 0; font-size: 14px; color: var(--ink-soft); }
+.shop-item .acts { display: grid; gap: 6px; justify-items: end; }
+.shop-fruit { font-family: var(--display); font-size: 18px; margin: 0 0 10px; }
+.dish-eat .eaters { background: #F3FAEE; border-radius: 14px; padding: 8px 12px; margin: 10px 0; }
 .g-label.bonk { font-size: 22px; color: #E5602F; background: #FFF6E0; border-color: #F6D55C; padding: 2px 12px; }
 .online { display: inline-block; margin-right: 6px; font-family: var(--display); font-size: 13px; color: #fff; background: var(--leaf); border-radius: 999px; padding: 1px 8px; vertical-align: 2px; }
 .online.alone { background: #B7A994; }
@@ -459,6 +483,9 @@ button.online[data-unread]:not([data-unread=""])::after { content: ' 💌' attr(
   #hud .hud-btns { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(10px + env(safe-area-inset-bottom)); gap: 6px; }
   #hud .round { width: 60px; }
   #hint { bottom: calc(96px + env(safe-area-inset-bottom)); }
+  #hud .hud-btns { gap: 4px; }
+  #hud .round { width: min(60px, calc((100vw - 44px) / 6)); font-size: 12px; }
+  #hud .round .ico svg { width: 25px; height: 25px; }
   .chat-log { bottom: calc(150px + env(safe-area-inset-bottom)); }
   .say-panel { top: auto; bottom: calc(96px + env(safe-area-inset-bottom)); right: 50%; transform: translateX(50%); }
   .plate b { max-width: 46vw; }
@@ -678,6 +705,7 @@ button.online[data-unread]:not([data-unread=""])::after { content: ' 💌' attr(
   <nav class="hud-btns" aria-label="마을 메뉴">
     <button class="round say" id="btnSay" type="button"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 3.5V16h-1A.5.5 0 0 1 4 15.5z" fill="currentColor" opacity=".25" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="8.5" cy="10" r="1.2" fill="currentColor"/><circle cx="12" cy="10" r="1.2" fill="currentColor"/><circle cx="15.5" cy="10" r="1.2" fill="currentColor"/></svg></span>말하기</button>
     <button class="round" id="btnStamps" type="button"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.5C5.5 4.3 8.6 4.4 12 6.2c3.4-1.8 6.5-1.9 9-.7v13c-2.5-1.2-5.6-1.1-9 .7-3.4-1.8-6.5-1.9-9-.7z" fill="currentColor" opacity=".25"/><path d="M12 6.2v13M3 5.5C5.5 4.3 8.6 4.4 12 6.2c3.4-1.8 6.5-1.9 9-.7v13c-2.5-1.2-5.6-1.1-9 .7-3.4-1.8-6.5-1.9-9-.7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></span>도장판</button>
+    <button class="round" id="btnBag" type="button"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 9.5A2.5 2.5 0 0 1 7.5 7h9A2.5 2.5 0 0 1 19 9.5V18a2.5 2.5 0 0 1-2.5 2.5h-9A2.5 2.5 0 0 1 5 18z" fill="currentColor" opacity=".25" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M5 12.5h14M11 12.5v2h2v-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></span>가방</button>
     <button class="round" id="btnDress" type="button"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 3.5 4 6l1.8 4 2.2-1v11.5h8V9l2.2 1L20 6l-4.5-2.5c-.6 1.5-1.9 2.3-3.5 2.3S9.1 5 8.5 3.5z" fill="currentColor" opacity=".25" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></span>꾸미기</button>
     <button class="round sound" id="btnSound" type="button" data-quiet><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor" opacity=".25" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path class="wave" d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path class="mute" d="M16 9.5l5 5M21 9.5l-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>소리</button>
     <button class="round" id="btnOut" type="button"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 20.5V5a1.5 1.5 0 0 1 1.5-1.5h9A1.5 1.5 0 0 1 18 5v15.5" fill="currentColor" opacity=".25"/><path d="M4 20.5h16M6 20.5V5a1.5 1.5 0 0 1 1.5-1.5h9A1.5 1.5 0 0 1 18 5v15.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="14.5" cy="12.5" r="1.2" fill="currentColor"/></svg></span>나가기</button>
