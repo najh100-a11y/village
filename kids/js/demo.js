@@ -3,6 +3,7 @@
 import PLAN from './plan-data.js';
 import { FISH } from './play-data.js';
 import { toJpeg } from './images.js';
+import { cleanChat } from './chatfilter.js';
 
 const FIRST = PLAN.weeks[0].week_start;
 const LAST = PLAN.weeks[PLAN.weeks.length - 1].days.slice(-1)[0].date;
@@ -179,6 +180,7 @@ export class DemoBackend {
   }
   // 그날 암송 연습·묵상·필사 가운데 하나라도 했는지 (놀이 마당 열기)
   cleared(me) {
+    if (this.playFree()) return true;
     const c = this.child(me);
     const s = startOfToday();
     return Object.values(c.memory).some((m) => m.last === today())
@@ -188,6 +190,29 @@ export class DemoBackend {
   gate(me) { if (!this.cleared(me)) fail('PLAY_LOCKED'); }
   publishedDays() {
     return this.db.qt.filter((q) => this.db.weeks.some((w) => w.week_start === q.week_start && w.is_published)).map((q) => q.day).sort();
+  }
+
+  // 누구나 놀이 날 (이 날짜까지는 말씀 활동을 안 해도 놀이 마당이 열린다)
+  villageConf() { return this.db.village || (this.db.village = { chat_open: true, free_until: '' }); }
+  playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
+
+  // ---------- 마을 글 대화 ----------
+  kids_chat_open() { return this.villageConf().chat_open; }
+  kids_chat_send({ p_token, p_text }) {
+    const me = this.session(p_token, 'child');
+    if (!this.villageConf().chat_open) fail('CHAT_OFF');
+    if (this.child(me).chat_muted) fail('CHAT_MUTED');
+    const t = cleanChat(p_text);
+    if (!t) fail('EMPTY_CHAT');
+    this.db.chat = this.db.chat || [];
+    const mine = this.db.chat.filter((m) => m.child === me);
+    const last = mine.map((m) => m.at).sort().pop();
+    if (last && Date.now() - new Date(last).getTime() < 2000) fail('TOO_FAST');
+    if (mine.filter((m) => m.at >= startOfToday()).length >= 300) fail('CHAT_TIRED');
+    const raw = [...String(p_text || '').replace(/\s+/g, ' ').trim()].slice(0, 60).join('');
+    this.db.chat.push({ id: Date.now() + Math.random(), child: me, body: t, masked: t !== raw, at: nowIso() });
+    this.db.chat = this.db.chat.slice(-300);
+    return { text: t };
   }
 
   // ---------- 아이 ----------
@@ -702,6 +727,30 @@ export class DemoBackend {
     const art = this.db.art.map((a) => ({ kind: 'art', key: a.id, child_id: a.child, name: name(a.child).name, village_name: name(a.child).village_name,
       label: a.title || '제목 없는 그림', text: null, shared: a.shared, hidden: a.hidden, at: a.at, thumb: imgGet(a.thumb) }));
     return [...qt, ...cp, ...art].sort((a, b) => b.at.localeCompare(a.at));
+  }
+  kids_t_village({ p_token }) {
+    this.session(p_token, 'teacher');
+    const v = this.villageConf();
+    return {
+      today: today(), chat_open: v.chat_open, free_until: v.free_until, play_free: this.playFree(),
+      chat: (this.db.chat || []).slice().reverse().slice(0, 200).map((m) => {
+        const c = this.db.children.find((x) => x.id === m.child) || {};
+        return { id: m.id, child: m.child, name: c.name, village_name: c.village_name, body: m.body, masked: m.masked, muted: !!c.chat_muted, at: m.at };
+      }),
+      muted: this.db.children.filter((c) => c.chat_muted).map((c) => ({ id: c.id, name: c.name, village_name: c.village_name })),
+    };
+  }
+  kids_t_set_village({ p_token, p_chat_open, p_free_today }) {
+    this.session(p_token, 'teacher');
+    const v = this.villageConf();
+    if (p_chat_open != null) v.chat_open = !!p_chat_open;
+    if (p_free_today != null) v.free_until = p_free_today ? today() : '';
+    return this.kids_t_village({ p_token });
+  }
+  kids_t_chat_mute({ p_token, p_child, p_mute }) {
+    this.session(p_token, 'teacher');
+    this.child(p_child).chat_muted = !!p_mute;
+    return this.kids_t_village({ p_token });
   }
   kids_t_signup({ p_token }) { this.session(p_token, 'teacher'); return { ...this.signupConf() }; }
   kids_t_set_signup({ p_token, p_open, p_code }) {

@@ -121,6 +121,15 @@ dialog::backdrop { background: rgba(60, 45, 30, .35); }
 .stamp-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 8px 12px; border-radius: 14px; background: #fff; border: 2px solid var(--line); }
 .stamp-row .r { font-family: var(--display); }
 .stamp-row .m { font-size: 13px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.chat-list { display: grid; gap: 6px; }
+.chat-row { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 10px; align-items: center; background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 8px 12px; }
+.chat-row time { font-size: 13px; color: var(--ink-soft); }
+.chat-row .who { font-family: var(--display); }
+.chat-row .who small { color: var(--ink-soft); font-family: inherit; margin-left: 4px; }
+.chat-row .body { word-break: break-word; }
+.village-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.village-row:first-of-type { border-top: 0; }
+.village-row .switch { flex: none; white-space: nowrap; }
 .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-family: var(--display); font-size: 15px; }
 .switch input { appearance: none; width: 50px; height: 30px; border-radius: 999px; background: var(--line); position: relative; cursor: pointer; transition: background .2s; margin: 0; }
 .switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; transition: transform .2s; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
@@ -218,6 +227,7 @@ dialog::backdrop { background: rgba(60, 45, 30, .35); }
       <button class="tab" role="tab" data-tab="weeks" aria-selected="false" type="button">주간 계획<span class="count" id="weekCount"></span></button>
       <button class="tab" role="tab" data-tab="posts" aria-selected="false" type="button">아이들 글<span class="count" id="postCount"></span></button>
       <button class="tab" role="tab" data-tab="verses" aria-selected="false" type="button">암송 구절<span class="count" id="verseCount"></span></button>
+      <button class="tab" role="tab" data-tab="village" aria-selected="false" type="button">마을 대화<span class="count" id="chatCount"></span></button>
       <button class="tab" role="tab" data-tab="teachers" aria-selected="false" type="button">선생님 계정</button>
     </nav>
 
@@ -259,6 +269,13 @@ dialog::backdrop { background: rgba(60, 45, 30, .35); }
       <div class="bar"><h2>암송 구절 (개역한글판)</h2><button class="btn btn-go" id="addVerseBtn" type="button">새 구절 넣기</button></div>
       <p class="note warn" id="draftNote" style="margin-bottom:14px"></p>
       <div class="verses" id="verseList"></div>
+    </section>
+
+    <section id="tab-village" hidden>
+      <div class="bar"><h2>마을 설정과 대화</h2><button class="btn btn-sm" id="chatRefresh" type="button">새로 보기</button></div>
+      <div class="card signup-card" id="villageBox" style="margin-bottom:16px"></div>
+      <p class="note" style="margin-bottom:12px">아이들이 마을에서 직접 쓴 글이에요. 거친 말, 놀리는 말, 전화번호, 인터넷 주소는 보내기 전에 ♡나 ***로 가려지고, 가려진 글에는 ‘가림’ 표시가 붙어요. 기록은 30일 동안 남아요. 아이가 글로 친구를 힘들게 하면 그 아이 옆의 ‘글 대화 막기’를 눌러 주세요. 그 아이는 정해진 말풍선으로만 말할 수 있게 돼요.</p>
+      <div class="chat-list" id="chatList"></div>
     </section>
 
     <section id="tab-teachers" hidden>

@@ -6,6 +6,7 @@ import { createMemory } from './memory.js';
 import { createQt } from './qt.js';
 import { createCopy } from './copy.js';
 import { createNet, PHRASES, EMOTES, clean } from './net.js';
+import { cleanChat, CHAT_MAX } from './chatfilter.js';
 import { createPlayHub } from './play.js';
 import { createArt } from './art.js';
 import { createPlay3D } from './play3d.js';
@@ -138,16 +139,52 @@ function bindUi() {
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') { if (modal.isOpen) modal.close(); else $('#sayPanel').hidden = true; }
   });
-  // 말하기 판: 정해진 말과 이모티콘만
+  // 말하기 판: 글 쓰기(선생님이 켰을 때)와 정해진 말, 이모티콘
   const panel = $('#sayPanel');
+  const input = h('input', { id: 'chatInput', type: 'text', maxlength: CHAT_MAX, autocomplete: 'off', enterkeyhint: 'send', placeholder: '친구들에게 할 말 (선생님도 볼 수 있어요)', 'aria-label': '친구들에게 할 말' });
+  const form = h('form', { id: 'chatForm', class: 'say-write', hidden: true },
+    input, h('button', { class: 'btn btn-go btn-small', type: 'submit', 'data-quiet': '' }, '보내기'));
+  form.addEventListener('submit', (e) => { e.preventDefault(); sendChat(); });
   panel.replaceChildren(
+    form,
     h('div', { class: 'say-phrases' }, Object.entries(PHRASES).map(([id, t]) => h('button', { class: 'say-btn', type: 'button', 'data-quiet': '', onclick: () => say(id) }, t))),
     h('div', { class: 'say-emotes' }, Object.entries(EMOTES).map(([id, t]) => h('button', { class: 'say-emo', type: 'button', 'data-quiet': '', 'aria-label': id, onclick: () => say(id) }, t))));
+}
+
+// 글 대화: 서버가 다듬은 글(거친 말, 전화번호, 주소를 가린 글)만 친구들에게 보낸다
+let chatSending = false;
+function showChatInput(on) {
+  state.chatOpen = !!on;
+  $('#chatForm').hidden = !on;
+}
+async function sendChat() {
+  const input = $('#chatInput');
+  const text = cleanChat(input.value);
+  if (!text || chatSending) return;
+  chatSending = true;
+  try {
+    const r = await rpc('kids_chat_send', { p_token: token(), p_text: input.value });
+    const t = cleanChat(r && r.text);
+    if (!t) return;
+    input.value = '';
+    village.say('me', t);
+    sfx.pop();
+    logLine(state.me.village_name, t, true);
+    if (net) net.send('chat', { m: t });
+  } catch (e) {
+    if (e.code === 'SESSION') { sessionLost(); return; }
+    if (e.code === 'CHAT_OFF') showChatInput(false);
+    toast(message(e));
+  } finally { chatSending = false; }
 }
 
 function toggleSay() {
   const p = $('#sayPanel');
   p.hidden = !p.hidden;
+  if (!p.hidden) {
+    rpc('kids_chat_open').then(showChatInput).catch(() => {});
+    if (state.chatOpen && matchMedia('(pointer: fine)').matches) setTimeout(() => $('#chatInput').focus({ preventScroll: true }), 50);
+  }
 }
 
 function say(id) {
@@ -174,8 +211,8 @@ function logLine(name, text, mine) {
   const log = $('#chatLog');
   const line = h('p', { class: mine ? 'me' : '' }, h('b', {}, name), ' ', text);
   log.append(line);
-  while (log.children.length > 4) log.firstChild.remove();
-  setTimeout(() => line.classList.add('old'), 9000);
+  while (log.children.length > 6) log.firstChild.remove();
+  setTimeout(() => line.classList.add('old'), 14000);
 }
 
 async function login(id, pin) {
@@ -305,7 +342,9 @@ async function enterVillage(greet) {
   const me = state.me;
   village.setPlayer(me.avatar);
   village.setHome(me.village_name, normalizeAvatar(me.avatar));
+  village.setMyName(me.village_name);
   village.setMode('play');
+  rpc('kids_chat_open').then(showChatInput).catch(() => showChatInput(false));
   village.setPaused(false);
   updateHud();
   $('#hud').hidden = false;
@@ -393,6 +432,10 @@ async function startNet() {
         village.say(id, text);
         sfx.pop(true);
         logLine(person.name, text, false);
+      } else if (type === 'chat') {
+        village.say(id, p.m);
+        sfx.pop(true);
+        logLine(person.name, p.m, false);
       } else if (type === 'done') {
         village.remoteCelebrate(id);
         sfx.ding();
@@ -572,6 +615,7 @@ async function openMaker(first) {
   if (result) {
     village.setPlayer(state.me.avatar);
     village.setHome(state.me.village_name, normalizeAvatar(state.me.avatar));
+    village.setMyName(state.me.village_name);
     if (net) net.send('av', {});
   }
   if (first && !result) return;

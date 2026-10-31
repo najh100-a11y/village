@@ -1,5 +1,6 @@
 // 진숲 어린이 마을 — 함께 접속하기
 // 실제: Supabase Realtime (broadcast + presence). 체험판: 같은 브라우저의 다른 탭(BroadcastChannel) + 예시 친구 둘.
+import { cleanChat } from './chatfilter.js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY, REALTIME_BUDGET } from './config.js';
 
 export const PHRASES = {
@@ -7,7 +8,7 @@ export const PHRASES = {
   bless: '축복해!', memory: '암송의 집에서 만나!', qt: '오늘 묵상했어?', copy: '필사 같이 하자!', wait: '잠깐 기다려 줘!', bye: '내일 또 만나!',
 };
 export const EMOTES = { heart: '❤️', clap: '👏', smile: '😊', wave: '👋', pray: '🙏', star: '⭐' };
-const EVENTS = ['mv', 'st', 'say', 'done', 'av', 'inv', 'invr', 'act', 'fish', 'art'];
+const EVENTS = ['mv', 'st', 'say', 'chat', 'done', 'av', 'inv', 'invr', 'act', 'fish', 'art'];
 export const GAME_KINDS = ['omok', 'cook'];
 export const ACTS = ['', 'fish', 'omok', 'cook', 'art', 'memory', 'qt', 'copy'];
 const ID_RE = /^[A-Za-z0-9-]{1,64}$/;
@@ -21,6 +22,7 @@ export function clean(type, p) {
   if (type === 'mv') return num(p.x) && num(p.z) && num(p.tx) && num(p.tz) ? { x: p.x, z: p.z, tx: p.tx, tz: p.tz } : null;
   if (type === 'st') return num(p.x) && num(p.z) ? { x: p.x, z: p.z } : null;
   if (type === 'say') return PHRASES[p.p] || EMOTES[p.p] ? { p: p.p } : null;
+  if (type === 'chat') { const t = typeof p.m === 'string' ? cleanChat(p.m) : ''; return t ? { m: t } : null; }
   if (type === 'done') return ['memory', 'qt', 'copy'].includes(p.k) ? { k: p.k } : null;
   if (type === 'av') return {};
   if (type === 'inv') return typeof p.to === 'string' && ID_RE.test(p.to) && GID_RE.test(p.g) && GAME_KINDS.includes(p.k)

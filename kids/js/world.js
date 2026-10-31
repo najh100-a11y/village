@@ -1115,8 +1115,13 @@ export class Village {
     el.textContent = text;
     el.style.display = 'none';
     this.labels.appendChild(el);
-    holder.bubble = { el, life: 4.5 };
+    holder.bubble = { el, life: Math.min(9, 3.8 + [...text].length * 0.14) };
     av.celebrate();
+  }
+  // 내 머리 위 이름표
+  setMyName(name) {
+    if (!this.myTag) this.myTag = this.makeLabel(name || '', 'kv-tag kv-me');
+    this.myTag.textContent = name || '';
   }
   playerPos() { return this.player ? { x: this.player.root.position.x, z: this.player.root.position.z } : null; }
 
@@ -1162,7 +1167,7 @@ export class Village {
       this.placeLabel(r.tag, pos, 2.45);
       if (r.bubble) this.tickBubble(r, pos, 3.05, dt);
     }
-    if (this.player && this.player.bubble) this.tickBubble(this.player, this.player.root.position, 2.55, dt);
+    if (this.player && this.player.bubble) this.tickBubble(this.player, this.player.root.position, 3.05, dt);
   }
   tickBubble(owner, pos, y, dt) {
     const b = owner.bubble;
@@ -1450,6 +1455,10 @@ export class Village {
       if (Math.hypot(p.x - gp.x, p.z - gp.z) < 7) g.root.rotation.y = turn(g.root.rotation.y, Math.atan2(p.x - gp.x, p.z - gp.z), dt * 5);
     }
     this.placeLabel(this.guideTag, g.root.position, 2.45);
+    if (this.myTag) {
+      if (this.player && (this.mode === 'play' || this.mode === 'game') && this.myTag.textContent) this.placeLabel(this.myTag, this.player.root.position, 2.45);
+      else this.myTag.style.display = 'none';
+    }
 
     // 내 주민
     if (this.player && this.mode === 'play') this.updatePlayer(dt);

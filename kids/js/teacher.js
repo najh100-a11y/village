@@ -132,6 +132,7 @@ function bind() {
     card.hidden = false;
     await refresh();
   });
+  $('#chatRefresh').addEventListener('click', () => reloadVillage());
   $('#addVerseBtn').addEventListener('click', () => {
     const list = $('#verseList');
     const max = Math.max(0, ...data.verses.map((v) => v.sort_order));
@@ -176,7 +177,8 @@ async function refresh() {
     rpc('kids_t_posts', { p_token: token }),
     rpc('kids_t_storage', { p_token: token }).catch(() => null),
     rpc('kids_t_signup', { p_token: token }).catch(() => null),
-  ]);
+    rpc('kids_t_village', { p_token: token }).catch(() => null),
+  ]).then((r) => { villageConf = r[5]; return r; });
   signup = su;
   data = o;
   weeks = w || [];
@@ -192,7 +194,7 @@ function showMain() {
 function showTab(t) {
   tab = t;
   for (const b of document.querySelectorAll('.tab')) b.setAttribute('aria-selected', String(b.dataset.tab === t));
-  for (const id of ['kids', 'weeks', 'posts', 'verses', 'teachers']) $(`#tab-${id}`).hidden = id !== t;
+  for (const id of ['kids', 'weeks', 'posts', 'verses', 'village', 'teachers']) $(`#tab-${id}`).hidden = id !== t;
 }
 
 // ---------- 그리기 ----------
@@ -206,7 +208,53 @@ function render() {
   renderWeeks();
   renderPosts();
   renderVerses();
+  renderVillage();
   renderTeachers();
+}
+
+// ---------- 마을 설정과 대화 ----------
+let villageConf = null;
+const timeOf = (iso) => new Date(iso).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+async function reloadVillage() {
+  try { villageConf = await call('kids_t_village', {}); } catch (e) { return; }
+  renderVillage();
+}
+function renderVillage() {
+  const box = $('#villageBox');
+  const list = $('#chatList');
+  const v = villageConf;
+  if (!v) { box.replaceChildren(h('p', { class: 'note' }, '마을 설정을 불러오지 못했어요.')); list.replaceChildren(); return; }
+  $('#chatCount').textContent = v.chat.length ? `(${v.chat.length})` : '';
+  const sw = (checked, label, onChange) => {
+    const input = h('input', { type: 'checkbox', checked, 'aria-label': label });
+    input.addEventListener('change', async () => {
+      input.disabled = true;
+      try { villageConf = await onChange(input.checked); } catch (e) { input.checked = !input.checked; input.disabled = false; return; }
+      renderVillage();
+    });
+    return h('label', { class: 'switch' }, input, checked ? '켜짐' : '꺼짐');
+  };
+  box.replaceChildren(
+    h('div', { class: 'village-row' },
+      h('div', {}, h('h3', { style: 'margin:0' }, '글 대화'),
+        h('p', { class: 'note' }, '아이들이 마을에서 직접 글을 써서 이야기해요. 끄면 정해진 말풍선과 이모티콘으로만 말해요.')),
+      sw(v.chat_open, '글 대화 켜기', (on) => call('kids_t_set_village', { p_chat_open: on, p_free_today: null }))),
+    h('div', { class: 'village-row' },
+      h('div', {}, h('h3', { style: 'margin:0' }, '오늘은 누구나 놀이 마당'),
+        h('p', { class: 'note' }, v.play_free ? `오늘(${v.today})은 말씀 활동을 안 해도 누구나 낚시, 오목, 그림, 요리를 할 수 있어요. 내일부터는 저절로 평소대로 돌아가요.` : '평소에는 그날 암송 연습, 묵상, 필사 가운데 하나를 마쳐야 놀이 마당이 열려요. 첫날이나 행사 날처럼 오늘만 누구나 놀게 하려면 켜 주세요.')),
+      sw(v.play_free, '오늘은 누구나 놀이 마당', (on) => call('kids_t_set_village', { p_chat_open: null, p_free_today: on }))),
+    ...(v.muted.length ? [h('p', { class: 'note warn' }, '글 대화를 막아 둔 아이: ', v.muted.map((c) => `${c.name}(${c.village_name || '-'})`).join(', '))] : []));
+  if (!v.chat.length) { list.replaceChildren(h('div', { class: 'card empty' }, '아직 아이들이 쓴 글이 없어요.')); return; }
+  list.replaceChildren(...v.chat.map((m) => h('div', { class: 'chat-row' },
+    h('time', { datetime: m.at }, timeOf(m.at)),
+    h('div', {}, h('span', { class: 'who' }, m.name || '-', h('small', {}, m.village_name || '')), ' ',
+      m.masked ? h('span', { class: 'pill red' }, '가림') : null,
+      h('div', { class: 'body' }, m.body)),
+    h('button', { class: 'btn btn-sm' + (m.muted ? '' : ' btn-ghost'), type: 'button', onclick: async () => {
+      try { villageConf = await call('kids_t_chat_mute', { p_child: m.child, p_mute: !m.muted }); } catch (e) { return; }
+      toast(m.muted ? `${m.name}의 글 대화를 다시 열었어요.` : `${m.name}의 글 대화를 막았어요.`);
+      renderVillage();
+    } }, m.muted ? '막기 풀기' : '글 대화 막기'))));
 }
 
 let signup = null;
