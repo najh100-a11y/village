@@ -62,6 +62,41 @@ export function mergeStatic(root, { shallow = false } = {}) {
     root.add(mesh);
   }
 }
+// 색만 다른 부품들을 꼭짓점 색으로 바꿔 한 번에 그린다 (놀이기구, 동물처럼 부품이 많은 것).
+// 그림(map)이 있거나 밤에 빛나는(emissive) 재질, 투명한 재질은 그대로 두고 mergeStatic이 따로 합친다.
+// 같이 쓰는 모양(geometry)은 지우지 않는다.
+export function mergeColored(root, vcMat) {
+  root.updateMatrixWorld(true);
+  const inv = root.matrixWorld.clone().invert();
+  const items = [], victims = [];
+  let cast = false;
+  root.traverse((o) => {
+    if (o === root || !o.isMesh || o.isInstancedMesh || Array.isArray(o.material) || o.userData.noMerge || !o.visible) return;
+    const mt = o.material;
+    if (mt.map || mt.transparent || mt.alphaTest > 0 || mt.side !== THREE.FrontSide || !mt.color) return;
+    if (mt.emissive && mt.emissive.getHex() !== 0) return;
+    items.push({ geo: o.geometry, m: new THREE.Matrix4().multiplyMatrices(inv, o.matrixWorld), color: mt.color });
+    cast = cast || o.castShadow;
+    victims.push(o);
+  });
+  if (!items.length) return null;
+  for (const o of victims) o.parent.remove(o);
+  const geo = mergeGeos(items);
+  const C = new Float32Array(geo.attributes.position.count * 3);
+  let vo = 0;
+  for (const { geo: g, color } of items) {
+    const n = g.attributes.position.count;
+    for (let i = 0; i < n; i++) { C[(vo + i) * 3] = color.r; C[(vo + i) * 3 + 1] = color.g; C[(vo + i) * 3 + 2] = color.b; }
+    vo += n;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(C, 3));
+  const mesh = new THREE.Mesh(geo, vcMat);
+  mesh.castShadow = cast;
+  mesh.receiveShadow = true;
+  mesh.userData.noMerge = true;
+  root.add(mesh);
+  return mesh;
+}
 // 여러 그루의 나무처럼 같은 모양을 여러 번 그릴 때
 export class Instancer {
   constructor(scene) { this.scene = scene; this.map = new Map(); }

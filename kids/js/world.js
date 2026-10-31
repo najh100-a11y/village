@@ -3,6 +3,8 @@ import * as THREE from './three.module.min.js';
 import { Avatar, toon, toonGradient } from './avatar.js';
 import { randomAvatar, colorOf, shade } from './face.js';
 import { mergeStatic, Instancer } from './merge.js';
+import { Park, PARK, RIDE_IDS, NO_TREE, resetLimbs } from './park.js';
+import { Critters } from './critters.js';
 
 const WALK_R = 30.2;
 const PR = 0.42; // 사람 충돌 반지름
@@ -11,6 +13,53 @@ const FONT = '"Maplestory Bold", "Apple SD Gothic Neo", "Malgun Gothic", sans-se
 function rng(seed) {
   let s = seed % 2147483647;
   return () => (s = (s * 16807) % 2147483647) / 2147483647;
+}
+const FRUIT_NAMES = ['사과', '감', '복숭아'];
+const FRUIT_COLS = ['#EF6461', '#F49A4C', '#F6A2C4'];
+// 벤치에 앉은 자세
+const benchPose = (av) => {
+  av.legs[0].rotation.x = av.legs[1].rotation.x = -1.45;
+  av.arms[0].rotation.x = av.arms[1].rotation.x = -0.4;
+};
+// 손에 든 열매 (모양은 같이 쓴다)
+let handFruitGeo = null;
+function handFruit(c) {
+  if (!handFruitGeo) handFruitGeo = { f: new THREE.SphereGeometry(0.13, 12, 10), stem: new THREE.CylinderGeometry(0.012, 0.012, 0.07, 5), leaf: new THREE.SphereGeometry(0.05, 8, 6) };
+  const g = new THREE.Group();
+  const fm = new THREE.Mesh(handFruitGeo.f, toon(FRUIT_COLS[c] || FRUIT_COLS[0]));
+  fm.position.y = -0.06;
+  g.add(fm);
+  const st = new THREE.Mesh(handFruitGeo.stem, toon('#6B4429'));
+  st.position.y = 0.03;
+  g.add(st);
+  const lf = new THREE.Mesh(handFruitGeo.leaf, toon('#6CC24A'));
+  lf.scale.set(1.4, 0.4, 0.8);
+  lf.position.set(0.04, 0.05, 0);
+  g.add(lf);
+  g.userData.isFruit = true;
+  return g;
+}
+// 열매 먹는 자세: 위로 손을 뻗어 따고, 입 앞으로 가져와 냠냠 (e.t: 먹기 시작한 뒤 지난 시간)
+function eatPose(e) {
+  const f = (av) => {
+    const k = e.t || 0;
+    if (k < 0.45) { av.arms[1].rotation.x = -2.6; av.arms[1].rotation.z = 0.1; return; }
+    const bite = Math.max(0, Math.sin(k * 11)) * 0.18;
+    av.arms[1].rotation.x = -1.5 + bite;
+    av.arms[1].rotation.z = -0.25;
+    av.arms[0].rotation.x = -0.3;
+    av.head.rotation.x = bite * 0.6;
+  };
+  f.eat = true;
+  return f;
+}
+// 친구가 열매를 먹을 때 (내 화면에서는 같은 동작을 되풀이)
+function remoteEatPose() {
+  const e = { t: 0.5 };
+  const pose = eatPose(e);
+  const f = (av, dt) => { e.t += dt; if (e.t > 2.3) e.t = 0.5; pose(av); };
+  f.eat = true;
+  return f;
 }
 function m(geo, mat, x = 0, y = 0, z = 0, shadow = true) {
   const o = new THREE.Mesh(geo, mat);
@@ -76,7 +125,7 @@ function signMesh(text, width, opts) {
 
 // 길: 꺾은선 목록 (x, z)
 const PATHS = [
-  [[0, 15], [0, 6], [0, 1]],
+  [[0, 16.9], [0, 6], [0, 1]], // 남쪽 끝은 놀이동산 입구
   [[-2.5, -5.5], [-6.5, -7.8], [-9.3, -9.4]],
   [[2.5, -5.5], [6.5, -7.8], [9.3, -9.4]],
   [[0, -7], [0, -12], [0, -17.4]],
@@ -93,8 +142,12 @@ function distToSeg(px, pz, ax, az, bx, bz) {
   const t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / (dx * dx + dz * dz)));
   return Math.hypot(px - (ax + t * dx), pz - (az + t * dz));
 }
+function inPark(x, z, pad = 0) {
+  return ((x - PARK.x) / (PARK.rx + pad)) ** 2 + ((z - PARK.z) / (PARK.rz + pad)) ** 2 < 1;
+}
 function nearPath(x, z, pad) {
   if (Math.hypot(x - PLAZA.x, z - PLAZA.z) < PLAZA.r + pad) return true;
+  if (inPark(x, z, pad)) return true;
   if (Math.hypot(x - YARD.x, z - YARD.z) < YARD.r + pad) return true;
   for (const p of PATHS) for (let i = 0; i < p.length - 1; i++) {
     if (distToSeg(x, z, p[i][0], p[i][1], p[i + 1][0], p[i + 1][1]) < 1.2 + pad) return true;
@@ -143,6 +196,13 @@ export class Village {
     this.remotes = new Map();
     this.net = { moving: false, sent: 0 };
     this.butterflies = [];
+    this.benches = [];
+    this.fruitTrees = [];
+    this.fruits = [];
+    this.noTree = [...NO_TREE];
+    this.noFade = null;
+    this.sitting = null;
+    this.eating = null;
   }
 
   async init() {
@@ -180,7 +240,11 @@ export class Village {
     this.buildBuildings();
     this.buildPlaza();
     this.buildPlayground();
+    this.buildBenches();
+    this.park = new Park(this, { signMesh });
     this.buildNature();
+    this.critters = new Critters(this);
+    this.critters.onSound = (kind, soft) => this.on.onCritterSound && this.on.onCritterSound(kind, soft);
     this.buildNpcs();
     this.applyTimeOfDay();
     this.bindInput();
@@ -236,6 +300,30 @@ export class Village {
       };
       drawPaths(2.7, '#CDB27C');
       drawPaths(2.3, '#EAD7A8');
+      // 놀이동산 바닥: 따뜻한 빛깔 타일
+      const ex = px(PARK.x), ez = px(PARK.z);
+      ctx.fillStyle = '#D9B48C';
+      ctx.beginPath(); ctx.ellipse(ex, ez, (PARK.rx + 0.25) * u, (PARK.rz + 0.25) * u, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#F3DDBF';
+      ctx.beginPath(); ctx.ellipse(ex, ez, PARK.rx * u, PARK.rz * u, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.save();
+      ctx.beginPath(); ctx.ellipse(ex, ez, PARK.rx * u, PARK.rz * u, 0, 0, Math.PI * 2); ctx.clip();
+      ctx.strokeStyle = 'rgba(205,165,125,.45)';
+      ctx.lineWidth = 2;
+      for (let gx = -PARK.rx; gx <= PARK.rx; gx += 1.1) { ctx.beginPath(); ctx.moveTo(px(gx), px(PARK.z - PARK.rz)); ctx.lineTo(px(gx), px(PARK.z + PARK.rz)); ctx.stroke(); }
+      for (let gz = PARK.z - PARK.rz; gz <= PARK.z + PARK.rz; gz += 1.1) { ctx.beginPath(); ctx.moveTo(px(-PARK.rx), px(gz)); ctx.lineTo(px(PARK.rx), px(gz)); ctx.stroke(); }
+      // 색종이 같은 점
+      const conf = ['#F6A2C4', '#7EC8F2', '#F6D55C', '#A8E0B5'];
+      for (let i = 0; i < 220; i++) {
+        ctx.fillStyle = conf[i % 4];
+        ctx.globalAlpha = 0.55;
+        ctx.beginPath(); ctx.arc(px(PARK.x + (rnd() - 0.5) * 2 * PARK.rx), px(PARK.z + (rnd() - 0.5) * 2 * PARK.rz), 3 + rnd() * 3, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+      // 입구에서 들어오는 길
+      ctx.fillStyle = '#EAD7A8';
+      ctx.fillRect(px(-1.15), px(15), 2.3 * u, 2.4 * u);
       // 길 위 작은 돌
       for (let i = 0; i < 260; i++) {
         const x = (rnd() - 0.5) * 60, z = (rnd() - 0.5) * 60;
@@ -329,7 +417,9 @@ export class Village {
       });
       o.material = Array.isArray(o.material) ? cloned : cloned[0];
     });
-    this.fadeables.push({ x, z, r, mats, op: 1 });
+    const f = { x, z, r, mats, op: 1 };
+    this.fadeables.push(f);
+    return f;
   }
 
   glow(color) {
@@ -569,18 +659,9 @@ export class Village {
     this.scene.add(tree);
     this.addObstacleCircle(0, -4.4, 0.95);
     this.makeFadeable(tree, 0, -4.4, 3.2);
-    // 둘레 의자
-    for (const [x, z, ry] of [[-3.6, -2.0, 1.2], [3.6, -2.0, -1.2]]) {
-      const b = new THREE.Group();
-      b.add(box(1.8, 0.14, 0.55, toon('#A06E45'), 0, 0.55, 0));
-      b.add(box(1.8, 0.5, 0.1, toon('#A06E45'), 0, 0.9, -0.25));
-      b.add(box(0.12, 0.5, 0.5, toon('#6B4429'), -0.75, 0.28, 0));
-      b.add(box(0.12, 0.5, 0.5, toon('#6B4429'), 0.75, 0.28, 0));
-      b.position.set(x, 0, z);
-      b.rotation.y = ry;
-      this.scene.add(b);
-      this.addObstacleBox(x, z, 0.95, 0.35, ry);
-    }
+    // 둘레 의자 (앉을 수 있다)
+    this.addBench(-3.6, -2.0, 1.2);
+    this.addBench(3.6, -2.0, -1.2);
     // 게시판
     const board = new THREE.Group();
     board.add(box(0.16, 2.3, 0.16, toon('#8B5E3C'), -1.3, 1.15, 0));
@@ -890,6 +971,202 @@ export class Village {
     });
   }
 
+  // ---------- 벤치: 눌러서 앉는다 (한 벤치에 둘) ----------
+  addBench(x, z, ry) {
+    const b = new THREE.Group();
+    b.add(box(1.8, 0.14, 0.55, toon('#A06E45'), 0, 0.55, 0));
+    b.add(box(1.8, 0.5, 0.1, toon('#A06E45'), 0, 0.9, -0.25));
+    b.add(box(0.12, 0.5, 0.5, toon('#6B4429'), -0.75, 0.28, 0));
+    b.add(box(0.12, 0.5, 0.5, toon('#6B4429'), 0.75, 0.28, 0));
+    b.position.set(x, 0, z);
+    b.rotation.y = ry;
+    mergeStatic(b);
+    const i = this.benches.length;
+    b.userData.pick = { type: 'bench', i };
+    this.scene.add(b);
+    this.pickRoots.push(b);
+    this.addObstacleBox(x, z, 0.95, 0.35, ry);
+    this.benches.push({ x, z, ry });
+  }
+  buildBenches() {
+    this.addBench(-6.9, 17.0, -2.565); // 연못을 보는 벤치
+    this.addBench(-4.0, 18.6, 1.107); // 놀이동산: 회전목마를 본다
+    this.addBench(4.0, 18.6, -1.107);
+    this.addBench(-6.0, 27.4, Math.PI / 2); // 범퍼카를 본다
+    this.addBench(-2.7, -14.6, Math.PI / 2); // 내 집 가는 길
+  }
+  // 벤치 i의 왼쪽(0)·오른쪽(1) 자리: 앉았을 때 발밑 위치와 방향
+  benchSeat(i, side) {
+    const b = this.benches[i];
+    const lx = side ? 0.45 : -0.45, lz = 0.02;
+    const c = Math.cos(b.ry), sn = Math.sin(b.ry);
+    return { x: b.x + lx * c + lz * sn, y: 0.36, z: b.z - lx * sn + lz * c, rot: b.ry };
+  }
+  benchTaken(seat) {
+    for (const r of this.remotes.values()) if (r.pin && r.pin.kind === 'bench' && r.pin.seat === seat) return true;
+    return false;
+  }
+  walkToBench(i) {
+    const b = this.benches[i];
+    if (!b || !this.player) return;
+    const p = this.player.root.position;
+    // 비어 있는 자리 가운데 가까운 쪽
+    const sides = [0, 1].filter((s) => !this.benchTaken(i * 2 + s));
+    if (!sides.length) { if (this.on.onBenchFull) this.on.onBenchFull(); return; }
+    sides.sort((a, c) => { const sa = this.benchSeat(i, a), sc = this.benchSeat(i, c); return Math.hypot(sa.x - p.x, sa.z - p.z) - Math.hypot(sc.x - p.x, sc.z - p.z); });
+    const side = sides[0];
+    const st = this.benchSeat(i, side);
+    const pos = new THREE.Vector3(st.x + Math.sin(st.rot) * 0.8, 0, st.z + Math.cos(st.rot) * 0.8);
+    this.resolve(pos);
+    this.target = { pos, action: () => this.sit(i, side) };
+    this.showTapMark(pos);
+    this.reportMove(pos.x, pos.z);
+  }
+  sit(i, side) {
+    if (this.mode !== 'play' || !this.player) return;
+    this.cancelEat();
+    const st = this.benchSeat(i, side);
+    const pl = this.player;
+    pl.root.position.set(st.x, st.y, st.z);
+    pl.root.rotation.y = st.rot;
+    pl.pose = benchPose;
+    this.sitting = { i, side, seat: i * 2 + side };
+    this.target = null;
+    if (this.on.onLocalStop) this.on.onLocalStop({ x: +st.x.toFixed(2), z: +st.z.toFixed(2) });
+    if (this.on.onSit) this.on.onSit(this.sitting.seat);
+  }
+  standUp(quiet = false) {
+    if (!this.sitting || !this.player) return;
+    const st = this.benchSeat(this.sitting.i, this.sitting.side);
+    this.sitting = null;
+    const pl = this.player;
+    pl.pose = null;
+    pl.root.position.set(st.x + Math.sin(st.rot) * 0.8, 0, st.z + Math.cos(st.rot) * 0.8);
+    this.resolve(pl.root.position);
+    if (!quiet && this.on.onSit) this.on.onSit(null);
+  }
+  pinBench(r, seat) {
+    if (!Number.isInteger(seat) || seat < 0 || seat >= this.benches.length * 2) return;
+    if (r.pin && r.pin.kind === 'bench' && r.pin.seat === seat) return;
+    this.unpinRemote(r.id);
+    const st = this.benchSeat(seat >> 1, seat & 1);
+    this.pinRemote(r.id, { kind: 'bench', seat, x: st.x, y: st.y, z: st.z, rot: st.rot, pose: benchPose, auto: true });
+  }
+
+  // ---------- 열매 나무: 눌러서 열매를 따 먹는다 (상점 열매와는 따로) ----------
+  buildFruit(fruitGeo, fruitC) {
+    const lists = [[], [], []];
+    this.fruitTrees.forEach((t, ti) => {
+      t.fruits = [];
+      for (const p of t.pts) {
+        const f = { tree: ti, c: t.c, pos: p, s: t.s, alive: true, grow: 1, idx: lists[t.c].length, regrowAt: 0 };
+        lists[t.c].push(f);
+        t.fruits.push(this.fruits.length);
+        this.fruits.push(f);
+      }
+      // 나무 윗부분을 누르면 그 나무로 간다 (보이지 않는 공)
+      const proxyMat = new THREE.MeshBasicMaterial({ visible: false });
+      const proxy = new THREE.Mesh(new THREE.SphereGeometry(1.35 * t.s, 10, 8), proxyMat);
+      proxy.position.set(t.x, 2.45 * t.s, t.z);
+      proxy.userData.pick = { type: 'fruit', i: ti };
+      this.scene.add(proxy);
+      this.pickRoots.push(proxy);
+    });
+    this.fruitMeshes = lists.map((list, c) => {
+      const im = new THREE.InstancedMesh(fruitGeo, fruitC[c], Math.max(1, list.length));
+      im.count = list.length;
+      im.castShadow = false;
+      this.scene.add(im);
+      return im;
+    });
+    for (const f of this.fruits) this.setFruit(f);
+    for (const im of this.fruitMeshes) im.computeBoundingSphere();
+  }
+  setFruit(f) {
+    const m4 = new THREE.Matrix4();
+    const k = f.alive ? 1 : Math.max(0.0001, f.grow);
+    m4.makeScale(f.s * k, f.s * k, f.s * k);
+    m4.setPosition(f.pos);
+    const im = this.fruitMeshes[f.c];
+    im.setMatrixAt(f.idx, m4);
+    im.instanceMatrix.needsUpdate = true;
+  }
+  walkToFruit(i) {
+    const t = this.fruitTrees[i];
+    if (!t || !this.player) return;
+    const p = this.player.root.position;
+    const dx = p.x - t.x, dz = p.z - t.z, d = Math.hypot(dx, dz) || 1;
+    const pos = new THREE.Vector3(t.x + (dx / d) * (0.85 + 0.38 * t.s), 0, t.z + (dz / d) * (0.85 + 0.38 * t.s));
+    this.resolve(pos);
+    this.target = { pos, action: () => this.eatFrom(i) };
+    this.showTapMark(pos);
+    this.reportMove(pos.x, pos.z);
+  }
+  eatFrom(i) {
+    if (this.mode !== 'play' || this.eating || !this.player) return;
+    const t = this.fruitTrees[i];
+    const p = this.player.root.position;
+    let best = null, bd = Infinity;
+    for (const fi of t.fruits) {
+      const f = this.fruits[fi];
+      if (!f.alive) continue;
+      const d = Math.hypot(f.pos.x - p.x, f.pos.z - p.z) + f.pos.y * 0.3;
+      if (d < bd) { bd = d; best = f; }
+    }
+    this.player.root.rotation.y = Math.atan2(t.x - p.x, t.z - p.z);
+    if (!best) { if (this.on.onFruit) this.on.onFruit('empty', FRUIT_NAMES[t.c]); return; }
+    best.alive = false;
+    best.grow = 0;
+    best.regrowAt = this.time + 75;
+    this.setFruit(best);
+    const held = handFruit(best.c);
+    this.player.hold(held, 1);
+    this.eating = { t: 0, f: best, held, bites: 0, c: best.c };
+    this.player.pose = eatPose(this.eating);
+    if (this.on.onFruit) this.on.onFruit('start', FRUIT_NAMES[best.c]);
+  }
+  tickEat(dt) {
+    const e = this.eating;
+    e.t += dt;
+    const bites = [0.85, 1.35, 1.85];
+    while (e.bites < 3 && e.t >= bites[e.bites]) {
+      e.bites++;
+      e.held.scale.setScalar(1 - e.bites * 0.3);
+      if (this.on.onFruit) this.on.onFruit('bite', FRUIT_NAMES[e.c]);
+    }
+    if (e.t >= 2.3) this.finishEat();
+  }
+  finishEat() {
+    const e = this.eating;
+    if (!e) return;
+    this.eating = null;
+    this.player.drop();
+    this.player.pose = null;
+    resetLimbs(this.player);
+    this.player.celebrate();
+    if (this.on.onFruit) this.on.onFruit('done', FRUIT_NAMES[e.c]);
+  }
+  cancelEat() {
+    if (!this.eating) return;
+    const e = this.eating;
+    this.eating = null;
+    if (this.player) { this.player.drop(); if (this.player.pose && this.player.pose.eat) this.player.pose = null; resetLimbs(this.player); }
+    // 다 못 먹은 열매는 나무로 돌아간다
+    if (e.bites === 0) { e.f.alive = true; e.f.grow = 1; this.setFruit(e.f); }
+    if (this.on.onFruit) this.on.onFruit('stop', FRUIT_NAMES[e.c]);
+  }
+  tickFruit(dt) {
+    this.fruitClock = (this.fruitClock || 0) + dt;
+    if (this.fruitClock < 0.1) return;
+    this.fruitClock = 0;
+    for (const f of this.fruits) {
+      if (f.alive || this.time < f.regrowAt) continue;
+      f.grow = Math.min(1, f.grow + 0.08);
+      if (f.grow >= 1) f.alive = true;
+      this.setFruit(f);
+    }
+  }
+
   // ---------- 나무, 꽃, 돌 ----------
   buildNature() {
     const r = rng(42);
@@ -905,6 +1182,7 @@ export class Village {
     const blocked = (x, z, pad) => {
       if (Math.hypot(x, z) > 29.5) return true;
       if (nearPath(x, z, pad)) return true;
+      for (const c of this.noTree) if (Math.hypot(x - c.x, z - c.z) < c.r + pad) return true;
       if (Math.hypot(x + 9.5, z - 13) < 5.5) return true;
       if (Math.hypot(x, z - 9) < 4) return true;
       for (const o of this.obstacles) {
@@ -928,6 +1206,7 @@ export class Village {
       const t = new THREE.Group();
       const s = 0.85 + r() * 0.4;
       const isPine = rad > 20 && r() < 0.45;
+      let fruitLocal = null;
       if (isPine) {
         t.add(m(trunkGeo, trunk, 0, 0.75, 0));
         const pm = pine[made % 2];
@@ -941,10 +1220,11 @@ export class Village {
         t.add(m(crownGeo2, lm, 0.55, 2.9, 0.2));
         t.add(m(crownGeo2, lm, -0.5, 2.75, -0.25));
         if (r() < 0.32) {
-          const fm = fruitC[made % 3];
+          // 열매는 따로 모아 그린다 (따 먹으면 사라졌다가 다시 열린다)
+          fruitLocal = { c: made % 3, pts: [] };
           for (let i = 0; i < 6; i++) {
             const fa = r() * Math.PI * 2, fy = 1.9 + r() * 0.9;
-            t.add(m(fruitGeo, fm, Math.cos(fa) * 1.08, fy, Math.sin(fa) * 1.08));
+            fruitLocal.pts.push([Math.cos(fa) * 1.08, fy, Math.sin(fa) * 1.08]);
           }
         }
       }
@@ -953,6 +1233,10 @@ export class Village {
       t.rotation.y = r() * Math.PI * 2;
       inst.addGroup(t);
       this.addObstacleCircle(x, z, 0.38 * s);
+      if (fruitLocal) {
+        t.updateMatrixWorld(true);
+        this.fruitTrees.push({ x, z, s, c: fruitLocal.c, pts: fruitLocal.pts.map(([lx, ly, lz]) => new THREE.Vector3(lx, ly, lz).applyMatrix4(t.matrixWorld)) });
+      }
     }
     // 덤불
     const bushGeo = new THREE.SphereGeometry(0.55, 12, 10);
@@ -995,6 +1279,7 @@ export class Village {
       inst.addGroup(st);
     }
     inst.build();
+    this.buildFruit(fruitGeo, fruitC);
     for (const [x, z] of [[-10.6, 12.2], [-8.3, 13.8], [-9.6, 14.4]]) {
       const pad = m(new THREE.CircleGeometry(0.45, 16, 0.3, Math.PI * 2 - 0.6), toon('#5FAE4E'), x, 0.06, z, false);
       pad.rotation.x = -Math.PI / 2;
@@ -1110,13 +1395,40 @@ export class Village {
     return r;
   }
   drawRemoteTag(r) { r.tag.textContent = r.act ? `${r.act} ${r.name}` : r.name; }
-  setRemoteActivity(id, icon, act = '') {
+  setRemoteActivity(id, icon, act = '', seat = -1) {
     const r = this.remotes.get(id);
     if (!r) return;
     r.act = icon || '';
     r.actName = act || '';
+    r.actSeat = Number.isInteger(seat) ? seat : -1;
     this.drawRemoteTag(r);
-    if (this.decorateRemote) this.decorateRemote(r, r.actName);
+    this.applyAct(r);
+  }
+  // 친구가 하는 일에 맞게 내 화면의 친구 모습을 꾸민다 (놀이기구, 벤치, 열매 먹기는 마을이, 나머지는 놀이 쪽에서)
+  applyAct(r, hint) {
+    const act = r.actName || '';
+    const av = r.av;
+    if (act !== 'eat' && av.held && av.held.obj.userData.isFruit) { av.drop(); if (av.pose && av.pose.eat) { av.pose = null; resetLimbs(av); } }
+    if (this.park && RIDE_IDS.includes(act)) {
+      if (r.pin && r.pin.kind === act && (act === 'bumper' || r.pin.seat === r.actSeat)) return;
+      if (this.decorateRemote) this.decorateRemote(r, '');
+      this.park.decorate(r, act, r.actSeat);
+      return;
+    }
+    if (act === 'bench') {
+      if (r.pin && r.pin.kind === 'bench' && r.pin.seat === r.actSeat) return;
+      if (this.decorateRemote) this.decorateRemote(r, '');
+      this.pinBench(r, r.actSeat);
+      return;
+    }
+    if (act === 'eat') {
+      if (this.decorateRemote) this.decorateRemote(r, '');
+      if (!av.held || !av.held.obj.userData.isFruit) av.hold(handFruit(0), 1);
+      if (!av.pose || !av.pose.eat) av.pose = remoteEatPose();
+      return;
+    }
+    if (this.decorateRemote) this.decorateRemote(r, act, hint);
+    else if (r.pin && r.pin.auto) this.unpinRemote(r.id);
   }
   pinRemote(id, pin) {
     const r = this.remotes.get(id);
@@ -1128,9 +1440,13 @@ export class Village {
   unpinRemote(id) {
     const r = this.remotes.get(id);
     if (!r || !r.pin) return;
+    const pin = r.pin;
     r.pin = null;
+    if (pin.car) pin.car.removeFromParent();
     r.av.pose = null;
     r.av.drop();
+    resetLimbs(r.av);
+    r.av.root.rotation.set(0, r.av.root.rotation.y, 0);
     r.av.root.position.y = 0;
     this.resolve(r.av.root.position);
   }
@@ -1151,7 +1467,7 @@ export class Village {
     const d = Math.hypot(pos.x - p.x, pos.z - p.z);
     if (d > 2.5 || !r.seen) { pos.set(p.x, 0, p.z); r.seen = true; }
     r.target = (p.tx != null && Math.hypot(p.tx - pos.x, p.tz - pos.z) > 0.15) ? new THREE.Vector3(p.tx, 0, p.tz) : null;
-    if (!r.target) this.resolve(pos);
+    if (!r.target && !r.pin) this.resolve(pos);
     r.stuck = 0;
   }
   remoteStop(id, p) {
@@ -1162,7 +1478,7 @@ export class Village {
     else r.target = null;
     r.seen = true;
     // 놀이 중인 친구가 자리를 옮기면 그 자리(의자, 낚시터)에 다시 앉힌다
-    if (r.actName && this.decorateRemote) this.decorateRemote(r, r.actName, { x: p.x, z: p.z });
+    if (r.actName) this.applyAct(r, { x: p.x, z: p.z });
   }
   remoteCelebrate(id) { const r = this.remotes.get(id); if (r) r.av.celebrate(); }
   say(id, text) {
@@ -1203,11 +1519,28 @@ export class Village {
     for (const r of this.remotes.values()) {
       const pos = r.av.root.position;
       let moving = false;
-      if (r.pin) {
-        // 놀이 중인 친구는 내 화면에서 정해진 자리(맞은편 의자 등)에 둔다
+      if (r.pin && r.pin.obj) {
+        // 놀이기구에 탄 친구: 그 자리(곤돌라, 배, 말)를 따라 움직인다
+        r.pin.obj.getWorldPosition(pos);
+        r.pin.obj.getWorldQuaternion(r.av.root.quaternion);
+      } else if (r.pin && r.pin.free) {
+        // 범퍼카: 친구가 보낸 자리로 미끄러지듯 따라간다
+        if (r.target) {
+          const dx = r.target.x - pos.x, dz = r.target.z - pos.z;
+          const d = Math.hypot(dx, dz);
+          if (d < 0.08) r.target = null; else {
+            const step = Math.min(d, Math.max(3.2, d * 2.5) * dt);
+            pos.x += (dx / d) * step;
+            pos.z += (dz / d) * step;
+            r.av.root.rotation.y = turn(r.av.root.rotation.y, Math.atan2(dx, dz), dt * 8);
+          }
+        }
+        if (this.park) this.park.clampArena(pos);
+        pos.y = r.pin.y;
+      } else if (r.pin) {
+        // 놀이 중인 친구는 내 화면에서 정해진 자리(맞은편 의자, 벤치 등)에 둔다
         pos.set(r.pin.x, r.pin.y || 0, r.pin.z);
         r.av.root.rotation.y = r.pin.rot;
-        r.target = null;
       } else if (r.target) {
         const dx = r.target.x - pos.x, dz = r.target.z - pos.z;
         const d = Math.hypot(dx, dz);
@@ -1408,6 +1741,9 @@ export class Village {
       if (p.type === 'building') { this.walkTo(p.id); return; }
       if (p.type === 'board') { this.walkTo('board'); return; }
       if (p.type === 'npc') { this.walkToNpc(); return; }
+      if (p.type === 'bench') { this.walkToBench(p.i); return; }
+      if (p.type === 'fruit') { this.walkToFruit(p.i); return; }
+      if (p.type === 'pet') { this.petAnimal(p.i); return; }
     }
     const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     const pt = new THREE.Vector3();
@@ -1445,6 +1781,20 @@ export class Village {
     this.resolve(pos);
     this.target = { pos, action: () => { if (this.remotes.has(id)) this.player.root.rotation.y = Math.atan2(q.x - this.player.root.position.x, q.z - this.player.root.position.z); } };
     this.showTapMark(pos);
+    this.reportMove(pos.x, pos.z);
+  }
+  // 강아지·고양이를 누르면 멈춰서 반기고, 나는 그 옆으로 간다
+  petAnimal(i) {
+    if (!this.critters || !this.player) return;
+    const r = this.critters.pet(i);
+    if (!r) return;
+    if (this.on.onPet) this.on.onPet(r);
+    const p = this.player.root.position;
+    const dx = p.x - r.pos.x, dz = p.z - r.pos.z, d = Math.hypot(dx, dz) || 1;
+    if (d < 1.4) return;
+    const pos = new THREE.Vector3(r.pos.x + (dx / d) * 1.0, 0, r.pos.z + (dz / d) * 1.0);
+    this.resolve(pos);
+    this.target = { pos, action: () => { this.player.root.rotation.y = Math.atan2(r.pos.x - this.player.root.position.x, r.pos.z - this.player.root.position.z); } };
     this.reportMove(pos.x, pos.z);
   }
   walkToNpc() {
@@ -1523,6 +1873,8 @@ export class Village {
   // ctrl: { cam: {pos: Vector3, look: Vector3}, update(dt, t), onTap(ray, x, y), stop() }
   enterGame(ctrl) {
     if (this.game && this.game !== ctrl && this.game.stop) this.game.stop();
+    if (this.sitting) this.standUp(true);
+    if (this.eating) this.cancelEat();
     this.game = ctrl;
     this.mode = 'game';
     this.view.game = { yaw: 0, elev: 0, zoom: 1 };
@@ -1541,6 +1893,8 @@ export class Village {
     if (this.player) {
       this.player.pose = null;
       this.player.drop();
+      resetLimbs(this.player);
+      this.player.root.rotation.set(0, this.player.root.rotation.y, 0);
       this.player.root.position.y = 0;
       this.resolve(this.player.root.position);
       this.reportStop();
@@ -1591,6 +1945,14 @@ export class Village {
       const f = Math.sin(t * 18 + b.ph) * 0.9;
       b.l.rotation.y = f; b.r.rotation.y = -f;
     }
+
+    // 놀이동산과 동물 (모든 기기가 같은 시계로 움직인다). 친구 자리보다 먼저 움직여야 탄 친구가 제자리에 붙는다
+    if (this.park) {
+      const T = this.park.now();
+      this.park.update(T, dt);
+      if (this.critters) this.critters.update(T, dt);
+    }
+    this.tickFruit(dt);
 
     this.updateRemotes(dt);
 
@@ -1655,7 +2017,7 @@ export class Village {
     }
     for (const f of this.fadeables) {
       let want = 1;
-      if (pp) {
+      if (pp && f !== this.noFade) {
         const rx = f.x - pp.x, rz = f.z - pp.z;
         const along = rx * cdx + rz * cdz;
         const across = Math.abs(rx * cdz - rz * cdx);
@@ -1683,6 +2045,15 @@ export class Village {
   updatePlayer(dt) {
     const pl = this.player;
     const p = pl.root.position;
+    // 벤치에 앉아 있거나 열매를 먹는 중: 움직이려고 하면 일어나서(그만 먹고) 간다
+    if (this.sitting) {
+      if (this.keys.size || this.target) this.standUp();
+      else { pl.update(dt, false); return; }
+    }
+    if (this.eating) {
+      if (this.keys.size || this.target) this.cancelEat();
+      else { this.tickEat(dt); pl.update(dt, false); return; }
+    }
     let dx = 0, dz = 0;
     if (this.keys.size) {
       let kx = 0, kz = 0;

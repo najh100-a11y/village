@@ -5,7 +5,7 @@ import { Maker } from './maker.js';
 import { createMemory } from './memory.js';
 import { createQt } from './qt.js';
 import { createCopy } from './copy.js';
-import { createNet, PHRASES, EMOTES, clean } from './net.js';
+import { createNet, PHRASES, EMOTES, SHOUTS, clean } from './net.js';
 import { cleanChat, CHAT_MAX } from './chatfilter.js';
 import { createPlayHub } from './play.js';
 import { createArt } from './art.js';
@@ -53,7 +53,7 @@ async function boot() {
       const p = $('#prompt');
       if (!d) { p.hidden = true; return; }
       $('#promptName').textContent = d.name;
-      $('#promptAct').textContent = { board: '보기', fish: '낚시하기', omok: '두기', cook: '요리하기', art: '그리기' }[d.id] || '들어가기';
+      $('#promptAct').textContent = { board: '보기', fish: '낚시하기', omok: '두기', cook: '요리하기', art: '그리기', ferris: '타기', viking: '타기', carousel: '타기', bumper: '타기' }[d.id] || '들어가기';
       p.dataset.id = d.id;
       p.hidden = false;
     },
@@ -62,6 +62,22 @@ async function boot() {
     onLocalMove: (p) => net && net.send('mv', p),
     onViewChange: (changed) => { $('#btnView').hidden = !changed; },
     onLocalStop: (p) => net && net.send('st', p),
+    // 벤치에 앉기 (seat: 자리 번호, 일어나면 null)
+    onSit: (seat) => {
+      setActivity(seat == null ? '' : 'bench', seat == null ? -1 : seat);
+      if (seat != null && !benchTold) { benchTold = true; toast('벤치에 앉았어요. 다른 곳을 누르면 일어나요.', 2600); }
+    },
+    onBenchFull: () => toast('벤치에 자리가 없어요. 다른 벤치에 앉아 볼까요?', 2400),
+    // 열매 따 먹기 (상점에서 쓰는 열매와는 따로예요)
+    onFruit: (what, name) => {
+      if (what === 'start') { setActivity('eat'); sfx.pop(); }
+      else if (what === 'bite') { sfx.munch(); if (!munchSaid) { munchSaid = true; village.say('me', SHOUTS.yum); } }
+      else if (what === 'done') { setActivity(''); munchSaid = false; sfx.fruit(); toast(`${josa(name, '을', '를')} 냠냠 먹었어요. 정말 맛있어요!`, 2400); }
+      else if (what === 'stop') { setActivity(''); munchSaid = false; }
+      else if (what === 'empty') toast('이 나무 열매는 다 땄어요. 조금 있으면 다시 열려요!', 2600);
+    },
+    onPet: (r) => { if (r.kind === 'cat') sfx.meow(); else sfx.bark(); },
+    onCritterSound: (kind, soft) => { if (kind === 'bird') sfx.tweet(); else if (kind === 'cat') sfx.meow(soft); else sfx.bark(soft); },
   });
   try {
     await village.init();
@@ -99,7 +115,7 @@ async function boot() {
   // 놀이는 창을 띄우지 않고 마을 안 그 자리에서 3D로 한다
   play3d = createPlay3D({
     village, rpc, getToken: token, onSessionLost: sessionLost, onCelebrate: () => village.celebrate(),
-    setActivity, setScene, hub, onlineFriends,
+    setActivity, setScene, hub, onlineFriends, shout,
     onRare: (f) => { if (net) net.send('fish', { f }); },
     openArt: (start, onClose) => art.open(start, { onClose }),
     onDishShared: () => { if (net) net.send('dish', {}); dishAt = 0; refreshDishes(); },
@@ -197,6 +213,15 @@ function toggleSay() {
     rpc('kids_chat_open').then(showChatInput).catch(() => {});
     if (state.chatOpen && matchMedia('(pointer: fine)').matches) setTimeout(() => $('#chatInput').focus({ preventScroll: true }), 50);
   }
+}
+
+// 놀이기구에서 외치기: 내 머리 위 말풍선과 친구들에게만 (대화 기록에는 남기지 않는다)
+function shout(id) {
+  const text = SHOUTS[id] || EMOTES[id];
+  if (!text) return;
+  village.say('me', text);
+  sfx.pop();
+  if (net) net.send('say', { p: id });
 }
 
 function say(id) {
@@ -332,7 +357,11 @@ async function refreshToday() {
 
 // 놀이 마당: 그날 암송·묵상·필사 가운데 하나라도 마쳐야 열린다
 const playOpen = () => !!(state.today && state.today.cleared);
-const GAMES = { fish: () => play3d.fishing(), omok: () => play3d.omokMenu(), cook: () => play3d.cookMenu(), art: () => play3d.easel() };
+const GAMES = {
+  fish: () => play3d.fishing(), omok: () => play3d.omokMenu(), cook: () => play3d.cookMenu(), art: () => play3d.easel(),
+  ferris: () => play3d.ride('ferris'), viking: () => play3d.ride('viking'), carousel: () => play3d.ride('carousel'), bumper: () => play3d.ride('bumper'),
+};
+let benchTold = false, munchSaid = false;
 async function openGame(id) {
   if (!playOpen()) await refreshToday();
   if (!playOpen()) return showLocked();
@@ -344,7 +373,7 @@ function showLocked() {
   const go = (where) => { modal.close(); village.walkTo(where); };
   openSheet('놀이 마당', h('div', { class: 'talk' },
     h('p', { class: 'result-big' }, '말씀 활동을 하나 마치면 열려요!'),
-    h('p', {}, '오늘 암송 연습, 오늘 묵상, 이번 주 필사 가운데 하나만 해도 돼요. 마치고 오면 낚시, 오목, 그림, 요리를 할 수 있어요.'),
+    h('p', {}, '오늘 암송 연습, 오늘 묵상, 이번 주 필사 가운데 하나만 해도 돼요. 마치고 오면 낚시, 오목, 그림, 요리를 하고 놀이동산 놀이기구도 탈 수 있어요.'),
     h('div', { class: 'row' },
       h('button', { class: 'btn btn-soft', type: 'button', onclick: () => go('memory') }, '암송의 집'),
       h('button', { class: 'btn btn-soft', type: 'button', onclick: () => go('qt') }, '묵상의 숲'),
@@ -444,10 +473,10 @@ async function startNet() {
       if (type === 'mv') village.remoteMove(id, p);
       else if (type === 'st') village.remoteStop(id, p);
       else if (type === 'say') {
-        const text = PHRASES[p.p] || EMOTES[p.p];
+        const text = PHRASES[p.p] || EMOTES[p.p] || SHOUTS[p.p];
         village.say(id, text);
         sfx.pop(true);
-        logLine(person.name, text, false);
+        if (!SHOUTS[p.p]) logLine(person.name, text, false);
       } else if (type === 'chat') {
         village.say(id, p.m);
         sfx.pop(true);
@@ -459,7 +488,7 @@ async function startNet() {
       } else if (type === 'inv' || type === 'invr') {
         hub.onMsg(type, id, p);
       } else if (type === 'act') {
-        village.setRemoteActivity(id, ACT_ICON[p.a] || '', p.a || '');
+        village.setRemoteActivity(id, ACT_ICON[p.a] || '', p.a || '', p.s);
       } else if (type === 'fish') {
         const f = fishById(p.f);
         if (f && f.rarity >= 2) {
@@ -513,11 +542,13 @@ async function refreshWall() {
   try { village.setArtWall(await rpc('kids_art_wall', { p_token: token() })); } catch (e) { /* 다음에 */ }
 }
 
-let myAct = '';
-function setActivity(a) {
-  if (a === myAct) return;
+let myAct = '', mySeat = -1;
+// a: 하는 일, s: 앉은 자리 번호 (놀이기구 의자, 벤치)
+function setActivity(a, s = -1) {
+  if (a === myAct && s === mySeat) return;
   myAct = a;
-  if (net) net.send('act', { a });
+  mySeat = s;
+  if (net) net.send('act', s >= 0 ? { a, s } : { a });
 }
 
 // ---------- 친구 목록, 둘이 대화, 오목 구경 ----------
@@ -664,6 +695,7 @@ function openSheet(title, body, cls = '') {
 // 집 안 창을 열고, 닫히면 마을을 다시 움직인다
 function openHouse(fn, act = '') {
   hideHint();
+  village.standUp();
   $('#sayPanel').hidden = true;
   village.setPaused(true);
   fn();
@@ -710,12 +742,12 @@ function onNpc() {
   if (me.is_birthday) lines.push(`${name}, 생일 축하해! 오늘은 마을이 더 반짝이는 것 같아.`);
   else lines.push(`안녕, ${name}!${t.theme ? ` 이번 주 주제는 '${t.theme}'이야.` : ''}`);
   let go = null;
-  if (!playOpen()) lines.push('말씀 활동을 하나 마치면 남쪽 놀이 마당이 열려. 낚시도 하고 오목도 둘 수 있어!');
+  if (!playOpen()) lines.push('말씀 활동을 하나 마치면 남쪽 놀이 마당과 놀이동산이 열려. 낚시도 하고 바이킹도 탈 수 있어!');
   if (t.qt && !t.qt.done) { lines.push(`오늘 묵상은 '${t.qt.title}'이야. 묵상의 숲에 가 볼래?`); go = ['묵상의 숲으로', 'qt']; }
   else if (cur && !cur.practiced_today && !cur.passed) { lines.push(`이번 주 말씀은 ${cur.ref}이야. 암송의 집에서 연습해 볼까?`); go = ['암송의 집으로', 'memory']; }
   else if (t.copy && !t.copy.done) { lines.push(`이번 주 필사는 ${t.copy.ref}이야. 필사 도서관에서 따라 써 볼래?`); go = ['필사 도서관으로', 'library']; }
-  else if (t.qt || cur) { lines.push('오늘 할 일을 벌써 다 했구나. 정말 멋지다! 친구들 글에 응원도 보내 봐.'); lines.push('남쪽 놀이 마당에서 친구랑 오목을 두거나, 연못에서 낚시를 해도 좋아.'); }
-  else lines.push('마을을 천천히 둘러보렴. 연못에서 낚시를 하거나 그림 공방에서 그림을 그려도 좋아.');
+  else if (t.qt || cur) { lines.push('오늘 할 일을 벌써 다 했구나. 정말 멋지다! 친구들 글에 응원도 보내 봐.'); lines.push('남쪽 길 끝 놀이동산에서 친구랑 회전목마나 바이킹을 타도 좋아. 오목을 두거나 낚시를 해도 좋고!'); }
+  else lines.push('마을을 천천히 둘러보렴. 남쪽 길 끝에는 놀이동산이 있고, 열매가 달린 나무를 누르면 열매를 따 먹을 수 있어.');
   openSheet('숲지기 솔', h('div', { class: 'talk' },
     lines.map((l) => h('p', { class: 'talk-line' }, l)),
     h('div', { class: 'row' },

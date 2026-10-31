@@ -8,9 +8,11 @@ export const PHRASES = {
   bless: '축복해!', memory: '암송의 집에서 만나!', qt: '오늘 묵상했어?', copy: '필사 같이 하자!', wait: '잠깐 기다려 줘!', bye: '내일 또 만나!',
 };
 export const EMOTES = { heart: '❤️', clap: '👏', smile: '😊', wave: '👋', pray: '🙏', star: '⭐' };
+// 놀이기구를 타며 외치는 말 (말하기 판에는 나오지 않는다)
+export const SHOUTS = { yay: '야호!', beep: '빵빵!', yum: '냠냠!' };
 const EVENTS = ['mv', 'st', 'say', 'chat', 'dm', 'done', 'av', 'inv', 'invr', 'act', 'fish', 'art', 'dish', 'ob'];
 export const GAME_KINDS = ['omok', 'cook'];
-export const ACTS = ['', 'fish', 'omok', 'cook', 'art', 'memory', 'qt', 'copy', 'watch'];
+export const ACTS = ['', 'fish', 'omok', 'cook', 'art', 'memory', 'qt', 'copy', 'watch', 'ferris', 'viking', 'carousel', 'bumper', 'bench', 'eat'];
 const ID_RE = /^[A-Za-z0-9-]{1,64}$/;
 const GID_RE = /^[a-z0-9]{8,12}$/;
 const WORD_RE = /^[a-z]{2,12}$/;
@@ -21,7 +23,7 @@ export function clean(type, p) {
   const num = (v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 45;
   if (type === 'mv') return num(p.x) && num(p.z) && num(p.tx) && num(p.tz) ? { x: p.x, z: p.z, tx: p.tx, tz: p.tz } : null;
   if (type === 'st') return num(p.x) && num(p.z) ? { x: p.x, z: p.z } : null;
-  if (type === 'say') return PHRASES[p.p] || EMOTES[p.p] ? { p: p.p } : null;
+  if (type === 'say') return PHRASES[p.p] || EMOTES[p.p] || SHOUTS[p.p] ? { p: p.p } : null;
   if (type === 'chat') { const t = typeof p.m === 'string' ? cleanChat(p.m) : ''; return t ? { m: t } : null; }
   if (type === 'done') return ['memory', 'qt', 'copy'].includes(p.k) ? { k: p.k } : null;
   if (type === 'av') return {};
@@ -29,7 +31,8 @@ export function clean(type, p) {
     && (p.x == null || WORD_RE.test(p.x)) ? { to: p.to, g: p.g, k: p.k, x: p.x || null } : null;
   if (type === 'invr') return typeof p.to === 'string' && ID_RE.test(p.to) && GID_RE.test(p.g) && typeof p.ok === 'boolean'
     ? { to: p.to, g: p.g, ok: p.ok, b: p.b === 1 || p.b === 2 ? p.b : 0 } : null;
-  if (type === 'act') return ACTS.includes(p.a) ? { a: p.a } : null;
+  // s: 앉은 자리 번호 (놀이기구 의자, 벤치)
+  if (type === 'act') return ACTS.includes(p.a) ? { a: p.a, s: Number.isInteger(p.s) && p.s >= 0 && p.s < 64 ? p.s : -1 } : null;
   if (type === 'fish') return WORD_RE.test(p.f) ? { f: p.f } : null;
   if (type === 'art') return {};
   if (type === 'dish') return {};
@@ -69,14 +72,18 @@ export class Outbox {
     if (ev === 'ob') this.queue = this.queue.filter((m) => m[0] !== 'ob'); // 오목 판은 가장 새 것만
     if (ev === 'mv' || ev === 'st') this.move = [ev, payload];
     else {
-      if (ev === 'act') this.queue = this.queue.filter((m) => m[0] !== 'act');
+      if (ev === 'act') { this.queue = this.queue.filter((m) => m[0] !== 'act'); this.lastAct = payload; }
       this.queue.push([ev, payload]);
       while (this.queue.length > 3) this.queue.shift();
     }
     this.flush();
   }
-  // 새로 들어온 친구에게 내 자리를 알린다 (이미 보낼 움직임이 있으면 그것으로 충분)
-  announce() { if (!this.move) this.move = ['st', null]; this.flush(); }
+  // 새로 들어온 친구에게 내 자리와 지금 하는 일(놀이기구, 벤치)을 알린다
+  announce() {
+    if (!this.move) this.move = ['st', null];
+    if (this.lastAct && this.lastAct.a && !this.queue.some((m) => m[0] === 'act')) this.queue.push(['act', this.lastAct]);
+    this.flush();
+  }
   freshMove() {
     let [ev, p] = this.move;
     this.move = null;
@@ -217,6 +224,19 @@ class DemoNet {
     if (!bot.done && performance.now() > 25000 + this.bots.indexOf(bot) * 15000) {
       bot.done = true;
       this.h.onMsg('done', bot.id, { k: this.bots.indexOf(bot) === 0 ? 'qt' : 'memory' });
+    }
+    // 체험판: 조금 지나면 예시 친구도 놀이기구를 30초쯤 탄다 (한 번씩)
+    const k = this.bots.indexOf(bot);
+    if (!bot.rode && performance.now() > 40000 + k * 22000) {
+      bot.rode = true;
+      bot.riding = 30;
+      const [a, seat] = k === 0 ? ['carousel', 2] : ['ferris', 5];
+      this.h.onMsg('act', bot.id, { a, s: seat });
+    }
+    if (bot.riding > 0) {
+      bot.riding -= dt;
+      if (bot.riding <= 0) this.h.onMsg('act', bot.id, { a: '' });
+      return;
     }
     if (bot.wait > 0) { bot.wait -= dt; return; }
     const [tx, tz] = BOT_ROUTE[bot.i];

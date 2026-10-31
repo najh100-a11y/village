@@ -170,4 +170,13 @@ export const sfx = {
   // 지글지글
   sizzle: play(() => { noise({ dur: 0.5, vol: 0.09, freq: 5200, q: 0.6, kind: 'highpass' }); noise({ dur: 0.35, vol: 0.05, freq: 2600, freq2: 4200, q: 1.2, delay: 0.12 }); }),
   door: play(() => { tone({ f: 330, f2: 410, type: 'triangle', dur: 0.12, vol: 0.08 }); noise({ dur: 0.1, vol: 0.05, freq: 900, q: 1 }); }),
+  // 범퍼카: 쿵 부딪히는 소리와 빵빵
+  bonk: play(() => { tone({ f: 190, f2: 90, type: 'sine', dur: 0.16, vol: 0.2 }); noise({ dur: 0.08, vol: 0.12, freq: 700, q: 0.8, kind: 'lowpass' }); tone({ f: 620, f2: 880, type: 'triangle', dur: 0.08, vol: 0.06, delay: 0.05 }); }),
+  honk: play(() => { [0, 0.18].forEach((d) => { tone({ f: 415, type: 'square', dur: 0.12, vol: 0.05, delay: d }); tone({ f: 523, type: 'square', dur: 0.12, vol: 0.04, delay: d }); }); }),
+  // 열매 먹기: 아삭
+  munch: play(() => { noise({ dur: 0.07, vol: 0.16, freq: rnd(2400, 3200), q: 1.4 }); noise({ dur: 0.05, vol: 0.1, freq: rnd(1500, 2000), q: 1.2, delay: 0.06 }); }),
+  // 동물 소리 (soft면 작게)
+  bark: play((soft = false) => { const v = soft ? 0.07 : 0.13; tone({ f: 520, f2: 330, type: 'sawtooth', dur: 0.09, vol: v * 0.6 }); tone({ f: 470, f2: 300, type: 'triangle', dur: 0.1, vol: v, delay: 0.16 }); }),
+  meow: play((soft = false) => { const v = soft ? 0.06 : 0.11; tone({ f: 620, f2: 880, type: 'triangle', dur: 0.16, vol: v }); tone({ f: 880, f2: 520, type: 'triangle', dur: 0.26, vol: v, delay: 0.15 }); }),
+  tweet: play(() => { [0, 0.13, 0.24].forEach((d, i) => tone({ f: 2600 + i * 300, f2: 3600 + i * 200, dur: 0.06, vol: 0.035, delay: d })); }),
 };

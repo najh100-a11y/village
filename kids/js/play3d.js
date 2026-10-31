@@ -10,6 +10,7 @@ import { cleanChat } from './chatfilter.js';
 import { aiMove, lineAt } from './omok.js';
 import { friendPicker, waitInvite } from './play.js';
 import { renderFishBook } from './fishing.js';
+import { createRides } from './rides.js';
 
 // ---------- 도우미 ----------
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -474,11 +475,11 @@ export function createPlay3D(ctx) {
   }
   const live = (game) => !!cur && cur.game === game;
 
-  function begin(id, name, game, side = []) {
+  function begin(id, name, game, side = [], seat = -1) {
     cur = { id, game };
     v.enterGame(game);
     ui.open({ name, onExit: () => stopAll(), side });
-    setActivity(id);
+    setActivity(id, seat);
     setScene('game');
   }
   function stopAll() {
@@ -2533,7 +2534,11 @@ export function createPlay3D(ctx) {
     else v.setEasel(b64);
   }
 
+  // 놀이동산 놀이기구
+  const rides = createRides({ v, ui, begin, stopAll, portrait, shout: (id) => ctx.shout && ctx.shout(id) });
+
   return {
+    ride: rides.ride,
     fishing, omokMenu, omok, omokWatch, cookMenu, cook, cookFree, easel, artSaved,
     observe(id, st) { if (watchUpdate) watchUpdate(id, st); },
     stop: stopAll, decorateRemote,
