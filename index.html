@@ -235,22 +235,26 @@ var coarse = matchMedia('(pointer: coarse)').matches;
 var APPS = [
   {name:'렉시오 디비나', tag:'말씀과 침묵의 기도',
    desc:'성경 본문을 고르고 침묵, 읽기, 묵상, 기도, 관상의 시간을 정해 두면 타이머와 싱잉볼 소리에 맞춰 말씀 앞에 머물 수 있습니다. 센터링 기도도 함께 들어 있습니다.',
-   url:'https://dufenekffksxm-design.github.io/lectio-divina/', kind:'web', roof:'#7a5aa8', wall:'#fbf1e2', style:'monastery', house:'싱잉볼을 얹은 탑이 있는 돌집, 문 앞에는 펼쳐진 책'},
+   url:'https://dufenekffksxm-design.github.io/lectio-divina/', kind:'web', roof:'#7a5aa8', wall:'#fbf1e2', style:'monastery', house:'싱잉볼을 얹은 탑이 있는 돌집, 문 앞에는 펼쳐진 책', angle:0},
   {name:'말의 구원', tag:'깊은 샘에서 흘러나오는 말',
    desc:'2026년 10월 설교 시리즈와 함께 4주 동안 걷는 워크북입니다.',
-   url:'https://najh100-a11y.github.io/word-training/', kind:'web', roof:'#3d7fc0', wall:'#e9f1f6', style:'spring', house:'샘물이 흘러나오는 둥근 집, 창문은 말풍선 모양'},
+   url:'https://najh100-a11y.github.io/word-training/', kind:'web', roof:'#3d7fc0', wall:'#e9f1f6', style:'spring', house:'샘물이 흘러나오는 둥근 집, 창문은 말풍선 모양', angle:45},
   {name:'1도의 가격', tag:'책읽기 모임, 함께 읽기',
    desc:'북클럽에서 읽은 내용의 요약과 나눔판, 토론 질문을 휴대폰으로 함께 보는 앱입니다.',
-   url:'https://najh100-a11y.github.io/slow-burn/', kind:'web', roof:'#e0773f', wall:'#fdf3e6', style:'books', house:'책을 쌓아 올린 집, 지붕은 엎어 둔 책, 옆에는 커다란 온도계'},
+   url:'https://najh100-a11y.github.io/slow-burn/', kind:'web', roof:'#e0773f', wall:'#fdf3e6', style:'books', house:'책을 쌓아 올린 집, 지붕은 엎어 둔 책, 옆에는 커다란 온도계', angle:90},
+  {name:'모여라 진숲 어린이 마을', tag:'말씀을 외우고 함께 노는 마을',
+   desc:'교회 어린이들이 직접 꾸민 주민으로 들어와 말씀을 외우고, 묵상하고, 필사하는 3D 마을입니다. 함께 접속한 친구들과 이야기하고, 낚시, 오목, 그림, 요리 놀이도 합니다.',
+   note:'처음 한 번은 교회에서 받은 가입 코드로 가입합니다. 태블릿에서 "홈 화면에 추가"를 누르면 앱 아이콘으로 쓸 수 있습니다.',
+   url:'https://najh100-a11y.github.io/village/kids/', kind:'web', kindLabel:'어린이용 웹앱', label:'모여라 진숲', roof:'#e8697d', wall:'#e2b17a', style:'treehouse', house:'미끄럼틀과 그네가 달린 나무 위 오두막, 난간에는 어린이 마을 아이콘', angle:135},
   {name:'팀 셔플', tag:'조 편성 추첨 프로그램',
    desc:'교회 모임에서 조를 고르게 나눠 주는 추첨 프로그램입니다. Windows와 Mac에 설치해서 씁니다.',
-   url:'https://github.com/najh100-a11y/team-shuffle/releases/tag/v1.0.0', kind:'desktop', roof:'#d4544c', roof2:'#3f7fbf', wall:'#f9ede4', style:'tent', house:'네 가지 팀 색깔로 칠한 천막, 문 앞에는 주사위'},
+   url:'https://github.com/najh100-a11y/team-shuffle/releases/tag/v1.0.0', kind:'desktop', roof:'#d4544c', roof2:'#3f7fbf', wall:'#f9ede4', style:'tent', house:'네 가지 팀 색깔로 칠한 천막, 문 앞에는 주사위', angle:225},
   {name:'풍성한 첫걸음', tag:'풍성한 삶으로 한 걸음씩 함께',
    desc:'풍성한 삶으로 한 걸음씩 함께 내딛도록 돕는 앱입니다.',
-   url:'https://hanabokdna2026-dot.github.io/firststep/', kind:'web', roof:'#e5b333', wall:'#fbf6e6', style:'greenhouse', house:'새싹이 자라는 온실, 문 앞에 작은 발자국'},
+   url:'https://hanabokdna2026-dot.github.io/firststep/', kind:'web', roof:'#e5b333', wall:'#fbf6e6', style:'greenhouse', house:'새싹이 자라는 온실, 문 앞에 작은 발자국', angle:270},
   {name:'주님께 기도를 배우다', tag:'기도 앱',
    desc:'주님께 기도를 배우는 앱입니다.',
-   url:'https://dufenekffksxm-design.github.io/prayer-app/', kind:'web', roof:'#3a9a87', wall:'#e9f3ea', style:'chapel', house:'스테인드글라스가 빛나는 작은 기도처'}
+   url:'https://dufenekffksxm-design.github.io/prayer-app/', kind:'web', roof:'#3a9a87', wall:'#e9f3ea', style:'chapel', house:'스테인드글라스가 빛나는 작은 기도처', angle:315}
 ];
 var NOTE_WEB = '열린 화면에서 공유 버튼이나 브라우저 메뉴의 "홈 화면에 추가"를 누르면 휴대폰에서 앱처럼 쓸 수 있습니다.';
 var NOTE_DESK = '내려받는 곳에 Windows용과 Mac용(애플 실리콘, 인텔) 설치 파일이 있습니다. 처음 실행할 때 보안 경고가 나오면 저장소 안내문(README)을 따르면 됩니다.';
@@ -281,12 +285,12 @@ $('#homeBtn').addEventListener('click', function(){ setList(false); if(!card.hid
 function showCard(i){
   var a = APPS[i]; sel = i;
   card.style.setProperty('--c', a.roof);
-  $('#cardKind').textContent = a.kind === 'web' ? '휴대폰 웹앱' : 'Windows · Mac 프로그램';
+  $('#cardKind').textContent = a.kindLabel || (a.kind === 'web' ? '휴대폰 웹앱' : 'Windows · Mac 프로그램');
   $('#cardName').textContent = a.name;
   $('#cardTag').textContent = a.tag;
   $('#cardDesc').textContent = a.desc;
   $('#cardHouse').textContent = a.house;
-  $('#cardNote').textContent = a.kind === 'web' ? NOTE_WEB : NOTE_DESK;
+  $('#cardNote').textContent = a.note || (a.kind === 'web' ? NOTE_WEB : NOTE_DESK);
   var go = $('#cardGo'); go.href = a.url;
   go.querySelector('span').textContent = a.kind === 'web' ? '들어가기' : '내려받는 곳으로';
   card.hidden = false; hint.hidden = true;
@@ -732,10 +736,100 @@ function init3D(){
     return {group:g, glows:[stained], top:sy + 2.25};
   };
 
+  /* Kids' village: a treehouse with a ladder, a slide and a swing, the app's own logo hung on the porch */
+  BUILD.treehouse = function(app){
+    var g = new THREE.Group(), glass = glowMat('#cfe9f6', '#ffd36b');
+    var bark = M('#86593a'), wood = M('#c98f55', true), woodD = M('#9c6a3e', true), plank = M(app.wall, true);
+    var roof = M(app.roof, true), red = M('#e5483f', true), yellow = M('#f6c53d', true);
+    var PY = 1.75, ph = 0.18, floor = PY + ph / 2;
+    /* trunk rising through the cabin, with roots */
+    add(g, new THREE.CylinderGeometry(0.4, 0.62, 5.0, 9), bark, 0, 2.5, -0.45);
+    [0.4, 2.5, 4.4].forEach(function(a){
+      var rt = add(g, new THREE.ConeGeometry(0.28, 0.9, 6), bark, Math.cos(a) * 0.62, 0.18, -0.45 + Math.sin(a) * 0.62);
+      rt.rotation.set(Math.sin(a) * 1.15, 0, -Math.cos(a) * 1.15);
+    });
+    /* platform on four posts */
+    add(g, rbox(3.0, ph, 2.6, 0.05), woodD, 0, PY, 0.15);
+    [[-1.32, -1.0], [1.32, -1.0], [-1.32, 1.3], [1.32, 1.3]].forEach(function(p){ add(g, new THREE.CylinderGeometry(0.09, 0.1, PY, 8), woodD, p[0], PY / 2, p[1]); });
+    /* the cabin */
+    var cw = 2.2, ch = 1.35, cd = 1.6, cz = -0.25, top = floor + ch;
+    add(g, rbox(cw, ch, cd, 0.08), plank, 0, floor + ch / 2, cz);
+    for(var k = 1; k < 4; k++) add(g, new THREE.BoxGeometry(cw + 0.02, 0.03, cd + 0.02), M('#cf9c63', true), 0, floor + k * ch / 4, cz, false);
+    var RH = holder(g, 0, 0, cz, 0);
+    gableRoof(RH, cw, cd, top, 0.85, roof, roof, plank);
+    add(g, archGeo(0.6, 1.0, 0.12), M('#7a4b30', true), 0.42, floor, cz + cd / 2 + 0.02);
+    add(g, new THREE.SphereGeometry(0.045, 8, 6), M(GOLD_C, true), 0.6, floor + 0.5, cz + cd / 2 + 0.1, false);
+    roundWin(g, -0.48, floor + 0.78, cz + cd / 2 + 0.03, 0, 0.22, glass);
+    roundWin(g, cw / 2 + 0.03, floor + 0.78, cz, Math.PI / 2, 0.22, glass);
+    roundWin(g, -cw / 2 - 0.03, floor + 0.78, cz, -Math.PI / 2, 0.22, glass);
+    /* porch rail, leaving a gap for the ladder */
+    var railZ = 1.4, x0 = -0.72, x1 = 1.42;
+    add(g, rbox(x1 - x0, 0.07, 0.07, 0.02), wood, (x0 + x1) / 2, floor + 0.5, railZ, false);
+    for(var bx = x0; bx <= x1 + 0.001; bx += 0.36) add(g, new THREE.BoxGeometry(0.06, 0.5, 0.06), wood, bx, floor + 0.25, railZ, false);
+    add(g, rbox(0.07, 0.07, 2.4, 0.02), wood, x1, floor + 0.5, 0.2, false);
+    /* the app's own icon on the porch, with a painted fallback */
+    var signMat = new THREE.MeshStandardMaterial({color:'#fffaf0', roughness:0.8});
+    function paintSign(){
+      var c = document.createElement('canvas'); c.width = c.height = 256; var x = c.getContext('2d');
+      x.fillStyle = '#7cc46a'; x.fillRect(0, 0, 256, 256);
+      x.fillStyle = '#fff4c9'; x.beginPath(); x.arc(128, 128, 104, 0, Math.PI * 2); x.fill();
+      x.fillStyle = '#c0392b'; x.textAlign = 'center'; x.font = '62px Jua, "Gowun Dodum", sans-serif'; x.fillText('모여라', 128, 120);
+      x.fillStyle = '#2b693d'; x.fillText('진숲', 128, 182);
+      var t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; signMat.map = t; signMat.color.set('#ffffff'); signMat.needsUpdate = true;
+    }
+    new THREE.TextureLoader().load('kids/icons/logo-256.png', function(t){ t.encoding = THREE.sRGBEncoding; signMat.map = t; signMat.color.set('#ffffff'); signMat.needsUpdate = true; }, undefined, paintSign);
+    add(g, rbox(0.74, 0.74, 0.07, 0.05), woodD, 0.55, floor + 0.3, railZ + 0.06, false);
+    add(g, new THREE.PlaneGeometry(0.64, 0.64), signMat, 0.55, floor + 0.3, railZ + 0.1, false);
+    /* ladder leaning against the porch */
+    var LD = holder(g, -1.02, 0, railZ + 0.62, 0); LD.rotation.x = -0.32;
+    var lh = 1.98;
+    [-0.2, 0.2].forEach(function(lx){ add(LD, new THREE.CylinderGeometry(0.045, 0.045, lh, 6), woodD, lx, lh / 2, 0); });
+    for(var r = 0.25; r < lh; r += 0.3){ var rung = add(LD, new THREE.CylinderGeometry(0.035, 0.035, 0.42, 6), wood, 0, r, 0, false); rung.rotation.z = Math.PI / 2; }
+    /* slide off the right side of the porch */
+    var SL = holder(g, 1.5, floor + 0.02, 0.85, 0); SL.rotation.z = -0.72;
+    add(SL, rbox(2.45, 0.06, 0.62, 0.03), yellow, 1.22, 0, 0);
+    [-0.31, 0.31].forEach(function(sz){ add(SL, rbox(2.45, 0.16, 0.06, 0.03), red, 1.22, 0.07, sz, false); });
+    add(g, rbox(0.55, 0.06, 0.62, 0.03), yellow, 3.25, 0.16, 0.85);
+    [-0.31, 0.31].forEach(function(sz){ add(g, rbox(0.55, 0.14, 0.06, 0.03), red, 3.25, 0.22, 0.85 + sz, false); });
+    /* leafy crown, kept behind the roof so the cabin stays in view */
+    add(g, new THREE.IcosahedronGeometry(0.72, 1), M('#4c9a57'), 0, 5.25, -0.45).scale.set(1, 0.8, 1);
+    add(g, new THREE.IcosahedronGeometry(0.8, 1), M('#5cae63'), -1.65, 4.05, -0.55);
+    add(g, new THREE.IcosahedronGeometry(0.72, 1), M('#5cae63'), 1.6, 4.25, -0.75);
+    [[-1.95, 4.3, -0.2], [-1.4, 4.6, -0.1], [1.85, 4.45, -0.35], [1.35, 4.75, -0.5], [0.3, 5.6, -0.2]].forEach(function(q){ add(g, new THREE.SphereGeometry(0.09, 8, 6), M('#e5483f', true), q[0], q[1], q[2], false); });
+    [-1, 1].forEach(function(s){ var br = add(g, new THREE.CylinderGeometry(0.08, 0.13, 1.3, 6), bark, s * 0.75, 3.95, -0.5); br.rotation.z = -s * 1.05; });
+    /* bunting from the roof to the crown */
+    var cols = ['#e5483f', '#f6c53d', '#5aae63', '#3f7fbf', '#f39bb6'];
+    var tri = new THREE.Shape(); tri.moveTo(-0.09, 0); tri.lineTo(0.09, 0); tri.lineTo(0, -0.2); tri.closePath();
+    var triG = new THREE.ShapeGeometry(tri);
+    for(var b = 0; b < 7; b++){
+      var t2 = (b + 0.5) / 7, fx = -1.25 + 2.5 * t2, fy = top + 0.18 - Math.sin(t2 * Math.PI) * 0.18;
+      var f = add(g, triG, new THREE.MeshStandardMaterial({color:cols[b % cols.length], roughness:0.9, side:THREE.DoubleSide}), fx, fy, cz + cd / 2 + 0.38, false);
+      flags.push(f);
+    }
+    /* a swing set to the left */
+    var S = holder(g, -2.45, 0, 1.0, 0), sh = 1.75;
+    add(S, new THREE.CylinderGeometry(0.05, 0.05, 1.35, 8), woodD, 0, sh, 0).rotation.z = Math.PI / 2;
+    [-0.62, 0.62].forEach(function(sx){
+      [-1, 1].forEach(function(s){
+        var leg = add(S, new THREE.CylinderGeometry(0.045, 0.05, 1.83, 6), woodD, sx, sh / 2, s * 0.25);
+        leg.rotation.x = s * 0.28;
+      });
+    });
+    var swing = holder(S, 0, sh - 0.03, 0, 0);
+    [-0.22, 0.22].forEach(function(rx){ add(swing, new THREE.CylinderGeometry(0.014, 0.014, 1.22, 5), M('#e8dcc0', true), rx, -0.61, 0, false); });
+    add(swing, rbox(0.56, 0.06, 0.26, 0.02), red, 0, -1.24, 0);
+    anims.push(function(t){ swing.rotation.x = Math.sin(t * 1.7) * 0.22; });
+    /* hopscotch chalk squares by the ladder */
+    ['#f6c53d', '#9fd3f0', '#f39bb6', '#b7e08a'].forEach(function(c, k){
+      add(g, new THREE.BoxGeometry(0.42, 0.02, 0.42), M(c, true), -1.75 + (k % 2) * 0.0, 0.02, 2.25 + k * 0.48, false);
+    });
+    return {group:g, glows:[glass], top:5.7};
+  };
+
   /* place the houses around the plaza */
   var R = 9.6, houses = [];
   APPS.forEach(function(app, i){
-    var ang = (30 + 60 * i) * Math.PI / 180;
+    var ang = app.angle * Math.PI / 180;
     var x = R * Math.sin(ang), z = -R * Math.cos(ang);
     var built = BUILD[app.style](app);
     var g = built.group;
@@ -791,7 +885,7 @@ function init3D(){
   })();
 
   /* lamps around the plaza */
-  [45, 135, 225, 315].forEach(function(deg){
+  [22.5, 112.5, 202.5, 292.5].forEach(function(deg){
     var a = deg * Math.PI / 180, l = new THREE.Group(); l.position.set(Math.sin(a) * 4.7, G, -Math.cos(a) * 4.7); scene.add(l);
     add(l, new THREE.CylinderGeometry(0.06, 0.09, 2.2, 8), M('#3b4a44', true), 0, 1.1, 0);
     add(l, rbox(0.34, 0.4, 0.34, 0.05), new THREE.MeshStandardMaterial({color:'#fff3cf', emissive:'#ffd98a', emissiveIntensity:0.45, roughness:0.6}), 0, 2.35, 0, false);
@@ -841,8 +935,8 @@ function init3D(){
     placed.push({x:tx, z:tz, r:0.95 * ts}); nTrees++;
   }
   /* bushes between houses */
-  [0, 60, 120, 240, 300].forEach(function(deg){
-    var a = deg * Math.PI / 180, bx = Math.sin(a) * 7.0, bz = -Math.cos(a) * 7.0;
+  [22.5, 67.5, 157.5, 202.5, 247.5, 292.5, 337.5].forEach(function(deg){
+    var a = deg * Math.PI / 180, bx = Math.sin(a) * 6.4, bz = -Math.cos(a) * 6.4;
     if(onPath(bx, bz, 0.8)) return;
     for(var k = 0; k < 3; k++){
       var b = add(scene, new THREE.IcosahedronGeometry(0.45 + rand() * 0.2, 1), M(greens[k % greens.length]), bx + (rand() - 0.5) * 1.0, G + 0.3, bz + (rand() - 0.5) * 1.0);
@@ -908,19 +1002,19 @@ function init3D(){
   function node(x, z, kind, extra){ NODES.push(Object.assign({x:x, z:z, kind:kind}, extra || {})); ADJ.push([]); return NODES.length - 1; }
   function link(a, b){ ADJ[a].push(b); ADJ[b].push(a); }
   var RING = 3.2, ring = [];
-  for(var rn = 0; rn < 12; rn++){ var ra0 = rn * Math.PI / 6; ring.push(node(Math.sin(ra0) * RING, -Math.cos(ra0) * RING, 'ring')); }
-  for(rn = 0; rn < 12; rn++) link(ring[rn], ring[(rn + 1) % 12]);
+  for(var rn = 0; rn < 16; rn++){ var ra0 = rn * Math.PI / 8; ring.push(node(Math.sin(ra0) * RING, -Math.cos(ra0) * RING, 'ring')); }
+  for(rn = 0; rn < 16; rn++) link(ring[rn], ring[(rn + 1) % 16]);
   var doorNodes = [];
   houses.forEach(function(h, i){
     var ux = h.x / R, uz = h.z / R;
     var mid = node(ux * 5.6, uz * 5.6, 'path');
     var dn = node(ux * 7.3, uz * 7.3, 'door', {ux:ux, uz:uz});
-    link(ring[1 + 2 * i], mid); link(mid, dn); doorNodes.push(dn);
+    link(ring[Math.round(APPS[i].angle / 22.5) % 16], mid); link(mid, dn); doorNodes.push(dn);
   });
   var gateMid = node(0, (4.4 + southEdge - 0.6) / 2, 'path');
   var gate = node(0, southEdge - 1.1, 'gate');
-  link(ring[6], gateMid); link(gateMid, gate);
-  var DESTS = doorNodes.concat([gate, gate, ring[0], ring[4], ring[8]]);
+  link(ring[8], gateMid); link(gateMid, gate);
+  var DESTS = doorNodes.concat([gate, gate, ring[2], ring[6], ring[10], ring[14]]);
 
   function route(a, b){
     var prev = {}, q = [a]; prev[a] = -1;
@@ -1134,7 +1228,7 @@ function init3D(){
     var b = document.createElement('button'); b.type = 'button'; b.className = 'label';
     b.style.setProperty('--c', a.roof);
     b.innerHTML = '<span class="dot"></span><span></span>';
-    b.lastChild.textContent = a.name;
+    b.lastChild.textContent = a.label || a.name;
     b.addEventListener('click', function(){ select(i); });
     labelsEl.appendChild(b); return b;
   });
@@ -1216,15 +1310,32 @@ function init3D(){
 
   /* loop */
   var clock = new THREE.Clock(), T = 0, v = new THREE.Vector3();
+  var lp = [];
   function placeLabels(){
     var W = innerWidth, H = innerHeight;
+    lp.length = 0;
     for(var i = 0; i < houses.length; i++){
-      var h = houses[i], el = labelEls[i];
+      var h = houses[i];
       v.set(h.x, h.group.position.y + h.top + 0.35, h.z).project(camera);
-      if(v.z > 1 || v.z < -1){ el.style.visibility = 'hidden'; continue; }
+      if(v.z > 1 || v.z < -1){ labelEls[i].style.visibility = 'hidden'; continue; }
+      var w = labelW[i] || 0, hw = w / 2 + 8;
+      lp.push({i:i, x:Math.max(hw, Math.min(W - hw, (v.x * 0.5 + 0.5) * W)), y:(-v.y * 0.5 + 0.5) * H, w:w});
+    }
+    /* nearer (lower) labels keep their place; others step up out of the way */
+    lp.sort(function(a, b){ return b.y - a.y; });
+    for(var k = 0; k < lp.length; k++){
+      var L = lp[k];
+      for(var tries = 0; tries < 4; tries++){
+        var hit = false;
+        for(var j = 0; j < k; j++){
+          var P = lp[j];
+          if(Math.abs(L.x - P.x) < (L.w + P.w) / 2 + 6 && Math.abs(L.y - P.y) < 30){ L.y = P.y - 31; hit = true; }
+        }
+        if(!hit) break;
+      }
+      var el = labelEls[L.i];
       el.style.visibility = '';
-      var hw = (labelW[i] || 0) / 2 + 8, sx = Math.max(hw, Math.min(W - hw, (v.x * 0.5 + 0.5) * W));
-      el.style.transform = 'translate(' + sx.toFixed(1) + 'px,' + ((-v.y * 0.5 + 0.5) * H).toFixed(1) + 'px) translate(-50%,-100%)';
+      el.style.transform = 'translate(' + L.x.toFixed(1) + 'px,' + L.y.toFixed(1) + 'px) translate(-50%,-100%)';
     }
   }
   function loop(){
