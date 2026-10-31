@@ -695,7 +695,7 @@ function openSheet(title, body, cls = '') {
 // 집 안 창을 열고, 닫히면 마을을 다시 움직인다
 function openHouse(fn, act = '') {
   hideHint();
-  village.standUp();
+  if (village.standUp) village.standUp(); // 새로 고칠 때 예전 파일이 섞여 있어도 집은 열리게
   $('#sayPanel').hidden = true;
   village.setPaused(true);
   fn();
