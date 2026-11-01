@@ -5,7 +5,7 @@ import { randomAvatar, colorOf, shade } from './face.js';
 import { mergeStatic, Instancer } from './merge.js';
 import { Park, RIDE_IDS, resetLimbs } from './park.js';
 import { Critters, Follower, PET_ITEMS } from './critters.js';
-import { Pool, inPool, SWIM_Y, swimPose } from './pool.js';
+import { Pool, inPool, SWIM_Y, swimPose, STROKES, LOUNGER } from './pool.js';
 import { clampWalk, makeBridge, BRIDGES, WORLD_CENTER, WORLD_HALF, route, PARK_ISLE } from './isles.js';
 import { POOL } from './pool.js';
 // 줌: 1이 처음 시점. 마을은 1.6, 놀이기구는 2.0을 넘으면 지도 보기로 바뀌기 시작해 MAP_ZOOM에서 섬 전체가 보인다
@@ -32,6 +32,21 @@ const benchPose = (av) => {
   av.legs[0].rotation.x = av.legs[1].rotation.x = -1.45;
   av.arms[0].rotation.x = av.arms[1].rotation.x = -0.4;
 };
+// 선베드에 누운 자세: 낮은 등받이에 기대 다리를 뻗고 두 손은 배 위에 모은다.
+// 뿌리(root)를 엉덩이 자리에 두고, 몸(발이 원점)을 lean만큼 뒤로 눕힌 뒤 엉덩이가 뿌리에 오도록 당긴다
+const LIE = { lean: Math.PI / 2 - LOUNGER.back, legs: 0.36, y: 0.73, z: 0.08 };
+const HIP_Y = 0.36;
+const liePose = (av) => {
+  const th = LIE.lean, b = av.body;
+  b.rotation.set(-th, 0, 0);
+  b.position.set(0, -HIP_Y * Math.cos(th), HIP_Y * Math.sin(th));
+  av.legs[0].rotation.x = av.legs[1].rotation.x = -Math.PI / 2 + th + LIE.legs;
+  av.legs[0].rotation.z = av.legs[1].rotation.z = 0;
+  av.arms[0].rotation.x = av.arms[1].rotation.x = -0.62; // 두 손을 배 위에 모은다
+  av.arms[0].rotation.z = 0.5; av.arms[1].rotation.z = -0.5;
+  if (av.head) { av.head.rotation.x = 0.25; av.head.rotation.y = -0.7; } // 얼굴을 왼쪽(남쪽, 카메라 쪽)으로 돌린다
+};
+liePose.lie = true;
 // 손에 든 열매 (모양은 같이 쓴다)
 let handFruitGeo = null;
 function handFruit(c) {
@@ -258,6 +273,7 @@ export class Village {
     this.noTree = [];
     this.noFade = null;
     this.sitting = null;
+    this.stroke = 'free';
     this.eating = null;
     this.netting = null;
     this.treeSpots = [];
@@ -1091,12 +1107,34 @@ export class Village {
     this.addBench(11.6, 69.5, -Math.PI / 2);
     this.addBench(-2.7, -14.6, Math.PI / 2); // 내 집 가는 길
   }
-  // 벤치 i의 왼쪽(0)·오른쪽(1) 자리: 앉았을 때 발밑 위치와 방향
+  // 선베드: 눌러서 눕는다 (한 사람). 모양은 수영장이 그리고, 여기서는 누르는 상자와 장애물과 자리를 만든다.
+  // ry는 발 쪽이 보는 방향, hw·hd는 선베드 반폭·반길이. 벤치 목록에 이어 붙이므로 자리 번호는 i*2
+  addLounger(x, z, ry, hw, hd) {
+    const i = this.benches.length;
+    const pick = new THREE.Mesh(new THREE.BoxGeometry(hw * 2 + 0.2, 1.1, hd * 2 + 0.2), new THREE.MeshBasicMaterial({ visible: false }));
+    pick.position.set(x, 0.55, z);
+    pick.rotation.y = ry;
+    pick.userData.pick = { type: 'bench', i };
+    this.scene.add(pick);
+    this.pickRoots.push(pick);
+    this.addObstacleBox(x, z, hw + 0.04, hd + 0.04, ry);
+    this.benches.push({ x, z, ry, lie: true });
+  }
+  // 벤치 i의 왼쪽(0)·오른쪽(1) 자리: 앉았을 때 발밑 위치와 방향 (선베드는 한 자리, 엉덩이 위치)
   benchSeat(i, side) {
     const b = this.benches[i];
-    const lx = side ? 0.45 : -0.45, lz = 0.02;
+    const lx = b.lie ? 0 : side ? 0.45 : -0.45, lz = b.lie ? LIE.z : 0.02;
     const c = Math.cos(b.ry), sn = Math.sin(b.ry);
-    return { x: b.x + lx * c + lz * sn, y: 0.36, z: b.z - lx * sn + lz * c, rot: b.ry };
+    return { x: b.x + lx * c + lz * sn, y: b.lie ? LIE.y : 0.36, z: b.z - lx * sn + lz * c, rot: b.ry, lie: !!b.lie };
+  }
+  // 앉기 전에 서는 곳이자 일어나서 서는 곳: 벤치는 앞, 선베드는 옆 (from에서 가까운 쪽)
+  benchOut(i, side, from) {
+    const b = this.benches[i], st = this.benchSeat(i, side);
+    if (!b.lie) return new THREE.Vector3(st.x + Math.sin(st.rot) * 0.8, 0, st.z + Math.cos(st.rot) * 0.8);
+    const c = Math.cos(b.ry), sn = Math.sin(b.ry);
+    const pts = [1, -1].map((k) => new THREE.Vector3(st.x + k * 0.8 * c, 0, st.z - k * 0.8 * sn));
+    if (from) pts.sort((a, q) => Math.hypot(a.x - from.x, a.z - from.z) - Math.hypot(q.x - from.x, q.z - from.z));
+    return pts[0];
   }
   benchTaken(seat) {
     for (const r of this.remotes.values()) if (r.pin && r.pin.kind === 'bench' && r.pin.seat === seat) return true;
@@ -1107,46 +1145,49 @@ export class Village {
     if (!b || !this.player) return;
     const p = this.player.root.position;
     // 비어 있는 자리 가운데 가까운 쪽
-    const sides = [0, 1].filter((s) => !this.benchTaken(i * 2 + s));
-    if (!sides.length) { if (this.on.onBenchFull) this.on.onBenchFull(); return; }
+    const sides = (b.lie ? [0] : [0, 1]).filter((s) => !this.benchTaken(i * 2 + s));
+    if (!sides.length) { if (this.on.onBenchFull) this.on.onBenchFull(!!b.lie); return; }
     sides.sort((a, c) => { const sa = this.benchSeat(i, a), sc = this.benchSeat(i, c); return Math.hypot(sa.x - p.x, sa.z - p.z) - Math.hypot(sc.x - p.x, sc.z - p.z); });
     const side = sides[0];
-    const st = this.benchSeat(i, side);
-    const pos = new THREE.Vector3(st.x + Math.sin(st.rot) * 0.8, 0, st.z + Math.cos(st.rot) * 0.8);
+    const pos = this.benchOut(i, side, p);
     this.resolve(pos);
-    this.target = { pos, action: () => this.sit(i, side) };
+    const out = pos.clone();
+    this.target = { pos, action: () => this.sit(i, side, out) };
     this.showTapMark(pos);
     this.reportMove(pos.x, pos.z);
   }
-  sit(i, side) {
+  sit(i, side, out) {
     if (this.mode !== 'play' || !this.player) return;
     this.cancelEat();
     const st = this.benchSeat(i, side);
     const pl = this.player;
     pl.root.position.set(st.x, st.y, st.z);
     pl.root.rotation.y = st.rot;
-    pl.pose = benchPose;
-    this.sitting = { i, side, seat: i * 2 + side };
+    pl.pose = st.lie ? liePose : benchPose;
+    this.sitting = { i, side, seat: i * 2 + side, lie: st.lie, out: out || this.benchOut(i, side) };
     this.target = null;
     if (this.on.onLocalStop) this.on.onLocalStop({ x: +st.x.toFixed(2), z: +st.z.toFixed(2) });
-    if (this.on.onSit) this.on.onSit(this.sitting.seat);
+    if (this.on.onSit) this.on.onSit(this.sitting.seat, st.lie);
   }
   standUp(quiet = false) {
     if (!this.sitting || !this.player) return;
-    const st = this.benchSeat(this.sitting.i, this.sitting.side);
+    const out = this.sitting.out;
     this.sitting = null;
     const pl = this.player;
     pl.pose = null;
-    pl.root.position.set(st.x + Math.sin(st.rot) * 0.8, 0, st.z + Math.cos(st.rot) * 0.8);
+    resetLimbs(pl);
+    pl.root.position.set(out.x, 0, out.z);
     this.resolve(pl.root.position);
     if (!quiet && this.on.onSit) this.on.onSit(null);
   }
   pinBench(r, seat) {
     if (!Number.isInteger(seat) || seat < 0 || seat >= this.benches.length * 2) return;
     if (r.pin && r.pin.kind === 'bench' && r.pin.seat === seat) return;
+    const b = this.benches[seat >> 1];
+    if (b.lie && (seat & 1)) return; // 선베드는 한 자리
     this.unpinRemote(r.id);
     const st = this.benchSeat(seat >> 1, seat & 1);
-    this.pinRemote(r.id, { kind: 'bench', seat, x: st.x, y: st.y, z: st.z, rot: st.rot, pose: benchPose, auto: true });
+    this.pinRemote(r.id, { kind: 'bench', seat, x: st.x, y: st.y, z: st.z, rot: st.rot, pose: st.lie ? liePose : benchPose, auto: true });
   }
 
   // ---------- 열매 나무: 눌러서 열매를 따 먹는다 (상점 열매와는 따로) ----------
@@ -1618,6 +1659,7 @@ export class Village {
       this.park.decorate(r, act, r.actSeat);
       return;
     }
+    if (act === 'swim') av.stroke = STROKES[r.actSeat] || 'free'; // 친구가 고른 영법
     if (act === 'bench') {
       if (r.pin && r.pin.kind === 'bench' && r.pin.seat === r.actSeat) return;
       if (this.decorateRemote) this.decorateRemote(r, '');
@@ -1644,7 +1686,8 @@ export class Village {
     const r = this.remotes.get(id);
     if (!r) return null;
     r.pin = pin;
-    if (pin && pin.pose !== undefined) r.av.pose = pin.pose;
+    if (r.swim) { r.swim = false; if (r.av.pose === swimPose) r.av.pose = null; } // 헤엄치다 바로 놀이기구에 올라도 몸이 바로 서게
+    if (pin && pin.pose !== undefined) { resetLimbs(r.av); r.av.pose = pin.pose; }
     return r.av;
   }
   unpinRemote(id) {
@@ -2424,11 +2467,31 @@ export class Village {
 
   // ---------- 3D 놀이 ----------
   // ctrl: { cam: {pos: Vector3, look: Vector3}, update(dt, t), onTap(ray, x, y), stop() }
+  // 1인칭: 놀이기구를 탈 때 내 눈높이에서 본다 (내 몸은 숨기고, 끌면 둘러본다)
+  setFirstPerson(on) {
+    on = !!on && !!this.player;
+    if (!!this.fp === on) return;
+    this.fp = on;
+    this.camera.near = on ? 0.05 : 0.5;
+    this.camera.updateProjectionMatrix();
+    if (this.player) this.player.body.visible = !on;
+    this.view.game = { yaw: 0, elev: 0, zoom: 1 };
+    if (!on) this.camera.up.set(0, 1, 0);
+    this.viewChanged();
+  }
   enterGame(ctrl) {
+    if (this.fp) this.setFirstPerson(false);
     if (this.game && this.game !== ctrl && this.game.stop) this.game.stop();
     if (this.sitting) this.standUp(true);
     if (this.eating) this.cancelEat();
     if (this.netting) this.endNet();
+    if (this.swim) {
+      // 헤엄치다 바로 놀이로 가면 (초대 받기 등) 헤엄 자세를 풀고 영법 단추를 감춘다
+      this.swim = false;
+      const pl = this.player;
+      if (pl) { if (pl.pose === swimPose) pl.pose = null; resetLimbs(pl); }
+      if (this.on.onSwim) this.on.onSwim(false);
+    }
     this.game = ctrl;
     this.mode = 'game';
     this.view.game = { yaw: 0, elev: 0, zoom: 1 };
@@ -2440,6 +2503,7 @@ export class Village {
     if (this.net.moving) this.reportStop();
   }
   exitGame() {
+    if (this.fp) this.setFirstPerson(false);
     const g = this.game;
     this.game = null;
     if (this.mode === 'game') this.mode = 'play';
@@ -2543,7 +2607,7 @@ export class Village {
     }
     this.placeLabel(this.guideTag, g.root.position, 2.45);
     if (this.myTag) {
-      if (this.player && (this.mode === 'play' || this.mode === 'game') && this.myTag.textContent) this.placeLabel(this.myTag, this.player.root.position, 2.45);
+      if (this.player && (this.mode === 'play' || this.mode === 'game') && this.myTag.textContent && !this.fp) this.placeLabel(this.myTag, this.player.root.position, 2.45);
       else this.myTag.style.display = 'none';
     }
 
@@ -2554,7 +2618,22 @@ export class Village {
 
     // 카메라
     if (!this.wantPos) { this.wantPos = new THREE.Vector3(); this.wantLook = new THREE.Vector3(); }
-    if (this.mode === 'game' && this.game && this.game.cam) {
+    if (this.fp && this.mode === 'game' && this.player) {
+      // 1인칭: 눈 자리에서 앞을 본다. 놀이기구가 기울면(루프) 화면도 같이 기운다
+      const root = this.player.root;
+      const q = root.getWorldQuaternion(this.fpQ || (this.fpQ = new THREE.Quaternion()));
+      const eye = (this.fpE || (this.fpE = new THREE.Vector3())).set(0, 1.5, 0.18).applyQuaternion(q).add(root.getWorldPosition(this.fpP || (this.fpP = new THREE.Vector3())));
+      const fwd = (this.fpF || (this.fpF = new THREE.Vector3())).set(0, 0, 1).applyQuaternion(q);
+      const up = (this.fpU || (this.fpU = new THREE.Vector3())).set(0, 1, 0).applyQuaternion(q);
+      const vw = this.view.game;
+      fwd.applyAxisAngle(up, vw.yaw);
+      const side = (this.fpS || (this.fpS = new THREE.Vector3())).crossVectors(fwd, up).normalize();
+      fwd.applyAxisAngle(side, -Math.max(-1.2, Math.min(1.2, vw.elev)) - 0.12);
+      this.camPos.copy(eye);
+      this.camLook.copy(eye).addScaledVector(fwd, 10);
+      this.camera.up.copy(up);
+      this.mapT = 0;
+    } else if (this.mode === 'game' && this.game && this.game.cam) {
       const k = 1 - Math.exp(-dt * (this.rotating ? 14 : this.game.camSpeed || 3));
       const map = !!this.game.cam.map;
       this.orbit(this.game.cam.look, this.game.cam.pos, this.view.game, this.wantPos, map ? this.wantLook : null);
@@ -2737,6 +2816,8 @@ export class Village {
     return { x: p.x - Math.sin(yw) * d, z: p.z - Math.cos(yw) * d };
   }
 
+  // 영법 고르기: 'free' 자유형, 'back' 배영, 'fly' 접영
+  setStroke(s) { this.stroke = STROKES.includes(s) ? s : 'free'; }
   // 수영장: 물에 들어가면 머리와 어깨만 나오게 낮추고 헤엄친다 (나와 친구 모두). st에 swim, rip을 기억한다
   swimTick(av, pos, moving, dt, st) {
     if (!this.pool) return;
@@ -2749,7 +2830,9 @@ export class Village {
         if (!av.pose) av.pose = swimPose;
       } else if (av.pose === swimPose) { av.pose = null; resetLimbs(av); }
       if (st !== this) this.drawRemoteTag(st);
+      else if (this.on.onSwim) this.on.onSwim(sw);
     }
+    if (st === this) av.stroke = this.stroke;
     av.swimMoving = moving;
     pos.y += ((sw ? SWIM_Y : 0) - pos.y) * Math.min(1, dt * 6);
     if (Math.abs(pos.y) < 0.002) pos.y = 0;

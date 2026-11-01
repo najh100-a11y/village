@@ -59,7 +59,7 @@ async function boot() {
       const p = $('#prompt');
       if (!d) { p.hidden = true; return; }
       $('#promptName').textContent = d.name;
-      $('#promptAct').textContent = { board: '보기', fish: '낚시하기', omok: '두기', cook: '요리하기', art: '그리기', ferris: '타기', viking: '타기', carousel: '타기', bumper: '타기', 'home-exit': '나가기', 'home-closet': '옷 갈아입기', suggest: '건의하기' }[d.id] || '들어가기';
+      $('#promptAct').textContent = { board: '보기', fish: '낚시하기', omok: '두기', cook: '요리하기', art: '그리기', ferris: '타기', viking: '타기', carousel: '타기', bumper: '타기', coaster: '타기', 'home-exit': '나가기', 'home-closet': '옷 갈아입기', suggest: '건의하기' }[d.id] || '들어가기';
       p.dataset.id = d.id;
       p.hidden = false;
     },
@@ -83,11 +83,12 @@ async function boot() {
     },
     onLocalStop: (p) => net && net.send('st', p),
     // 벤치에 앉기 (seat: 자리 번호, 일어나면 null)
-    onSit: (seat) => {
+    onSit: (seat, lie) => {
       setActivity(seat == null ? '' : 'bench', seat == null ? -1 : seat);
-      if (seat != null && !benchTold) { benchTold = true; toast('벤치에 앉았어요. 다른 곳을 누르면 일어나요.', 2600); }
+      if (seat != null && lie && !lieTold) { lieTold = true; toast('선베드에 누웠어요. 다른 곳을 누르면 일어나요.', 2600); }
+      else if (seat != null && !lie && !benchTold) { benchTold = true; toast('벤치에 앉았어요. 다른 곳을 누르면 일어나요.', 2600); }
     },
-    onBenchFull: () => toast('벤치에 자리가 없어요. 다른 벤치에 앉아 볼까요?', 2400),
+    onBenchFull: (lie) => toast(lie ? '다른 친구가 누워 있어요. 옆 선베드에 누워 볼까요?' : '벤치에 자리가 없어요. 다른 벤치에 앉아 볼까요?', 2400),
     // 열매 따 먹기 (상점에서 쓰는 열매와는 따로예요)
     onFruit: (what, name, kind) => {
       if (what === 'start') { setActivity('eat'); sfx.pop(); }
@@ -104,6 +105,7 @@ async function boot() {
     onBoom: (kind, c) => sfx.firework(kind, fwVol(c)),
     onFwLaunch: (item, x, z) => sfx.fwLaunch(fwVol({ x, z })),
     onSplash: () => sfx.splash(),
+    onSwim: (on) => onSwim(on),
     onPlant: (id) => homeUI && homeUI.onPlant(id),
     onHomeItem: (id) => homeUI && homeUI.onHomeItem(id),
     onCritterSound: (kind, soft) => { if (kind === 'bird') sfx.tweet(); else if (kind === 'cat') sfx.meow(soft); else sfx.bark(soft); },
@@ -398,7 +400,7 @@ async function refreshToday() {
 const playOpen = () => !!(state.today && state.today.cleared);
 const GAMES = {
   fish: () => play3d.fishing(), omok: () => play3d.omokMenu(), cook: () => play3d.cookMenu(), art: () => play3d.easel(),
-  ferris: () => play3d.ride('ferris'), viking: () => play3d.ride('viking'), carousel: () => play3d.ride('carousel'), bumper: () => play3d.ride('bumper'),
+  ferris: () => play3d.ride('ferris'), viking: () => play3d.ride('viking'), carousel: () => play3d.ride('carousel'), bumper: () => play3d.ride('bumper'), coaster: () => play3d.ride('coaster'),
 };
 let benchTold = false, munchSaid = false, jumpSent = 0;
 // 불꽃 소리 크기: 내 주민에게서 멀수록 작게 (가까우면 1, 45m쯤이면 0.3)
@@ -673,6 +675,43 @@ async function refreshWall() {
   if (Date.now() - wallAt < 3000) return;
   wallAt = Date.now();
   try { village.setArtWall(await rpc('kids_art_wall', { p_token: token() })); } catch (e) { /* 다음에 */ }
+}
+
+// ---------- 수영: 물에 들어가면 영법(자유형·배영·접영)을 고른다 ----------
+const STROKE_LIST = [['free', '🏊', '자유형'], ['back', '🙃', '배영'], ['fly', '🦋', '접영']];
+let stroke = 'free', swimming = false, strokeTold = false, lieTold = false;
+try { const s0 = store.get('stroke'); if (STROKE_LIST.some(([k]) => k === s0)) stroke = s0; } catch (e) { /* 기본 자유형 */ }
+let swimBar = null;
+function strokeIdx() { return STROKE_LIST.findIndex(([k]) => k === stroke); }
+function drawSwimBar() {
+  if (!swimBar) {
+    swimBar = h('div', { class: 'swim-bar', hidden: true, role: 'group', 'aria-label': '헤엄치는 방법 고르기' },
+      ...STROKE_LIST.map(([k, ic, name]) => h('button', { type: 'button', 'data-k': k, onclick: () => pickStroke(k) }, h('span', { 'aria-hidden': 'true' }, ic), ` ${name}`)));
+    document.body.append(swimBar);
+  }
+  for (const b of swimBar.querySelectorAll('button')) b.setAttribute('aria-pressed', b.dataset.k === stroke ? 'true' : 'false');
+  swimBar.hidden = !swimming;
+  document.body.classList.toggle('swimming', swimming); // 아래쪽 안내 글이 단추에 가리지 않게
+}
+function pickStroke(k) {
+  if (k === stroke) return;
+  stroke = k;
+  try { store.set('stroke', k); } catch (e) { /* 저장 못 해도 이번에는 된다 */ }
+  village.setStroke(k);
+  sfx.pop();
+  drawSwimBar();
+  if (swimming) setActivity('swim', strokeIdx());
+  const [, , name] = STROKE_LIST[strokeIdx()];
+  toast(`${josa(name, '으로', '로')} 헤엄쳐요!`, 1800);
+}
+function onSwim(on) {
+  swimming = on;
+  village.setStroke(stroke);
+  drawSwimBar();
+  if (on) {
+    setActivity('swim', strokeIdx());
+    if (!strokeTold) { strokeTold = true; toast('아래 단추로 자유형, 배영, 접영을 골라 헤엄쳐 봐요!', 3000); }
+  } else if (myAct === 'swim') setActivity('');
 }
 
 let myAct = '', mySeat = -1;
@@ -1068,9 +1107,10 @@ function openFriends() {
     drawFaceIcon(face, normalizeAvatar(p.avatar));
     const r = village.remotes.get(p.id);
     const act = r && r.actName;
+    const swimAs = act === 'swim' && STROKE_LIST[r.actSeat] ? `${STROKE_LIST[r.actSeat][2]}으로 ` : ''; // 배영으로 수영하는 중
     const unread = (state.dms.get(p.id) || []).filter((m) => !m.mine && !m.read).length;
     return h('div', { class: 'fl-row' }, face,
-      h('div', { class: 'fl-main' }, h('b', {}, p.name), h('span', {}, act ? `${ACT_ICON[act] || ''} ${ACT_TEXT[act] || ''}` : '마을을 걷고 있어요')),
+      h('div', { class: 'fl-main' }, h('b', {}, p.name), h('span', {}, act ? `${ACT_ICON[act] || ''} ${swimAs}${ACT_TEXT[act] || ''}` : '마을을 걷고 있어요')),
       h('div', { class: 'fl-acts' },
         dmOk ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => openDm(p.id) }, unread ? `💌 이야기 (${unread})` : '💌 둘이 이야기') : null,
         games.has(p.id) ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => { modal.close(); play3d.omokWatch(p.id); } }, '👀 구경하기') : null,

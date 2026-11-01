@@ -4,6 +4,7 @@ import * as THREE from './three.module.min.js';
 import { toon, toonGradient } from './avatar.js';
 import { mergeStatic, mergeColored } from './merge.js';
 import { PARK_ISLE, makeIsle, makeTree } from './isles.js';
+import { Coaster, COASTER } from './coaster.js';
 
 // 놀이동산 섬: 마을 남쪽 다리 건너. 바닥(둥근 광장)과 입구
 export const PARK = { x: 0, z: 60.5, r: 17 };
@@ -13,6 +14,7 @@ export const RIDES = {
   ferris: { x: -10.5, z: 59.5, name: '대관람차', door: [-10.5, 61.8] },
   viking: { x: 10.5, z: 60.5, name: '바이킹', door: [9.7, 56.7] },
   bumper: { x: 0, z: 69.5, name: '범퍼카', door: [0, 64.0] },
+  coaster: { x: COASTER.station.x, z: COASTER.station.z, name: '롤러코스터', door: COASTER.door },
 };
 export const RIDE_IDS = Object.keys(RIDES);
 // 범퍼카 장: 바닥 반너비, 반깊이, 차 반지름, 바닥 높이
@@ -23,6 +25,7 @@ export const NO_TREE = [
   { x: RIDES.ferris.x, z: RIDES.ferris.z, r: 6.6 },
   { x: RIDES.viking.x, z: RIDES.viking.z, r: 7.4 },
   { x: GATE.x, z: GATE.z, r: 4.5 },
+  { x: -18.5, z: 63.5, r: 4.6 }, // 롤러코스터 승강장
 ];
 
 const EPOCH = Date.UTC(2026, 9, 1);
@@ -75,7 +78,9 @@ const texMat = (map, opts = {}) => new THREE.MeshToonMaterial({ map, gradientMap
 // ---------- 자세 (내 주민과 친구 모두 같이 쓴다) ----------
 export function resetLimbs(av) {
   for (const l of av.legs) l.rotation.z = 0;
-  if (av.head) av.head.rotation.x = 0;
+  if (av.head) av.head.rotation.x = av.head.rotation.y = 0;
+  // 헤엄치기·눕기 자세가 바꾼 몸통 (걷기 갱신은 rotation.x와 position.y만 다시 쓴다)
+  if (av.body) { av.body.rotation.y = av.body.rotation.z = 0; av.body.position.z = 0; }
 }
 function seated(av) { av.legs[0].rotation.x = av.legs[1].rotation.x = -1.45; }
 function waveArm(av, st, t) {
@@ -103,6 +108,15 @@ export function ridePose(kind, park, st = {}) {
       } else {
         av.arms[0].rotation.x = av.arms[1].rotation.x = -1.25;
       }
+    };
+  }
+  if (kind === 'coaster') {
+    // 빠르게 달리거나 루프를 돌 때는 만세, 아니면 안전바를 잡는다
+    return (av, dt, t) => {
+      seated(av);
+      const up = (park.coaster && park.coaster.st && park.coaster.st.fast) || st.wave > 0;
+      av.arms[0].rotation.x = av.arms[1].rotation.x = up ? -2.9 : -1.05;
+      av.arms[0].rotation.z = up ? -0.35 : -0.1; av.arms[1].rotation.z = up ? 0.35 : 0.1;
     };
   }
   if (kind === 'bumper') {
@@ -203,7 +217,7 @@ export class Park {
     this.scene = v.scene;
     this.signMesh = signMesh;
     this.skew = 0; // 시험할 때 시간을 앞당기는 값
-    this.seats = { carousel: [], ferris: [], viking: [] };
+    this.seats = { carousel: [], ferris: [], viking: [], coaster: [] };
     this.fade = {};
     this.vik = vikingState(0);
     this.geo = {};
@@ -213,6 +227,7 @@ export class Park {
     this.buildFerris();
     this.buildViking();
     this.buildBumper();
+    this.buildCoaster();
     this.buildLamps();
     this.update(this.now(), 0);
   }
@@ -704,6 +719,13 @@ export class Park {
     }
   }
 
+  // ---------- 롤러코스터 (섬 둘레 바다 위, 남쪽에 360도 루프) ----------
+  buildCoaster() {
+    this.coaster = new Coaster(this.v, this);
+    this.seats.coaster = this.coaster.seats;
+    this.place('coaster', this.coaster.station, 3.0, [{ x: 0.15, z: 0, hw: 0.8, hd: 3.15 }]);
+  }
+
   // ---------- 자리 ----------
   // 빈자리 고르기 (taken: 친구들이 앉은 자리 번호)
   pickSeat(kind, taken, T = this.now()) {
@@ -727,6 +749,10 @@ export class Park {
     }
     if (kind === 'viking') {
       for (const i of [1, 2, 5, 6, 0, 3, 4, 7]) if (free(i)) return i;
+      return -1;
+    }
+    if (kind === 'coaster') {
+      for (let i = 0; i < seats.length; i++) if (free(i)) return i; // 맨 앞 차부터
       return -1;
     }
     // 회전목마: 입구(북쪽)에 가까운 말부터
@@ -787,5 +813,7 @@ export class Park {
       n.g.position.set(x, A.y, z);
       n.g.rotation.y = Math.atan2(dx, dz) + Math.sin(n.spin * 14) * n.spin * 0.9;
     }
+    // 롤러코스터
+    if (this.coaster) this.coaster.update(T);
   }
 }

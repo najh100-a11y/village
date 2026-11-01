@@ -1,7 +1,9 @@
-// 진숲 어린이 마을 — 놀이기구 타기: 회전목마, 대관람차, 바이킹, 범퍼카
+// 진숲 어린이 마을 — 놀이기구 타기: 회전목마, 대관람차, 바이킹, 범퍼카, 롤러코스터
+// 모든 놀이기구는 '1인칭' 단추로 내 눈높이에서 볼 수 있다 (끌면 둘러본다).
 // 놀이기구는 마을 시계로 계속 움직이고, 아이는 빈자리에 올라탄다. 친구 화면에서도 같은 자리에 타고 있다.
 import * as THREE from './three.module.min.js';
 import { RIDES, ARENA, CAR_SEAT, CAR_COLORS, ridePose, resetLimbs } from './park.js';
+import { COASTER } from './coaster.js';
 import { sfx } from './sound.js';
 import { toast } from './ui.js';
 
@@ -18,7 +20,16 @@ const VIKING_SAY = {
   down: '천천히 내려와요.',
 };
 
-export function createRides({ v, ui, begin, stopAll, portrait, shout }) {
+export function createRides({ v, ui, begin, stopAll, portrait, shout, setActivity }) {
+  // 1인칭 ↔ 밖에서 보기 단추
+  // hint: 1인칭으로 바꿀 때 알려 줄 말 (범퍼카는 끌면 둘러보는 대신 누른 곳으로 달린다)
+  const fpSide = (hint = '화면을 끌면 둘러볼 수 있어요') => ['eye', '1인칭', (e) => {
+    const on = !v.fp;
+    v.setFirstPerson(on);
+    const b = e && e.currentTarget;
+    if (b && b.lastChild) b.lastChild.textContent = on ? '밖에서' : '1인칭';
+    ui.banner(on ? '1인칭으로 봐요' : '밖에서 봐요', on ? hint : '', 1800);
+  }];
   function takenSeats(kind) {
     const s = new Set();
     for (const r of v.remotes.values()) if (r.pin && r.pin.kind === kind && Number.isInteger(r.pin.seat)) s.add(r.pin.seat);
@@ -33,6 +44,7 @@ export function createRides({ v, ui, begin, stopAll, portrait, shout }) {
   function ride(kind) {
     stopAll();
     if (kind === 'bumper') return bumper();
+    if (kind === 'coaster') return coaster();
     const park = v.park;
     const seat = park.pickSeat(kind, takenSeats(kind));
     if (seat < 0) { toast('자리가 다 찼어요. 조금 있다가 다시 타 봐요!'); return; }
@@ -89,7 +101,7 @@ export function createRides({ v, ui, begin, stopAll, portrait, shout }) {
     pl.pose = ridePose(kind, park, st);
     v.noFade = park.fade[kind];
     follow();
-    begin(kind, C.name, game, [], seat);
+    begin(kind, C.name, game, [fpSide()], seat);
     ui.say(TEXT[kind].intro);
     ui.setMain(TEXT[kind].main, { onClick: () => { st.wave = 1.6; pl.celebrate(); shout(TEXT[kind].shout); } });
     sfx.open();
@@ -155,7 +167,13 @@ export function createRides({ v, ui, begin, stopAll, portrait, shout }) {
       st.wave = Math.max(0, st.wave - dt);
       // 어디로 갈지: 누르고 있는 곳, 또는 화살표(화면 방향)
       let thrust = 0, want = null;
-      if (keys.size) {
+      if (keys.size && v.fp) {
+        // 1인칭: 위는 앞으로, 아래는 뒤로 돌아서, 왼쪽·오른쪽은 핸들
+        if (keys.has('l')) heading += 2.4 * dt;
+        if (keys.has('r')) heading -= 2.4 * dt;
+        if (keys.has('u')) { want = heading; thrust = 1; }
+        else if (keys.has('d')) { want = heading + Math.PI; thrust = 0.6; }
+      } else if (keys.size) {
         let kx = 0, kz = 0;
         if (keys.has('u')) kz -= 1;
         if (keys.has('d')) kz += 1;
@@ -241,12 +259,90 @@ export function createRides({ v, ui, begin, stopAll, portrait, shout }) {
     pl.root.position.set(pos.x, A.y + CAR_SEAT, pos.z);
     pl.root.rotation.set(0, heading, 0);
     game.update(0);
-    begin('bumper', '범퍼카', game, [], -1);
+    begin('bumper', '범퍼카', game, [fpSide('누른 곳으로 달려요. 화살표는 내 차 기준이에요')], -1);
     document.body.classList.add('pad-game'); // 휴대폰에서는 방향 단추로도 몬다
     v.noFade = park.fade.bumper; // 범퍼카 장은 흐리게 하지 않는다
     const fine = matchMedia('(pointer: fine)').matches;
     ui.say(fine ? '화면을 누르고 있거나 화살표 자판을 누르면 그쪽으로 달려요. 다른 차에 쿵! 부딪혀 봐요.' : '화면을 누르고 있거나 방향 단추를 누르면 그쪽으로 달려요. 다른 차에 쿵! 부딪혀 봐요.');
     ui.setMain('빵빵!', { onClick: honk });
+    sfx.open();
+  }
+
+  // ---------- 롤러코스터: 승강장에서 기다렸다가 타고 한 바퀴 돈다 ----------
+  function coaster() {
+    const park = v.park, C = RIDES.coaster, co = park.coaster;
+    const pl = v.player;
+    const st = { wave: 0 };
+    const P = V(), Q = new THREE.Quaternion(), R = V();
+    const door = V(C.door[0], 0, C.door[1]);
+    const game = { cam: { pos: V(), look: V(), map: true }, camSpeed: 4 };
+    let seat = -1, lap = -1, arrived = 0, lastSay = '', lastWait = -1, tickT = 0, lastPhase = '', wasLoop = false;
+    pl.root.position.copy(door);
+    pl.root.rotation.set(0, -Math.PI / 2, 0); // 기차 쪽(서쪽)을 본다
+    const say = (t) => { if (t !== lastSay) { lastSay = t; ui.say(t); } };
+    function board(s) {
+      const free = park.pickSeat('coaster', takenSeats('coaster'));
+      if (free < 0) return false;
+      seat = free;
+      lap = s.lap;
+      pl.pose = ridePose('coaster', park, st);
+      if (setActivity) setActivity('coaster', seat);
+      sfx.door();
+      ui.banner('탑승!', seat < 2 ? '맨 앞 차예요' : seat < 4 ? '가운데 차예요' : '맨 뒤 차예요', 1800);
+      return true;
+    }
+    game.update = (dt) => {
+      st.wave = Math.max(0, st.wave - dt);
+      const s = co.st || co.state(park.now());
+      const k = portrait() ? 1.3 : 1;
+      if (seat < 0) {
+        // 승강장에서 기다린다: 기차가 서 있으면 바로 탄다
+        if (s.phase === 'dwell' && s.dwellLeft > 1.2 && board(s)) return;
+        const wait = Math.ceil(s.phase === 'dwell' ? s.dwellLeft + co.time.run : s.untilDwell);
+        if (wait !== lastWait) { lastWait = wait; say(s.phase === 'dwell' ? '자리가 다 찼어요. 다음 기차를 기다려요.' : `롤러코스터가 한 바퀴 도는 중이에요. ${wait}초 뒤에 들어오면 바로 타요!`); }
+        game.cam.look.set(C.x - 0.6, 1.4, C.z + 1.5);
+        game.cam.pos.set(C.x + 7.5 * k, 4.2 * k, C.z + 6.5 * k);
+        return;
+      }
+      const anchor = co.seats[seat];
+      anchor.getWorldPosition(P);
+      anchor.getWorldQuaternion(Q);
+      pl.root.position.copy(P);
+      pl.root.quaternion.copy(Q);
+      // 한 바퀴 돌고 승강장에 들어오면 내린다
+      if (s.lap > lap && (s.phase === 'dwell' || s.lap > lap + 1 || arrived)) { // 화면이 잠깐 멈춰 승강장을 지나쳐도 내린다
+        if (!arrived) { arrived = 1.6; ui.banner('도착!', '재미있었나요? 또 타려면 다시 눌러요', 2200); sfx.success(); }
+        arrived -= dt;
+        if (arrived <= 0) { stopAll(); return; }
+      } else if (s.phase === 'dwell') say('안전바를 내렸어요. 곧 출발해요! 출발하면 만세를 눌러 봐요.');
+      else if (s.phase === 'lift') {
+        say('덜컹덜컹… 꼭대기까지 올라가요. 바다와 마을이 보여요!');
+        tickT -= dt;
+        if (tickT <= 0) { sfx.tick(); tickT = 0.38; }
+      } else if (s.phase === 'brake') say('거의 다 왔어요. 천천히 승강장으로 들어가요.');
+      else if (s.loop) say('빙글! 360도 한 바퀴를 돌아요!');
+      else say('와아아! 신나게 달려요!');
+      if (lastPhase === 'lift' && s.phase === 'run') { sfx.whoosh(); pl.celebrate(); }
+      if (s.loop && !wasLoop) { sfx.whoosh(); ui.banner('빙글!', '거꾸로 한 바퀴', 1400); }
+      wasLoop = s.loop;
+      lastPhase = s.phase;
+      // 밖에서 보기: 섬 가운데에서 기차 쪽 바깥(바다 쪽) 옆에서 따라가며 본다
+      R.set(P.x - COASTER.center.x, 0, P.z - COASTER.center.z);
+      if (R.lengthSq() < 1) R.set(0, 0, 1);
+      R.normalize();
+      game.cam.look.set(P.x, P.y + 0.6, P.z);
+      game.cam.pos.set(P.x + R.x * 9.5 * k, P.y + 4.2 * k, P.z + R.z * 9.5 * k);
+    };
+    game.stop = () => {
+      pl.pose = null;
+      resetLimbs(pl);
+      exitAt('coaster', pl);
+      pl.root.rotation.set(0, 0, 0);
+    };
+    begin('coaster', C.name, game, [fpSide()], -1);
+    game.update(0);
+    ui.setMain('만세!', { onClick: () => { st.wave = 1.8; pl.celebrate(); shout('yay'); } });
+    if (seat < 0) say('승강장에 왔어요. 기차가 들어오면 바로 타요!');
     sfx.open();
   }
 

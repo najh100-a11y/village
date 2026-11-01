@@ -111,8 +111,8 @@ export function dishName(items, kind) {
   return `${head}${uniq.length > 2 ? ' 듬뿍' : ''} ${COOK_KIND[kind][0]}`.trim();
 }
 
-export const ACT_ICON = { fish: '🎣', omok: '⚫', cook: '🍳', art: '🎨', memory: '📖', qt: '🌿', copy: '✏️', watch: '👀', ferris: '🎡', viking: '⛵', carousel: '🎠', bumper: '🚗', bench: '🪑', eat: '🍎', home: '🏠' };
+export const ACT_ICON = { fish: '🎣', omok: '⚫', cook: '🍳', art: '🎨', memory: '📖', qt: '🌿', copy: '✏️', watch: '👀', ferris: '🎡', viking: '⛵', carousel: '🎠', bumper: '🚗', bench: '🪑', eat: '🍎', home: '🏠', coaster: '🎢', swim: '🏊' };
 export const ACT_TEXT = {
   fish: '낚시하는 중', omok: '오목 두는 중', cook: '요리하는 중', art: '그림 그리는 중', memory: '암송하는 중', qt: '묵상하는 중', copy: '필사하는 중', watch: '오목 구경하는 중',
-  ferris: '대관람차 타는 중', viking: '바이킹 타는 중', carousel: '회전목마 타는 중', bumper: '범퍼카 타는 중', bench: '벤치에서 쉬는 중', eat: '열매 먹는 중', home: '내 집에 있는 중',
+  ferris: '대관람차 타는 중', viking: '바이킹 타는 중', carousel: '회전목마 타는 중', bumper: '범퍼카 타는 중', bench: '벤치나 선베드에서 쉬는 중', eat: '열매 먹는 중', home: '내 집에 있는 중', coaster: '롤러코스터 타는 중', swim: '수영하는 중',
 };

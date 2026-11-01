@@ -7,6 +7,8 @@ import { POOL_ISLE, makeIsle, makeTree } from './isles.js';
 
 // 수영장 섬(마을 동쪽 다리 건너) 한가운데의 커다란 수영장
 export const POOL = { x: 56, z: -3.6, hw: 6.5, hd: 3.4, deck: 1.3 };
+// 선베드: 수영장 북쪽 둘레(z)에 동서로 놓인다. 길이 len, 등받이 기울기 back(라디안), 발 쪽 방향 ry(동쪽)
+export const LOUNGER = { z: -POOL.hd - 1.0, len: 1.8, back: 0.32, ry: Math.PI / 2 };
 export const SWIM_Y = -0.95; // 헤엄칠 때 발밑 높이 (머리와 어깨만 물 위)
 const WATER_Y = 0.07;
 const TAU = Math.PI * 2;
@@ -22,20 +24,60 @@ export function inPool(x, z, m = 0.25) {
 export function nearPool(x, z, pad = 0) {
   return Math.abs(x - POOL.x) < POOL.hw + POOL.deck + pad && Math.abs(z - POOL.z) < POOL.hd + POOL.deck + pad;
 }
-// 헤엄치는 자세: 움직일 때는 자유형, 멈추면 손으로 물을 저으며 떠 있다 (av.swimMoving은 마을이 정한다)
+// 헤엄치는 자세. av.stroke: 'free'(자유형), 'back'(배영), 'fly'(접영). av.swimMoving은 마을이 정한다.
+// 움직이면 몸을 물 위에 눕혀 영법대로 젓고, 멈추면 몸을 세우고 손으로 물을 저으며 떠 있다(av.swimK로 부드럽게 바꾼다).
+// 몸(body)은 발이 원점이라 눕힐 때 앞으로 0.75만큼 당겨 가운데를 맞춘다. 배영은 몸을 뒤집어 얼굴이 하늘을 본다.
+export const STROKES = ['free', 'back', 'fly'];
+export const STROKE_NAMES = { free: '자유형', back: '배영', fly: '접영' };
+const HALF_PI = Math.PI / 2;
 export function swimPose(av, dt, t) {
-  if (av.swimMoving) {
-    av.arms[0].rotation.x = -1.6 + Math.sin(t * 5) * 1.4;
-    av.arms[1].rotation.x = -1.6 + Math.sin(t * 5 + Math.PI) * 1.4;
-    av.arms[0].rotation.z = -0.25; av.arms[1].rotation.z = 0.25;
-  } else {
+  const stroke = STROKE_NAMES[av.stroke] ? av.stroke : 'free';
+  const k0 = av.swimK || 0;
+  const k = (av.swimK = k0 + ((av.swimMoving ? 1 : 0) - k0) * Math.min(1, dt * 5));
+  const b = av.body;
+  const [a0, a1] = av.arms, [l0, l1] = av.legs;
+  if (k < 0.03) {
+    b.rotation.set(0, 0, 0);
+    b.position.z = 0;
+    if (av.head) av.head.rotation.y = 0;
     const s = Math.sin(t * 3) * 0.35;
-    av.arms[0].rotation.x = -1.1 + s; av.arms[1].rotation.x = -1.1 - s;
-    av.arms[0].rotation.z = -0.7; av.arms[1].rotation.z = 0.7;
+    a0.rotation.x = -1.1 + s; a1.rotation.x = -1.1 - s;
+    a0.rotation.z = -0.7; a1.rotation.z = 0.7;
+    l0.rotation.x = Math.sin(t * 10) * 0.4;
+    l1.rotation.x = -Math.sin(t * 10) * 0.4;
+    b.position.y += Math.sin(t * 2.4) * 0.03;
+    return;
   }
-  av.legs[0].rotation.x = Math.sin(t * 10) * 0.4;
-  av.legs[1].rotation.x = -Math.sin(t * 10) * 0.4;
-  av.body.position.y += Math.sin(t * 2.4) * 0.03;
+  const speed = stroke === 'fly' ? 4.0 : stroke === 'back' ? 3.4 : 4.4; // 팔 젓는 빠르기
+  av.swimPh = (av.swimPh || 0) + dt * speed * (0.4 + 0.6 * k);
+  const ph = av.swimPh;
+  const cyc = (x) => ((x % TAU) + TAU) % TAU;
+  if (stroke === 'back') {
+    // 배영: 하늘을 보고 누워 팔을 번갈아 머리 위로 넘긴다
+    b.rotation.set(HALF_PI * k, Math.PI + Math.sin(ph) * 0.2 * k, 0);
+    a0.rotation.x = -cyc(ph); a1.rotation.x = -cyc(ph + Math.PI);
+    a0.rotation.z = -0.12; a1.rotation.z = 0.12;
+    l0.rotation.x = Math.sin(t * 11) * 0.3; l1.rotation.x = -Math.sin(t * 11) * 0.3;
+    if (av.head) av.head.rotation.y = 0;
+    b.position.y = 0.76 * k;
+  } else if (stroke === 'fly') {
+    // 접영: 두 팔을 함께 물 위로 넘기고, 몸을 물결처럼 굽이치며 두 발로 함께 찬다
+    b.rotation.set(HALF_PI * k + Math.sin(ph) * 0.1 * k, 0, 0); // 발끝을 축으로 돌아서 조금만 굽혀도 머리가 크게 오르내린다
+    a0.rotation.x = a1.rotation.x = -Math.PI + cyc(ph);
+    a0.rotation.z = -0.35; a1.rotation.z = 0.35;
+    l0.rotation.x = l1.rotation.x = Math.sin(ph * 2) * 0.45;
+    if (av.head) av.head.rotation.y = 0;
+    b.position.y = 0.78 * k - Math.sin(ph) * 0.05 * k; // 팔을 물 위로 넘길 때 가슴이 솟는다
+  } else {
+    // 자유형: 엎드려 팔을 번갈아 앞으로 넘기고, 숨 쉴 때 고개를 옆으로 돌린다
+    b.rotation.set(HALF_PI * k, Math.sin(ph) * 0.22 * k, 0);
+    a0.rotation.x = -Math.PI + cyc(ph); a1.rotation.x = -Math.PI + cyc(ph + Math.PI);
+    a0.rotation.z = -0.1; a1.rotation.z = 0.1;
+    l0.rotation.x = Math.sin(t * 12) * 0.32; l1.rotation.x = -Math.sin(t * 12) * 0.32;
+    if (av.head) av.head.rotation.y = 0.6 * Math.max(0, Math.sin(ph)) * k;
+    b.position.y = 0.72 * k;
+  }
+  b.position.z = -0.75 * k;
 }
 swimPose.swim = true;
 
@@ -78,8 +120,12 @@ export class Pool {
         const dx = P.hw + P.deck, dz = P.hd + P.deck;
         ctx.fillStyle = '#CFC6B4';
         ctx.beginPath(); ctx.roundRect(px(ox - dx - 0.15), px(oz - dz - 0.15), (dx + 0.15) * 2 * u, (dz + 0.15) * 2 * u, 0.6 * u); ctx.fill();
+        // 선베드 자리: 북쪽 바닥을 조금 넓힌다
+        const nx = dx - 0.6, nz = 0.75;
+        ctx.beginPath(); ctx.roundRect(px(ox - nx - 0.15), px(oz - dz - nz - 0.15), (nx + 0.15) * 2 * u, (nz + 0.6) * u, 0.5 * u); ctx.fill();
         ctx.fillStyle = '#ECE7DC';
         ctx.beginPath(); ctx.roundRect(px(ox - dx), px(oz - dz), dx * 2 * u, dz * 2 * u, 0.5 * u); ctx.fill();
+        ctx.beginPath(); ctx.roundRect(px(ox - nx), px(oz - dz - nz), nx * 2 * u, (nz + 0.5) * u, 0.4 * u); ctx.fill();
         ctx.fillStyle = '#2E9BD0';
         ctx.fillRect(px(ox - P.hw), px(oz - P.hd), P.hw * 2 * u, P.hd * 2 * u);
         ctx.strokeStyle = 'rgba(140,215,245,.7)';
@@ -159,27 +205,36 @@ export class Pool {
     for (let i = 0; i < 14; i++) rim.add(mesh(new THREE.SphereGeometry(0.09, 8, 6), i % 2 ? white : blue, -P.hw + 0.4 + i * ((P.hw * 2 - 0.8) / 13), WATER_Y + 0.02, 0, false));
     merge(rim);
     root.add(rim);
-    // 북쪽 둘레: 파라솔과 선베드 (카메라 반대쪽이라 물을 가리지 않는다)
-    const deckZ = -P.hd - 0.62;
+    // 북쪽 둘레: 파라솔과 선베드. 선베드는 동서로 놓여 카메라에서 누운 모습이 옆으로 길게 보인다 (머리는 서쪽).
+    // 선베드는 눌러서 누울 수 있다 (자리와 장애물은 마을의 addLounger가 맡는다)
     const furn = new THREE.Group();
     const umbrella = new THREE.MeshToonMaterial({ map: stripeTex(['#EF6461', '#FFFDF7'], 10), gradientMap: toonGradient() });
+    const L = LOUNGER;
     for (const [x, col] of [[-4.4, '#F6D55C'], [0.2, '#7EC8F2'], [4.8, '#F6A2C4']]) {
-      furn.add(cyl(0.04, 0.04, 2.3, toon('#8A8F98'), x - 0.9, 1.15, deckZ - 0.05, 6));
-      const top = mesh(new THREE.ConeGeometry(1.05, 0.45, 20), umbrella, x - 0.9, 2.3, deckZ - 0.05);
-      furn.add(top);
-      // 선베드
+      const z = L.z;
       const bed = new THREE.Group();
-      bed.add(box(0.62, 0.08, 1.5, white, 0, 0.32, 0));
-      bed.add(box(0.56, 0.06, 1.0, toon(col), 0, 0.39, 0.22));
-      const back = box(0.56, 0.06, 0.6, toon(col), 0, 0.58, -0.6);
-      back.rotation.x = 0.85;
+      bed.add(box(0.66, 0.08, L.len, white, 0, 0.32, 0));
+      bed.add(box(0.6, 0.06, L.len / 2 + 0.27, toon(col), 0, 0.39, L.len / 4 - 0.135));
+      // 등받이: 아래 끝이 방석 끝(z=-0.27)에 닿고 머리 쪽으로 L.back만큼 기울어 올라간다
+      const bl = 0.66, bz = -0.27 - (bl / 2) * Math.cos(L.back), by = 0.4 + (bl / 2) * Math.sin(L.back);
+      const back = box(0.6, 0.06, bl, toon(col), 0, by, bz);
+      back.rotation.x = L.back;
       bed.add(back);
-      for (const sx of [-0.26, 0.26]) for (const sz of [-0.62, 0.62]) bed.add(box(0.05, 0.3, 0.05, white, sx, 0.15, sz));
-      bed.position.set(x, 0, deckZ);
-      bed.rotation.y = Math.PI / 2;
+      const topZ = -0.27 - bl * Math.cos(L.back), topY = 0.4 + bl * Math.sin(L.back);
+      bed.add(box(0.5, topY - 0.36, 0.06, white, 0, (topY + 0.36) / 2, topZ + 0.08)); // 등받이 받침
+      const pillow = cyl(0.11, 0.11, 0.5, toon('#FFFDF7'), 0, topY + 0.08, topZ + 0.1, 12); // 베개
+      pillow.rotation.z = Math.PI / 2;
+      bed.add(pillow);
+      for (const sx of [-0.28, 0.28]) for (const sz of [-L.len / 2 + 0.12, L.len / 2 - 0.12]) bed.add(box(0.05, 0.3, 0.05, white, sx, 0.15, sz));
+      bed.position.set(x, 0, z);
+      bed.rotation.y = L.ry;
       furn.add(bed);
-      v.addObstacleBox(P.x + x, P.z + deckZ, 0.78, 0.33, 0);
-      v.addObstacleCircle(P.x + x - 0.9, P.z + deckZ - 0.05, 0.12);
+      // 파라솔은 머리 쪽(서쪽)으로 떨어뜨려 선베드 사이에 둔다 (위에서 내려다볼 때 누운 친구를 가리지 않게)
+      const ux = x - 2.45, uz = z - 0.2;
+      furn.add(cyl(0.04, 0.04, 2.3, toon('#8A8F98'), ux, 1.15, uz, 6));
+      furn.add(mesh(new THREE.ConeGeometry(0.9, 0.4, 20), umbrella, ux, 2.3, uz));
+      v.addObstacleCircle(P.x + ux, P.z + uz, 0.12);
+      if (v.addLounger) v.addLounger(P.x + x, P.z + z, L.ry, 0.36, L.len / 2);
     }
     merge(furn);
     root.add(furn);

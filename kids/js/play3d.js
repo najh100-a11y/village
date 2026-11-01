@@ -2535,7 +2535,7 @@ export function createPlay3D(ctx) {
   }
 
   // 놀이동산 놀이기구
-  const rides = createRides({ v, ui, begin, stopAll, portrait, shout: (id) => ctx.shout && ctx.shout(id) });
+  const rides = createRides({ v, ui, begin, stopAll, portrait, shout: (id) => ctx.shout && ctx.shout(id), setActivity });
 
   return {
     ride: rides.ride,
