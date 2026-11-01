@@ -132,7 +132,11 @@ async function boot() {
     onSessionLost: sessionLost,
     onDone: (k) => { if (net) net.send('done', { k }); refreshToday(); },
   };
-  memory = createMemory({ ...common, onBoard: (cur) => village.setBoard(cur ? cur.ref : '') });
+  memory = createMemory({
+    ...common,
+    onBoard: (cur) => { const ref = cur ? cur.ref : ''; if (ref !== boardRef) { boardRef = ref; village.setBoard(ref); } },
+    onLoaded: (vs) => checkStamps(vs),
+  });
   qt = createQt({ ...common, features: () => state.features || {} });
   copy = createCopy({ ...common, features: () => state.features || {} });
   const onlineFriends = () => [...online].map((id) => state.people.get(id)).filter(Boolean);
@@ -402,6 +406,36 @@ async function refreshToday() {
   state.todayChecked = true;
 }
 
+// ---------- 선생님 도장 알림 ----------
+// 선생님이 선생님 화면에서 도장을 찍으면, 마을에 있는 아이 화면에 1분 안에 알린다 (40초마다 도장판을 다시 읽는다)
+let boardRef = null, stampTimer = 0;
+function startStampWatch() {
+  clearInterval(stampTimer);
+  stampTimer = setInterval(() => {
+    if (!state.me || document.hidden || $('#hud').hidden) return;
+    memory.load().catch(() => { /* 다음에 */ });
+  }, 40000);
+}
+function checkStamps(vs) {
+  const me = state.me && state.me.id;
+  if (!me || !Array.isArray(vs)) return;
+  const key = `kv.stamped.${me}`;
+  const now = vs.filter((v) => v.passed).map((v) => v.id);
+  let before = null;
+  try { before = JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) { before = null; }
+  try { localStorage.setItem(key, JSON.stringify(now)); } catch (e) { /* 이 기기에 남기지 못해도 괜찮다 */ }
+  if (!Array.isArray(before)) return; // 이 기기에서 처음 읽은 것: 기억만 해 둔다
+  const fresh = vs.filter((v) => v.passed && !before.includes(v.id));
+  if (!fresh.length) return;
+  confetti();
+  sfx.success();
+  village.celebrate();
+  toast(fresh.length === 1
+    ? `선생님이 ${fresh[0].ref} 말씀에 도장을 찍어 주셨어요! 열매 10개를 받았어요.`
+    : `선생님이 말씀 ${fresh.length}개에 도장을 찍어 주셨어요! 열매 ${fresh.length * 10}개를 받았어요.`, 5200);
+  refreshFruits();
+}
+
 // 놀이 마당: 그날 암송·묵상·필사 가운데 하나라도 마쳐야 열린다
 const playOpen = () => !!(state.today && state.today.cleared);
 const GAMES = {
@@ -532,6 +566,7 @@ async function enterVillage(greet) {
     hintShown = true;
   }
   memory.load().catch((e) => { if (e.code === 'SESSION') sessionLost(); });
+  startStampWatch();
   refreshToday();
   refreshWall();
   refreshDishes();
@@ -1512,6 +1547,10 @@ function updateHud() {
   setFruits(me.fruits);
 }
 
+// 서버의 열매 수로 화면을 맞춘다 (선생님이 도장을 찍어 준 뒤 등)
+function refreshFruits() {
+  rpc('kids_me', { p_token: token() }).then((m) => { if (m && Number.isFinite(m.fruits)) setFruits(m.fruits); }).catch(() => { /* 다음에 */ });
+}
 function setFruits(n) {
   if (state.me) state.me.fruits = n;
   const el = $('#hudFruit');

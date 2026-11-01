@@ -118,6 +118,30 @@ dialog::backdrop { background: rgba(60, 45, 30, .35); }
 .dlg-body h4 { margin: 0 0 8px; font-family: var(--display); font-weight: 400; font-size: 18px; color: var(--leaf-deep); }
 .x { width: 42px; height: 42px; border-radius: 50%; border: 2px solid var(--line); background: #fff; font-size: 24px; cursor: pointer; }
 .stamp-list { display: grid; gap: 6px; }
+/* 말씀 도장 탭 */
+.stamp-verses { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 10px; -webkit-overflow-scrolling: touch; }
+.stamp-verses button { flex: 0 0 auto; border: 2px solid var(--line); background: #fff; border-radius: 999px; padding: 8px 14px; font-family: var(--display); font-size: 15px; color: var(--ink-soft); cursor: pointer; white-space: nowrap; }
+.stamp-verses button[aria-selected="true"] { border-color: var(--apple); background: var(--apple-wash); color: var(--apple); }
+.stamp-verses button small { font-family: var(--body); font-size: 12px; margin-left: 4px; }
+.stamp-verse { background: var(--paper); border: 2px solid var(--line); border-radius: 18px; padding: 14px 16px; margin-bottom: 12px; }
+.stamp-verse h3 { margin: 0 0 6px; font-family: var(--display); font-weight: 400; font-size: 20px; color: var(--leaf-deep); }
+.stamp-verse p { margin: 0; font-size: 18px; line-height: 1.7; word-break: keep-all; }
+.stamp-verse small { display: block; margin-top: 6px; font-size: 12px; color: var(--ink-soft); }
+.stamp-tools { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+.stamp-tools input { flex: 1 1 180px; min-height: 44px; border: 2px solid var(--line); border-radius: 999px; padding: 0 16px; font: inherit; background: #fff; }
+.stamp-tools span { font-size: 14px; color: var(--ink-soft); }
+.stamp-kids { display: grid; gap: 8px; }
+.stamp-kid { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 12px; align-items: center; background: #fff; border: 2px solid var(--line); border-radius: 18px; padding: 10px 12px; }
+.stamp-kid canvas { width: 48px; height: 48px; border-radius: 50%; background: var(--leaf-wash); }
+.stamp-kid .nm { font-family: var(--display); font-size: 18px; }
+.stamp-kid .sub { font-size: 13px; color: var(--ink-soft); }
+.stamp-kid.done { border-color: #F3B8B5; background: #FFF8F7; }
+.stamp-kid .acts { display: flex; gap: 6px; align-items: center; }
+.btn-stamp { min-height: 52px; padding: 0 20px; font-size: 18px; background: var(--apple); border-color: var(--apple); color: #fff; }
+.btn-stamp:hover { background: #C7443F; }
+.stamped { display: inline-grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; border: 3px solid var(--apple); color: var(--apple); font-family: var(--display); font-size: 13px; line-height: 1.1; text-align: center; transform: rotate(-12deg); background: #FFE3E1; }
+.stamped.pop { animation: stampPop .45s ease-out; }
+@keyframes stampPop { 0% { transform: rotate(-12deg) scale(2.2); opacity: 0; } 70% { transform: rotate(-12deg) scale(.92); opacity: 1; } 100% { transform: rotate(-12deg) scale(1); } }
 .stamp-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 8px 12px; border-radius: 14px; background: #fff; border: 2px solid var(--line); }
 .stamp-row .r { font-family: var(--display); }
 .stamp-row .m { font-size: 13px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
@@ -224,7 +248,8 @@ dialog::backdrop { background: rgba(60, 45, 30, .35); }
 
   <main id="mainView" hidden>
     <nav class="tabs" role="tablist">
-      <button class="tab" role="tab" data-tab="kids" aria-selected="true" type="button">아이들<span class="count" id="kidCount"></span></button>
+      <button class="tab" role="tab" data-tab="stamp" aria-selected="true" type="button">말씀 도장<span class="count" id="stampCount"></span></button>
+      <button class="tab" role="tab" data-tab="kids" aria-selected="false" type="button">아이들<span class="count" id="kidCount"></span></button>
       <button class="tab" role="tab" data-tab="weeks" aria-selected="false" type="button">주간 계획<span class="count" id="weekCount"></span></button>
       <button class="tab" role="tab" data-tab="posts" aria-selected="false" type="button">아이들 글<span class="count" id="postCount"></span></button>
       <button class="tab" role="tab" data-tab="verses" aria-selected="false" type="button">암송 구절<span class="count" id="verseCount"></span></button>
@@ -233,7 +258,16 @@ dialog::backdrop { background: rgba(60, 45, 30, .35); }
       <button class="tab" role="tab" data-tab="teachers" aria-selected="false" type="button">선생님 계정</button>
     </nav>
 
-    <section id="tab-kids">
+    <section id="tab-stamp">
+      <div class="bar"><h2>말씀 도장</h2><button class="btn btn-sm" id="stampRefresh" type="button">새로 보기</button></div>
+      <p class="note" style="margin-bottom:12px">아이가 선생님 앞에서 말씀을 외우면 이름 옆 <b>도장 찍기</b>를 눌러 주세요. 아이에게 열매 10개가 바로 들어가고, 아이 화면 도장판에 빨간 도장이 찍혀요. 아이가 마을에 들어와 있으면 1분 안에 아이 화면에 “선생님이 도장을 찍어 주셨어요!” 알림이 떠요. 잘못 눌렀으면 <b>지우기</b>로 되돌리면 열매도 다시 빠져요.</p>
+      <div class="stamp-verses" id="stampVerses" role="tablist" aria-label="말씀 고르기"></div>
+      <div class="stamp-verse" id="stampVerse"></div>
+      <div class="stamp-tools"><input id="stampSearch" type="search" placeholder="이름으로 찾기" aria-label="아이 이름으로 찾기"><span id="stampSum"></span></div>
+      <div class="stamp-kids" id="stampKids"></div>
+    </section>
+
+    <section id="tab-kids" hidden>
       <div class="bar"><h2>아이들</h2><button class="btn btn-go" id="addKidBtn" type="button">아이 계정 만들기</button></div>
       <div class="card signup-card" id="signupBox" style="margin-bottom:16px"></div>
       <form id="kidForm" class="card" hidden style="display:grid;gap:14px;margin-bottom:16px">

@@ -15,7 +15,7 @@ function shuffle(arr, seed = Math.random()) {
   return a;
 }
 
-export function createMemory({ rpc, getToken, onFruits, onCelebrate, onBoard, onSessionLost, onDone = () => {} }) {
+export function createMemory({ rpc, getToken, onFruits, onCelebrate, onBoard, onSessionLost, onDone = () => {}, onLoaded = null }) {
   let verses = [];
   const current = () => verses.find((v) => v.is_current) || null;
   const canSpeak = 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined';
@@ -23,6 +23,7 @@ export function createMemory({ rpc, getToken, onFruits, onCelebrate, onBoard, on
   async function load() {
     verses = await rpc('kids_verses', { p_token: getToken() });
     onBoard(current());
+    if (onLoaded) onLoaded(verses); // 선생님이 새로 찍어 준 도장 알림
     return verses;
   }
 

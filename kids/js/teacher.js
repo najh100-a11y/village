@@ -13,7 +13,7 @@ let data = null;
 let weeks = [];
 let posts = [];
 const openWeeks = new Set();
-let tab = 'kids';
+let tab = 'stamp'; // 처음 여는 탭: 말씀 도장 (주일에 가장 많이 쓴다)
 
 function toast(t) {
   const el = $('#toast');
@@ -113,6 +113,8 @@ function bind() {
     logoutLocal();
   });
   for (const b of document.querySelectorAll('.tab')) b.addEventListener('click', () => showTab(b.dataset.tab));
+  $('#stampRefresh').addEventListener('click', async () => { try { await refresh(); toast('새로 불러왔어요.'); } catch (e) { /* 위에서 알린다 */ } });
+  $('#stampSearch').addEventListener('input', () => renderStampKids());
   $('#addKidBtn').addEventListener('click', () => {
     $('#kidForm').hidden = false;
     $('#newCard').hidden = true;
@@ -201,7 +203,7 @@ function showMain() {
 function showTab(t) {
   tab = t;
   for (const b of document.querySelectorAll('.tab')) b.setAttribute('aria-selected', String(b.dataset.tab === t));
-  for (const id of ['kids', 'weeks', 'posts', 'verses', 'village', 'feedback', 'teachers']) $(`#tab-${id}`).hidden = id !== t;
+  for (const id of ['stamp', 'kids', 'weeks', 'posts', 'verses', 'village', 'feedback', 'teachers']) $(`#tab-${id}`).hidden = id !== t;
 }
 
 // ---------- 그리기 ----------
@@ -211,6 +213,7 @@ function render() {
   $('#verseCount').textContent = `(${data.verses.length})`;
   $('#weekCount').textContent = weeks.length ? `(${weeks.filter((w) => w.is_published).length}/${weeks.length})` : '';
   $('#postCount').textContent = posts.length ? `(${posts.length})` : '';
+  renderStamp();
   renderKids();
   renderWeeks();
   renderPosts();
@@ -218,6 +221,92 @@ function render() {
   renderVillage();
   renderFeedback();
   renderTeachers();
+}
+
+// ---------- 말씀 도장: 아이가 선생님 앞에서 외우면 바로 찍는다 ----------
+let stampVerse = null; // 고른 구절 id
+const stampOf = (c, vid) => c.memory.find((m) => m.verse_id === vid);
+function stampVerses() {
+  const list = data.verses.filter((v) => v.is_published);
+  const cur = list.find((v) => v.is_current);
+  // 이번 주 말씀을 맨 앞에, 나머지는 공개한 차례대로
+  return cur ? [cur, ...list.filter((v) => v !== cur)] : list;
+}
+function renderStamp() {
+  const verses = stampVerses();
+  const cur = verses.find((v) => v.is_current);
+  if (!verses.some((v) => v.id === stampVerse)) stampVerse = verses.length ? verses[0].id : null;
+  const curN = cur ? data.children.filter((c) => (stampOf(c, cur.id) || {}).passed).length : 0;
+  $('#stampCount').textContent = cur && curN ? `(이번 주 ${curN})` : '';
+  if (!verses.length) {
+    $('#stampVerses').replaceChildren();
+    $('#stampVerse').replaceChildren(h('p', {}, '아이들에게 공개한 암송 구절이 아직 없어요. ‘주간 계획’이나 ‘암송 구절’ 탭에서 공개하면 여기에서 도장을 찍을 수 있어요.'));
+    $('#stampKids').replaceChildren();
+    $('#stampSum').textContent = '';
+    return;
+  }
+  $('#stampVerses').replaceChildren(...verses.map((v) => {
+    const n = data.children.filter((c) => (stampOf(c, v.id) || {}).passed).length;
+    return h('button', {
+      type: 'button', role: 'tab', 'aria-selected': String(v.id === stampVerse),
+      onclick: () => { stampVerse = v.id; renderStamp(); },
+    }, v.is_current ? `이번 주 · ${v.ref}` : v.ref, n ? h('small', {}, `도장 ${n}`) : null);
+  }));
+  const v = verses.find((x) => x.id === stampVerse);
+  $('#stampVerse').replaceChildren(h('h3', {}, v.ref), h('p', {}, v.body),
+    h('small', {}, v.version === 'NJHV' ? 'NJHV · 나종현 번역' : '성경전서 개역한글판 · 대한성서공회 (아이가 외우는 동안 함께 보며 확인해요)'));
+  renderStampKids();
+}
+function renderStampKids() {
+  const box = $('#stampKids');
+  const v = data.verses.find((x) => x.id === stampVerse);
+  if (!box || !v) return;
+  const q = $('#stampSearch').value.trim();
+  const kids = data.children.filter((c) => !q || [c.name, c.village_name, c.login_id].some((t) => t && t.includes(q)));
+  // 이 말씀을 연습한 아이가 먼저 (도장 받을 아이일 가능성이 크다), 그다음 이름 차례
+  const score = (c) => { const m = stampOf(c, v.id); return m && m.passed ? 1 : m && m.practice_count ? 0 : 2; };
+  kids.sort((a, b) => score(a) - score(b) || a.name.localeCompare(b.name, 'ko'));
+  const done = data.children.filter((c) => (stampOf(c, v.id) || {}).passed).length;
+  const tried = data.children.filter((c) => (stampOf(c, v.id) || {}).practice_count).length;
+  $('#stampSum').textContent = `도장 ${done}명 · 연습한 아이 ${tried}명 · 모두 ${data.children.length}명`;
+  if (!kids.length) { box.replaceChildren(h('div', { class: 'card empty' }, q ? '그 이름의 아이가 없어요.' : '아직 아이 계정이 없어요.')); return; }
+  box.replaceChildren(...kids.map((c) => stampRow(c, v)));
+}
+function stampRow(c, v, pop = false) {
+  const m = stampOf(c, v.id) || { practice_count: 0, best_score: 0, passed: false };
+  const cv = h('canvas', { width: 96, height: 96, 'aria-hidden': 'true' });
+  drawFaceIcon(cv, normalizeAvatar(c.avatar));
+  const row = h('div', { class: 'stamp-kid' + (m.passed ? ' done' : '') });
+  const act = async (on, btn) => {
+    if (!on && !confirm(`${c.name}의 ${v.ref} 도장을 지울까요? 받은 열매 10개도 다시 빠져요.`)) return;
+    btn.disabled = true;
+    let r;
+    try { r = await call('kids_t_set_pass', { p_child_id: c.id, p_verse_id: v.id, p_passed: on }); } catch (e) { btn.disabled = false; return; }
+    let mm = stampOf(c, v.id);
+    if (!mm) { mm = { verse_id: v.id, practice_count: 0, best_score: 0, passed: false }; c.memory.push(mm); }
+    mm.passed = on;
+    if (Number.isFinite(r.fruits)) c.fruits = r.fruits;
+    toast(on ? `${c.name}에게 도장을 찍었어요! 열매 10개를 받았어요. (지금 열매 ${c.fruits}개)` : `${c.name}의 도장을 지웠어요.`);
+    row.replaceWith(stampRow(c, v, on));
+    renderKids();
+    const n = data.children.filter((x) => (stampOf(x, v.id) || {}).passed).length;
+    $('#stampSum').textContent = $('#stampSum').textContent.replace(/^도장 \d+명/, `도장 ${n}명`);
+    const tabN = data.verses.find((x) => x.is_current);
+    const curN = tabN ? data.children.filter((x) => (stampOf(x, tabN.id) || {}).passed).length : 0;
+    $('#stampCount').textContent = tabN && curN ? `(이번 주 ${curN})` : '';
+    for (const b of document.querySelectorAll('#stampVerses button')) if (b.getAttribute('aria-selected') === 'true') {
+      const sm = b.querySelector('small') || b.appendChild(h('small'));
+      sm.textContent = n ? `도장 ${n}` : '';
+    }
+  };
+  const btn = m.passed
+    ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: (e) => act(false, e.currentTarget) }, '지우기')
+    : h('button', { class: 'btn btn-stamp', type: 'button', onclick: (e) => act(true, e.currentTarget) }, '도장 찍기');
+  row.append(cv,
+    h('div', {}, h('div', { class: 'nm' }, c.name, c.village_name && c.village_name !== c.name ? h('span', { class: 'sub' }, ` (${c.village_name})`) : null),
+      h('div', { class: 'sub' }, m.practice_count ? `이 말씀 연습 ${m.practice_count}번 · 최고 ${m.best_score}점` : '이 말씀은 아직 연습 안 했어요')),
+    h('div', { class: 'acts' }, m.passed ? h('span', { class: 'stamped' + (pop ? ' pop' : ''), 'aria-label': '도장 받음' }, '참 잘', h('br'), '했어요') : null, btn));
+  return row;
 }
 
 // ---------- 마을 건의함 ----------
