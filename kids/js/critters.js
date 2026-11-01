@@ -282,14 +282,14 @@ export class Follower {
   }
   say(text) {
     if (this.bubble) this.bubble.el.remove();
-    this.bubble = { el: this.v.makeLabel(text, 'kv-bubble pet-say'), life: 1.8 };
+    this.bubble = { el: this.v.makeLabel(text, 'kv-bubble pet-say' + (this.ownerId === 'me' ? ' home-ok' : '')), life: 1.8 };
   }
   // 눌렀을 때: 깡충 뛰고 하트
   pet() {
     this.react = 2.2;
     this.hop = 1;
     this.say({ dog: '멍멍!', cat: '야옹~', rabbit: '깡충!', chick: '삐약삐약!' }[this.def.kind]);
-    const el = this.v.makeLabel('💕', 'kv-heart');
+    const el = this.v.makeLabel('💕', 'kv-heart' + (this.ownerId === 'me' ? ' home-ok' : ''));
     (this.hearts || (this.hearts = [])).push({ el, pos: this.root.position.clone(), life: 1.3 });
     return this.def.kind;
   }
@@ -468,7 +468,7 @@ export class Critters {
     p.bubble = { el, life: 1.8 };
   }
   heart(p) {
-    const el = this.v.makeLabel('💕', 'kv-heart');
+    const el = this.v.makeLabel('💕', 'kv-heart' + (this.ownerId === 'me' ? ' home-ok' : ''));
     (this.hearts || (this.hearts = [])).push({ el, pos: p.root.position.clone(), life: 1.3 });
   }
 

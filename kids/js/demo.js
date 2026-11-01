@@ -4,8 +4,9 @@ import PLAN from './plan-data.js';
 import { FISH, FRIDGE as FRIDGE_IDS } from './play-data.js';
 import { toJpeg } from './images.js';
 import { cleanChat } from './chatfilter.js';
+import { HOME_ITEMS, HOME_IDS, isSeed } from './homeitems.js';
 const BUG_KINDS = ['cabbage_white', 'swallowtail', 'honeybee', 'ladybug', 'grasshopper', 'red_dragonfly', 'mantis', 'cicada', 'stag_beetle', 'rhino_beetle', 'firefly'];
-const ITEM_PRICE = { fw_spark: 1, fw_flower: 3, fw_heart: 5, pet_dog: 30, pet_cat: 30, pet_rabbit: 30, pet_chick: 30 };
+const ITEM_PRICE = { fw_spark: 1, fw_flower: 3, fw_heart: 5, pet_dog: 30, pet_cat: 30, pet_rabbit: 30, pet_chick: 30, ...Object.fromEntries(HOME_IDS.map((id) => [id, HOME_ITEMS[id].price])) };
 
 const FIRST = PLAN.weeks[0].week_start;
 const LAST = PLAN.weeks[PLAN.weeks.length - 1].days.slice(-1)[0].date;
@@ -230,7 +231,7 @@ export class DemoBackend {
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true }; }
   kids_dm_send({ p_token, p_to, p_text }) {
     const me = this.session(p_token, 'child');
     if (!this.villageConf().chat_open) fail('CHAT_OFF');
@@ -378,6 +379,88 @@ export class DemoBackend {
     this.child(me).pet = p_pet || null;
     return { pet: p_pet || null };
   }
+  // ---------- 내 집 ----------
+  homeItems(me) {
+    const out = {};
+    for (const [k, n] of Object.entries(((this.db.items || {})[me]) || {})) if (n > 0 && HOME_ITEMS[k]) out[k] = n;
+    return out;
+  }
+  kids_home({ p_token }) {
+    const me = this.session(p_token, 'child');
+    this.db.homes = this.db.homes || {};
+    return { layout: JSON.parse(JSON.stringify(this.db.homes[me] || [])), items: this.homeItems(me), fruits: this.child(me).fruits };
+  }
+  kids_home_save({ p_token, p_layout, p_harvest }) {
+    const me = this.session(p_token, 'child');
+    if (!Array.isArray(p_layout) || p_layout.length > 150 || JSON.stringify(p_layout).length > 40000) fail('BAD_HOME');
+    const ids = new Set();
+    for (const e of p_layout) {
+      if (!e || typeof e !== 'object' || typeof e.id !== 'string' || e.id.length > 24 || !HOME_ITEMS[e.k]
+        || typeof e.x !== 'number' || typeof e.z !== 'number' || Math.abs(e.x) > 12 || Math.abs(e.z) > 12
+        || (e.r != null && ![0, 1, 2, 3].includes(e.r)) || ids.has(e.id)) fail('BAD_HOME');
+      ids.add(e.id);
+    }
+    this.db.homes = this.db.homes || {};
+    const old = this.db.homes[me] || [];
+    this.db.items = this.db.items || {};
+    const bag = this.db.items[me] || (this.db.items[me] = {});
+    const harvest = Array.isArray(p_harvest) ? p_harvest : [];
+    if (harvest.length > 30) fail('BAD_HOME');
+    const before = { ...bag };
+    for (const h of harvest) {
+      const o = old.find((x) => x.id === h);
+      if (!o || !isSeed(o.k) || ids.has(h)) { Object.assign(bag, before); fail('BAD_HOME'); }
+      if (bag[o.k] > 0) bag[o.k] -= 1;
+    }
+    const need = {};
+    for (const e of p_layout) need[e.k] = (need[e.k] || 0) + 1;
+    if (Object.entries(need).some(([k, n]) => n > (bag[k] || 0))) { Object.assign(bag, before); fail('NOT_ENOUGH'); }
+    this.db.homes[me] = JSON.parse(JSON.stringify(p_layout));
+    return { ok: true, items: this.homeItems(me) };
+  }
+
+  // ---------- 마을 건의함 ----------
+  kids_feedback_send({ p_token, p_kind, p_body }) {
+    const me = this.session(p_token, 'child');
+    const body = String(p_body || '').trim();
+    if (!['idea', 'bug', 'like', 'etc'].includes(p_kind)) fail('BAD_KIND');
+    if ([...body].length < 2) fail('EMPTY_FEEDBACK');
+    if ([...body].length > 300) fail('TOO_LONG');
+    this.db.feedback = this.db.feedback || [];
+    const mine = this.db.feedback.filter((f) => f.child === me);
+    if (mine.some((f) => Date.now() - Date.parse(f.at) < 20000)) fail('TOO_FAST');
+    if (mine.filter((f) => Date.now() - Date.parse(f.at) < 86400000).length >= 5) fail('FEEDBACK_DAY');
+    this.db.feedback.push({ id: Date.now(), child: me, kind: p_kind, body, status: 'new', reply: null, reply_seen: true, at: nowIso() });
+    return { ok: true };
+  }
+  kids_feedback_mine({ p_token, p_peek }) {
+    const me = this.session(p_token, 'child');
+    const list = (this.db.feedback || []).filter((f) => f.child === me).slice().reverse().slice(0, 20);
+    const out = list.map((f) => ({ id: f.id, kind: f.kind, body: f.body, status: f.status, reply: f.reply, new_reply: !!f.reply && !f.reply_seen, at: f.at }));
+    if (!p_peek) list.forEach((f) => { if (f.reply) f.reply_seen = true; });
+    return out;
+  }
+  kids_t_feedback({ p_token }) {
+    this.session(p_token, 'teacher');
+    return (this.db.feedback || []).slice().reverse().slice(0, 200).map((f) => {
+      const c = this.db.children.find((x) => x.id === f.child) || {};
+      return { id: f.id, kind: f.kind, body: f.body, status: f.status, reply: f.reply, at: f.at, child: f.child, name: c.name, village_name: c.village_name };
+    });
+  }
+  kids_t_feedback_set({ p_token, p_id, p_status, p_reply }) {
+    this.session(p_token, 'teacher');
+    if (!['new', 'seen', 'done'].includes(p_status)) fail('BAD_KIND');
+    const f = (this.db.feedback || []).find((x) => x.id === p_id) || fail('NOT_FOUND');
+    const reply = p_reply == null ? undefined : String(p_reply).trim() || null;
+    if (reply && [...reply].length > 300) fail('TOO_LONG');
+    f.status = p_status;
+    if (reply !== undefined) {
+      if (reply && reply !== f.reply) f.reply_seen = false;
+      f.reply = reply;
+    }
+    return { ok: true };
+  }
+
   kids_t_dish_hide({ p_token, p_id, p_hidden }) {
     this.session(p_token, 'teacher');
     const d = (this.db.dishes || []).find((x) => x.id === p_id) || fail('NOT_FOUND');

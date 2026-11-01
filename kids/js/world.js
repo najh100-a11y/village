@@ -13,6 +13,9 @@ const MAP_ZOOM = 4;
 const mapFrom = (mode) => (mode === 'game' ? 2.0 : 1.6);
 import { Bugs, makeBug } from './bugs.js';
 import { Fireworks } from './fireworks.js';
+import { HomeSpace, HOME_O } from './home.js';
+// 내 집(따로 된 장면) 근처 좌표인지: 마을 친구와 동물은 늘 마을 좌표라서 좌표로 가른다
+const nearHome = (p) => Math.abs(p.x - HOME_O.x) < 200 && Math.abs(p.z - HOME_O.z) < 200;
 
 const PR = 0.42; // 사람 충돌 반지름
 const NO_OBS = [];
@@ -260,6 +263,8 @@ export class Village {
     this.treeSpots = [];
     this.flowerSpots = [];
     this.grassSpots = [];
+    this.atHome = false;
+    this.homeSpace = null;
   }
 
   async init() {
@@ -1546,6 +1551,26 @@ export class Village {
     this.guide = guide;
     this.addObstacleCircle(2.2, -3.6, 0.45);
     this.guideTag = this.makeLabel('숲지기 솔', 'kv-tag');
+    // 마을 건의함 (숲지기 솔 옆): 앱에 바라는 것, 고칠 곳을 적어 넣는다
+    const sb = new THREE.Group();
+    sb.add(box(0.12, 1.15, 0.12, toon('#8B5E3C'), 0, 0.57, 0));
+    sb.add(box(0.66, 0.52, 0.44, toon('#5DB760'), 0, 1.36, 0));
+    const lid = prism(0.76, 0.26, 0.52, toon('#3F8F4A'));
+    lid.position.y = 1.62;
+    sb.add(lid);
+    sb.add(box(0.36, 0.05, 0.03, toon('#2E2A2A'), 0, 1.5, 0.225));
+    sb.add(box(0.2, 0.2, 0.03, toon('#FFE08A'), 0, 1.28, 0.225));
+    const sg = signMesh('마을 건의함', 1.3, { bg: '#FFFDF7', fg: '#3F7A4A', border: '#5DB760', sub: '생각을 들려줘요' });
+    sg.position.set(0, 2.25, 0);
+    sb.add(sg);
+    sb.position.set(3.6, 0, -4.9);
+    sb.rotation.y = -0.5;
+    sb.userData.pick = { type: 'building', id: 'suggest' };
+    mergeStatic(sb);
+    this.scene.add(sb);
+    this.pickRoots.push(sb);
+    this.addObstacleCircle(3.6, -4.9, 0.32);
+    this.doors.push({ id: 'suggest', name: '마을 건의함', pos: new THREE.Vector3(3.6 + Math.sin(-0.5) * 0.95, 0, -4.9 + Math.cos(-0.5) * 0.95), group: sb });
 
   }
 
@@ -1695,7 +1720,7 @@ export class Village {
     const av = id === 'me' ? this.player : holder.av;
     if (holder.bubble) holder.bubble.el.remove();
     const el = document.createElement('div');
-    el.className = 'kv-bubble' + ([...text].length <= 2 ? ' emoji' : '');
+    el.className = 'kv-bubble' + ([...text].length <= 2 ? ' emoji' : '') + (id === 'me' ? ' home-ok' : '');
     el.textContent = text;
     el.style.display = 'none';
     this.labels.appendChild(el);
@@ -1704,21 +1729,25 @@ export class Village {
   }
   // 내 머리 위 이름표
   setMyName(name) {
-    if (!this.myTag) this.myTag = this.makeLabel(name || '', 'kv-tag kv-me');
+    if (!this.myTag) this.myTag = this.makeLabel(name || '', 'kv-tag kv-me home-ok');
     this.myTag.textContent = name || '';
   }
-  playerPos() { return this.player ? { x: this.player.root.position.x, z: this.player.root.position.z } : null; }
+  // 내 집 안에 있을 때 친구들에게는 마을 '내 집' 문 앞에 있는 것으로 보인다
+  playerPos() {
+    if (this.atHome && this.homeDoor) return { x: this.homeDoor.x, z: this.homeDoor.z };
+    return this.player ? { x: this.player.root.position.x, z: this.player.root.position.z } : null;
+  }
 
   // 내 움직임을 친구들에게 알리기
   reportMove(tx, tz) {
-    if (!this.on.onLocalMove || !this.player) return;
+    if (!this.on.onLocalMove || !this.player || this.atHome) return;
     const p = this.player.root.position;
     this.on.onLocalMove({ x: +p.x.toFixed(2), z: +p.z.toFixed(2), tx: +tx.toFixed(2), tz: +tz.toFixed(2) });
     this.net = { moving: true, sent: this.time, tx, tz };
   }
   reportStop() {
     if (!this.on.onLocalStop || !this.player) return;
-    const p = this.player.root.position;
+    const p = this.atHome && this.homeDoor ? this.homeDoor : this.player.root.position;
     this.on.onLocalStop({ x: +p.x.toFixed(2), z: +p.z.toFixed(2) });
     this.net = { moving: false, sent: this.time };
   }
@@ -1895,7 +1924,7 @@ export class Village {
   // ---------- 시점 ----------
   viewNow() { return this.mode === 'play' ? this.view.play : this.mode === 'game' ? this.view.game : null; }
   // 지도 보기: 줌이 MAP_FROM을 넘으면 점점 섬 전체를 내려다보고, MAP_ZOOM에서 섬 셋이 다 들어온다
-  canMap() { return this.mode === 'play' || (this.mode === 'game' && !!(this.game && this.game.cam && this.game.cam.map)); }
+  canMap() { return this.atHome ? false : this.mode === 'play' || (this.mode === 'game' && !!(this.game && this.game.cam && this.game.cam.map)); }
   setZoom(z) {
     const v = this.viewNow();
     if (!v) return;
@@ -2010,7 +2039,8 @@ export class Village {
     }
     if (this.mode !== 'play' || this.paused || !this.player) return;
     const ray = this.rayAt(cx, cy);
-    const hits = ray.intersectObjects(this.pickRoots, true);
+    if (this.atHome && this.tapHome(ray)) return;
+    const hits = this.atHome ? [] : ray.intersectObjects(this.pickRoots, true);
     for (const h of hits) {
       let o = h.object;
       while (o && !o.userData.pick) o = o.parent;
@@ -2035,11 +2065,100 @@ export class Village {
     }
   }
 
+  // 내 집에서 누른 것: 대문·옷장은 걸어가서 들어가고, 식물과 물건은 옆으로 걸어간다
+  tapHome(ray) {
+    const H = this.homeSpace;
+    const roots = [...H.pickRoots];
+    const f = this.followers && this.followers.get('me');
+    if (f) roots.push(f.root);
+    for (const h of ray.intersectObjects(roots, true)) {
+      let o = h.object;
+      while (o && !o.userData.pick) o = o.parent;
+      if (!o) continue;
+      const p = o.userData.pick;
+      if (p.type === 'building') { this.walkTo(p.id); return true; }
+      if (p.type === 'mypet') { this.petFollower(p.owner); return true; }
+      if (p.type === 'plant' || p.type === 'homeitem') {
+        const st = p.type === 'plant' ? H.plantStand(p.id) : H.standBy(p.id);
+        if (!st) return true;
+        const cb = p.type === 'plant' ? this.on.onPlant : this.on.onHomeItem;
+        this.target = { pos: st.pos, action: () => { this.faceTo(st.face); if (cb) cb(p.id); } };
+        this.showTapMark(st.pos);
+        return true;
+      }
+    }
+    return false;
+  }
+  faceTo(q) {
+    if (!this.player) return;
+    const p = this.player.root.position;
+    this.player.root.rotation.y = Math.atan2(q.x - p.x, q.z - p.z);
+  }
+
+  // ---------- 내 집 ----------
+  // 내 집은 따로 된 장면이다. 들어가면 내 주민, 애완동물, 해와 하늘빛을 그 장면으로 옮긴다.
+  activeScene() { return this.atHome && this.homeSpace ? this.homeSpace.scene : this.scene; }
+  sceneFor(x, z) { return this.homeSpace && nearHome({ x, z }) ? this.homeSpace.scene : this.scene; }
+  enterHome(layout, ownerName) {
+    if (!this.homeSpace) this.homeSpace = new HomeSpace(this);
+    const H = this.homeSpace;
+    if (this.mode === 'game') this.exitGame();
+    if (this.sitting) this.standUp(true);
+    if (this.eating) this.cancelEat();
+    if (this.netting) this.endNet();
+    H.setOwner(ownerName);
+    H.setLayout(layout || []);
+    const door = this.doors.find((d) => d.id === 'home');
+    this.homeDoor = door ? door.pos.clone() : new THREE.Vector3(0, 0, -17.8);
+    this.reportStop();
+    this.atHome = true;
+    this.moveInto(H.scene);
+    const sp = H.spawn();
+    if (this.player) { this.player.root.position.copy(sp); this.player.root.rotation.y = Math.PI; }
+    this.afterSwitch();
+  }
+  exitHome() {
+    if (!this.atHome) return;
+    const H = this.homeSpace;
+    if (this.mode === 'game') this.exitGame();
+    H.clearGhost();
+    H.clearSel();
+    this.atHome = false;
+    this.moveInto(this.scene);
+    const d = this.homeDoor || new THREE.Vector3(0, 0, -17.8);
+    if (this.player) { this.player.root.position.set(d.x, 0, d.z + 0.4); this.player.root.rotation.y = 0; }
+    this.afterSwitch();
+    this.reportStop();
+  }
+  moveInto(scene) {
+    scene.add(this.hemi, this.sun, this.sun.target);
+    if (this.player) scene.add(this.player.root);
+    const f = this.followers && this.followers.get('me');
+    if (f) { scene.add(f.root); f.placed = false; }
+    if (this.tapMark) { scene.add(this.tapMark); this.tapMark.visible = false; }
+  }
+  afterSwitch() {
+    this.target = null;
+    this.via = [];
+    this.viaFor = null;
+    this.keys.clear();
+    this.view.play = { yaw: 0, elev: 0, zoom: 1 };
+    if (this.player) {
+      const p = this.player.root.position;
+      this.camLook.set(p.x, 0.6, p.z - 3.2);
+      this.camPos.set(p.x, 16, p.z + 15);
+    }
+    this.nearDoor = null;
+    if (this.on.onNearDoor) this.on.onNearDoor(null);
+    this.labels.classList.toggle('at-home', this.atHome);
+    this.viewChanged();
+  }
+
   showTapMark(pt) {
     if (!this.tapMark) {
       this.tapMark = new THREE.Mesh(new THREE.RingGeometry(0.28, 0.42, 24), new THREE.MeshBasicMaterial({ color: '#FFFDF7', transparent: true, opacity: 0.9, depthWrite: false }));
       this.tapMark.rotation.x = -Math.PI / 2;
-      this.scene.add(this.tapMark);
+      this.activeScene().add(this.tapMark);
     }
     this.tapMark.position.set(pt.x, 0.05, pt.z);
     this.tapMark.userData.life = 0.6;
@@ -2072,7 +2191,9 @@ export class Village {
     if (cur && cur.item === item) return;
     if (cur) { cur.dispose(); this.followers.delete(owner); }
     if (!item || !PET_ITEMS[item]) return;
-    this.followers.set(owner, new Follower(this, item, owner));
+    const f = new Follower(this, item, owner);
+    this.followers.set(owner, f);
+    if (owner === 'me' && this.atHome && this.homeSpace) this.homeSpace.scene.add(f.root);
   }
   updateFollowers(dt) {
     if (!this.followers) return;
@@ -2231,6 +2352,7 @@ export class Village {
   }
   // 다른 섬으로 갈 때는 다리 끝을 거쳐서, 섬 안에서는 길 그물로 돌아서
   planRoute(from, to) {
+    if (this.homeSpace && nearHome(from)) return this.homeSpace.planRoute(from, to);
     const goal = { x: to.x, z: to.z };
     this.resolve(goal); // 집이나 놀이기구 위를 눌렀으면 그 바로 앞까지
     if (route(from.x, from.z, goal.x, goal.z).length === 0 && this.clearLine(from, goal)) return []; // 곧게 갈 수 있으면 바로
@@ -2244,6 +2366,7 @@ export class Village {
   }
 
   resolve(p) {
+    if (this.homeSpace && nearHome(p)) return this.homeSpace.resolve(p);
     for (const o of this.obstacles) {
       if (o.t === 'c') {
         const dx = p.x - o.x, dz = p.z - o.z;
@@ -2363,7 +2486,7 @@ export class Village {
     const sm = this.renderer.shadowMap;
     if ((this.mapS || 0) > 0.9) { this.shadowTick = ((this.shadowTick || 0) + 1) % 4; sm.autoUpdate = false; sm.needsUpdate = this.shadowTick === 0; }
     else sm.autoUpdate = true;
-    this.renderer.render(this.scene, this.camera);
+    this.renderer.render(this.activeScene(), this.camera);
   }
 
   update(dt) {
@@ -2403,6 +2526,12 @@ export class Village {
     }
 
     this.updateRemotes(dt);
+    if (this.atHome && this.homeSpace) {
+      const H = this.homeSpace;
+      H.scene.background = this.scene.background;
+      H.scene.fog.color.copy(this.scene.fog.color);
+      H.update(dt);
+    }
 
     // 숲지기
     const g = this.guide;

@@ -14,6 +14,9 @@ import { ACT_ICON, ACT_TEXT, fishById, recipeById, RECIPES } from './play-data.j
 import { BUGS, bugById, bugIcon, catchChance, RARITY_TEXT } from './bugs.js';
 import { FIREWORKS, FW_IDS, fireworkIcon } from './fireworks.js';
 import { PET_ITEMS, PET_IDS } from './critters.js';
+import { HOME_ITEMS, HOME_IDS, ZONE_NAMES } from './homeitems.js';
+import { itemThumb } from './home.js';
+import { createHomeUI } from './homeui.js';
 import { initSound, startMusic, stopMusic, setScene, sfx, cycleSound, soundMode } from './sound.js';
 import { h, modal, toast, confetti, josa } from './ui.js';
 import { drawFaceIcon, normalizeAvatar, defaultAvatar } from './face.js';
@@ -27,7 +30,7 @@ let memory = null;
 let qt = null;
 let copy = null;
 let net = null;
-let hub = null, art = null, play3d = null;
+let hub = null, art = null, play3d = null, homeUI = null;
 const online = new Set();
 let hintShown = false;
 
@@ -56,7 +59,7 @@ async function boot() {
       const p = $('#prompt');
       if (!d) { p.hidden = true; return; }
       $('#promptName').textContent = d.name;
-      $('#promptAct').textContent = { board: '보기', fish: '낚시하기', omok: '두기', cook: '요리하기', art: '그리기', ferris: '타기', viking: '타기', carousel: '타기', bumper: '타기' }[d.id] || '들어가기';
+      $('#promptAct').textContent = { board: '보기', fish: '낚시하기', omok: '두기', cook: '요리하기', art: '그리기', ferris: '타기', viking: '타기', carousel: '타기', bumper: '타기', 'home-exit': '나가기', 'home-closet': '옷 갈아입기', suggest: '건의하기' }[d.id] || '들어가기';
       p.dataset.id = d.id;
       p.hidden = false;
     },
@@ -101,6 +104,8 @@ async function boot() {
     onBoom: (kind, c) => sfx.firework(kind, fwVol(c)),
     onFwLaunch: (item, x, z) => sfx.fwLaunch(fwVol({ x, z })),
     onSplash: () => sfx.splash(),
+    onPlant: (id) => homeUI && homeUI.onPlant(id),
+    onHomeItem: (id) => homeUI && homeUI.onHomeItem(id),
     onCritterSound: (kind, soft) => { if (kind === 'bird') sfx.tweet(); else if (kind === 'cat') sfx.meow(soft); else sfx.bark(soft); },
   });
   try {
@@ -150,6 +155,10 @@ async function boot() {
     watchable: () => watchableGames(),
   });
   village.decorateRemote = (r, act, hint) => play3d.decorateRemote(r, act, hint);
+  homeUI = createHomeUI({
+    village, rpc, getToken: token, getMe: () => state.me, features: () => state.features || {}, sfx, setActivity, message,
+    openShop: (t) => openShop(t), openMaker: (first) => openMaker(first), openSheet, modal, onSessionLost: sessionLost, setFruits,
+  });
   bindUi();
   if (state.token) {
     try {
@@ -360,6 +369,7 @@ async function join() {
 
 function showLogin() {
   if (play3d) play3d.stop();
+  if (homeUI) homeUI.reset();
   $('#btnView').hidden = true;
   stopNet();
   stopMusic();
@@ -492,7 +502,7 @@ async function enterVillage(greet) {
   village.setMode('play');
   village.viewChanged();
   rpc('kids_chat_open').then(showChatInput).catch(() => showChatInput(false));
-  rpc('kids_features').then((f) => { state.features = f || {}; showNews(); }).catch(() => { state.features = {}; });
+  rpc('kids_features').then((f) => { state.features = f || {}; showNews(); checkFeedbackReply(); }).catch(() => { state.features = {}; });
   village.setPaused(false);
   updateHud();
   $('#hud').hidden = false;
@@ -748,6 +758,19 @@ async function openBag(focusBug) {
     else pets.append(h('div', { class: 'shop-list' }, owned.map((id) => petRow(id, { owned: true }))));
     secs.push(pets);
   }
+  // 집 꾸미기 물건
+  if (state.features.home) {
+    const items = (shop && shop.items) || {};
+    const owned = HOME_IDS.filter((id) => items[id] > 0);
+    const sec = h('section', { class: 'bag-sec' }, h('h3', {}, '🏠 집 꾸미기 물건'));
+    if (!owned.length) sec.append(h('p', { class: 'note' }, '아직 없어요. 열매 상점에서 가구와 씨앗을 사면 내 집을 꾸밀 수 있어요.'));
+    else {
+      sec.append(h('div', { class: 'bag-chips' }, owned.map((id) => h('span', { class: 'bag-chip' }, homeIcon(id), `${HOME_ITEMS[id].name} ${items[id]}개`))),
+        h('p', { class: 'note' }, "내 집에 들어가서 '집 꾸미기'를 누르면 놓을 수 있어요."));
+      if (!village.atHome) sec.append(h('div', { class: 'row' }, h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => { modal.close(); village.walkTo('home'); } }, '내 집으로 가기')));
+    }
+    secs.push(sec);
+  }
   // 곤충 도감
   const bugs = h('section', { class: 'bag-sec' });
   if (!state.features.bugs) bugs.append(h('h3', {}, '🦋 곤충 도감'), h('p', { class: 'note' }, '곤충 채집은 곧 열려요.'));
@@ -859,33 +882,91 @@ function showNews() {
   const news = [];
   if (state.features.photo10) news.push(['photo10', '새 소식! 필사 이야기를 공책에 손으로 써서 사진을 올리면 열매 10개를 받아요.']);
   if (state.features.pets) news.push(['pets', '새 소식! 열매 상점에 애완동물이 왔어요. 열매 30개로 데려오면 졸졸 따라다녀요.']);
+  if (state.features.home) news.push(['home', "새 소식! 이제 내 집을 꾸밀 수 있어요. 열매 상점에서 가구와 씨앗을 사서 '내 집'에 들어가 방과 마당, 밭을 꾸며 봐요."]);
+  if (state.features.feedback) news.push(['feedback', '새 소식! 숲지기 솔 옆에 마을 건의함이 생겼어요. 마을에 바라는 것을 적어 주세요.']);
   const fresh = news.filter(([k]) => { try { return !localStorage.getItem(`kv.news.${k}`); } catch (e) { return false; } });
-  fresh.forEach(([k, text], i) => setTimeout(() => {
-    toast(text, 5200);
-    try { localStorage.setItem(`kv.news.${k}`, '1'); } catch (e) { /* 다음에 또 */ }
-  }, 2500 + i * 5800));
+  fresh.forEach(([k, text]) => notice(text, 5200, () => { try { localStorage.setItem(`kv.news.${k}`, '1'); } catch (e) { /* 다음에 또 */ } }));
+}
+// 알림을 하나씩 차례로 띄운다 (마을에 들어오고 조금 뒤부터)
+const notices = [];
+let noticeOn = false;
+function notice(text, ms = 5200, done = null) {
+  notices.push([text, ms, done]);
+  if (!noticeOn) { noticeOn = true; setTimeout(nextNotice, 2500); }
+}
+function nextNotice() {
+  const n = notices.shift();
+  if (!n || !state.me) { noticeOn = false; notices.length = 0; return; }
+  toast(n[0], n[1]);
+  if (n[2]) n[2]();
+  setTimeout(nextNotice, n[1] + 600);
 }
 
 // ---------- 열매 상점 ----------
-async function openShop() {
+let shopTab = 'fw';
+async function openShop(t) {
+  if (t && ['fw', 'pet', 'room', 'yard', 'garden'].includes(t)) shopTab = t;
   const body = h('div', { class: 'talk shop' }, h('p', { class: 'fb-empty' }, '상점을 여는 중…'));
   openSheet('열매 상점', body, 'shop-sheet');
   const shop = await loadShop();
   if (!modal.isOpen) return;
   drawShop(body, shop);
 }
+const SHOP_NOTE = {
+  fw: '산 불꽃은 가방에 들어가고, 마을 어디서나 터트릴 수 있어요. 친구들 하늘에도 같이 터져요.',
+  pet: '애완동물은 한 번 데려오면 계속 우리 집 친구예요. 한 번에 한 마리가 나를 따라다녀요.',
+  room: "방에 놓는 가구예요. 내 집에 들어가서 '집 꾸미기'를 누르면 놓을 수 있어요. 산 가구는 없어지지 않아요.",
+  yard: "마당에 놓는 물건이에요. 내 집에 들어가서 '집 꾸미기'를 누르면 놓을 수 있어요. 산 물건은 없어지지 않아요.",
+  garden: '씨앗과 모종은 밭 한 칸에 하나씩 심어요. 다 자란 채소를 거두면 그 씨앗은 없어지고, 꽃은 다 피면 계속 피어 있어요.',
+};
 function drawShop(body, shop) {
   if (!shop) { body.replaceChildren(h('p', { class: 'note' }, '상점을 열지 못했어요. 잠시 뒤에 다시 와 주세요.')); return; }
   const items = shop.items || {};
+  const tabsDef = [['fw', '🎆 불꽃'], state.features.pets && ['pet', '🐾 동물'],
+    state.features.home && ['room', '🛏️ 방'], state.features.home && ['yard', '🌳 마당'], state.features.home && ['garden', '🥕 밭']].filter(Boolean);
+  if (!tabsDef.some(([k]) => k === shopTab)) shopTab = 'fw';
+  const tabs = tabsDef.length > 1 ? h('div', { class: 'shop-tabs', role: 'tablist' }, tabsDef.map(([k, label]) => h('button', {
+    class: 'shop-tab', role: 'tab', type: 'button', 'aria-selected': String(shopTab === k), onclick: () => { shopTab = k; drawShop(body, shop); },
+  }, label))) : null;
+  let rows;
+  if (shopTab === 'fw') rows = FW_IDS.map((id) => fwRow(id, items[id] || 0, { buy: true, launch: true, fruits: shop.fruits }));
+  else if (shopTab === 'pet') rows = PET_IDS.map((id) => petRow(id, { owned: items[id] > 0, buy: true, fruits: shop.fruits }));
+  else rows = HOME_IDS.filter((id) => HOME_ITEMS[id].zone === shopTab).map((id) => homeRow(id, items[id] || 0, shop.fruits));
   body.replaceChildren(
     h('p', { class: 'shop-fruit' }, `내 열매 🍎 ${shop.fruits}개`),
-    h('h3', { class: 'shop-h' }, '🎆 불꽃놀이'),
-    h('div', { class: 'shop-list' }, FW_IDS.map((id) => fwRow(id, items[id] || 0, { buy: true, launch: true, fruits: shop.fruits }))),
-    state.features.pets ? h('h3', { class: 'shop-h' }, '🐾 애완동물') : null,
-    state.features.pets ? h('div', { class: 'shop-list' }, PET_IDS.map((id) => petRow(id, { owned: items[id] > 0, buy: true, fruits: shop.fruits }))) : null,
-    h('p', { class: 'note' }, state.features.pets
-      ? '열매는 암송 연습, 묵상, 필사를 하면 모여요. 산 불꽃은 가방에 들어가고, 마을 어디서나 터트릴 수 있어요. 애완동물은 한 번 데려오면 계속 우리 집 친구예요. 한 번에 한 마리가 나를 따라다녀요.'
-      : '열매는 암송 연습, 묵상, 필사를 하면 모여요. 산 불꽃은 가방에 들어가고, 마을 어디서나 터트릴 수 있어요. 친구들 하늘에도 같이 터져요.'));
+    tabs,
+    h('div', { class: 'shop-list' }, rows),
+    h('p', { class: 'note' }, `열매는 암송 연습, 묵상, 필사를 하면 모여요. ${SHOP_NOTE[shopTab]}`));
+}
+function homeIcon(id) {
+  const ic = h('div', { class: 'fw-ic home', 'aria-hidden': 'true' });
+  const src = itemThumb(id);
+  if (src) ic.append(h('img', { src, alt: '' }));
+  return ic;
+}
+function homeRow(id, count, fruits) {
+  const it = HOME_ITEMS[id];
+  return h('div', { class: 'shop-item' }, homeIcon(id),
+    h('div', {}, h('b', {}, it.name), h('p', {}, it.desc), h('p', {}, count ? `가진 것 ${count}개` : '')),
+    h('div', { class: 'acts' }, h('button', { class: 'btn btn-go btn-small', type: 'button', disabled: fruits < it.price, onclick: () => buyHome(id) }, `열매 ${it.price}개로 사기`)));
+}
+async function buyHome(id) {
+  if (buying) return;
+  buying = true;
+  try {
+    const r = await rpc('kids_shop_buy', { p_token: token(), p_item: id, p_n: 1 });
+    shopData = r;
+    setFruits(r.fruits);
+    sfx.success();
+    const it = HOME_ITEMS[id];
+    toast(village.atHome ? `${josa(it.name, '을', '를')} 샀어요! '집 꾸미기'에서 놓아 봐요.` : `${josa(it.name, '을', '를')} 샀어요! 내 집에 들어가서 '집 꾸미기'를 누르면 놓을 수 있어요.`, 3200);
+    if (homeUI) homeUI.onShopChanged(r.items);
+    const body = document.querySelector('#modalBody .talk.shop');
+    if (body) drawShop(body, r);
+  } catch (e) {
+    if (e.code === 'SESSION') { sessionLost(); return; }
+    toast(message(e), 3000);
+  } finally { buying = false; }
 }
 let buying = false;
 async function buyFirework(id) {
@@ -917,7 +998,10 @@ async function launchFirework(id) {
     village.fireworks.launch(id, x, z);
     village.lookUp(4.8);
     village.celebrate();
-    if (net) net.send('fw', { k: id, x, z });
+    if (net) {
+      const at = village.atHome ? village.playerPos() : { x, z }; // 내 집에서 쏘면 친구들에게는 마을 내 집 위에서 터진다
+      net.send('fw', { k: id, x: +(at.x).toFixed(2), z: +(at.z - (village.atHome ? 2 : 0)).toFixed(2) });
+    }
     toast(`${FIREWORKS[id].name}! 하늘을 봐요${r.left ? ` (가방에 ${r.left}개 남았어요)` : ''}`, 2600);
   } catch (e) {
     if (e.code === 'SESSION') { sessionLost(); return; }
@@ -990,7 +1074,7 @@ function openFriends() {
       h('div', { class: 'fl-acts' },
         dmOk ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => openDm(p.id) }, unread ? `💌 이야기 (${unread})` : '💌 둘이 이야기') : null,
         games.has(p.id) ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => { modal.close(); play3d.omokWatch(p.id); } }, '👀 구경하기') : null,
-        h('button', { class: 'btn btn-plain btn-small', type: 'button', onclick: () => { modal.close(); if (play3d.active) play3d.stop(); village.walkToFriend(p.id); } }, '찾아가기')));
+        h('button', { class: 'btn btn-plain btn-small', type: 'button', onclick: async () => { modal.close(); if (play3d.active) play3d.stop(); if (village.atHome) await homeUI.exit(); village.walkToFriend(p.id); } }, '찾아가기')));
   });
   openSheet(`지금 마을에 있는 친구 ${list.length}명`, h('div', { class: 'talk friends' },
     rows.length ? h('div', { class: 'fl-list' }, rows) : h('p', { class: 'fb-empty' }, '지금은 혼자 있어요. 친구가 들어오면 여기에 보여요.'),
@@ -1117,8 +1201,9 @@ function openHouse(fn, act = '') {
 }
 
 // 친구의 놀이 초대를 받았을 때
-function openGameWith(kind, session) {
+async function openGameWith(kind, session) {
   if (modal.isOpen) modal.close();
+  if (village.atHome) await homeUI.exit();
   hideHint();
   $('#sayPanel').hidden = true;
   if (kind === 'omok') play3d.omok({ session });
@@ -1126,11 +1211,13 @@ function openGameWith(kind, session) {
 }
 
 function onEnter(id) {
+  if (homeUI && homeUI.onDoor(id)) return;
+  if (id === 'home') return homeUI.enter();
+  if (id === 'suggest') return openSuggest();
   if (id === 'memory') return openHouse(() => memory.open(), 'memory');
   if (id === 'qt') return openHouse(() => qt.open(), 'qt');
   if (id === 'library') return openHouse(() => copy.open(), 'copy');
   if (GAMES[id]) return openGame(id);
-  if (id === 'home') return openMaker(false);
   if (id === 'shop' && state.features.shop) return openShop();
   const s = SOON[id];
   if (s) {
@@ -1157,11 +1244,77 @@ function onNpc() {
   else if (t.copy && !t.copy.done) { if (state.features.photo10) lines.push('이번 주 이야기를 공책에 손으로 써서 사진을 올리면 열매를 10개나 받을 수 있어!'); lines.push(t.theme ? `이번 주 필사는 '${t.theme}' 이야기야(${t.copy.ref}). 필사 도서관에서 읽고 따라 써 볼래?` : `이번 주 필사는 ${t.copy.ref}이야. 필사 도서관에서 따라 써 볼래?`); go = ['필사 도서관으로', 'library']; }
   else if (t.qt || cur) { lines.push('오늘 할 일을 벌써 다 했구나. 정말 멋지다! 친구들 글에 응원도 보내 봐.'); lines.push('남쪽 다리를 건너면 놀이동산 섬이야. 친구랑 회전목마나 바이킹을 타도 좋아. 동쪽 다리 건너 수영장 섬에서 헤엄쳐도 좋고!'); }
   else lines.push('마을을 천천히 둘러보렴. 남쪽 다리를 건너면 놀이동산 섬, 동쪽 다리를 건너면 수영장 섬이야. 열매가 달린 나무를 누르면 열매를 따 먹을 수 있어.');
+  if (state.features.feedback) lines.push('마을에 바라는 게 있거나 이상한 곳을 찾았니? 내 옆 건의함에 적어 주면 선생님께 꼭 전할게.');
   openSheet('숲지기 솔', h('div', { class: 'talk' },
     lines.map((l) => h('p', { class: 'talk-line' }, l)),
     h('div', { class: 'row' },
       h('button', { class: 'btn btn-soft', type: 'button', onclick: () => modal.close() }, '고마워요'),
+      state.features.feedback ? h('button', { class: 'btn btn-soft', type: 'button', onclick: () => { modal.close(); openSuggest(); } }, '건의함에 쓰기') : null,
       go ? h('button', { class: 'btn btn-go', type: 'button', onclick: () => { modal.close(); village.walkTo(go[1]); } }, go[0]) : null)), 'talk-sheet');
+}
+
+// ---------- 마을 건의함: 앱에 바라는 것, 고칠 곳 (선생님만 읽는다) ----------
+const FB_KIND = { idea: ['💡', '이런 게 있으면 좋겠어요'], bug: ['🐞', '이상한 곳이 있어요'], like: ['💛', '이게 좋아요'], etc: ['✉️', '그 밖의 이야기'] };
+const FB_STATUS = { new: '보냈어요', seen: '선생님이 읽었어요', done: '고쳤어요!' };
+async function openSuggest() {
+  if (!state.features.feedback) { toast('마을 건의함은 곧 열려요!', 2400); return; }
+  let kind = 'idea', sending = false;
+  const text = h('textarea', { class: 'fb-text', maxlength: 300, rows: 4, placeholder: '예: 낚시터에 물고기가 더 많았으면 좋겠어요. / 범퍼카에서 차가 벽에 끼었어요.', 'aria-label': '건의할 내용' });
+  const count = h('small', { class: 'fb-count' }, '0/300');
+  text.addEventListener('input', () => { count.textContent = `${[...text.value].length}/300`; });
+  const kinds = h('div', { class: 'fb-kinds', role: 'radiogroup' });
+  const drawKinds = () => kinds.replaceChildren(...Object.entries(FB_KIND).map(([k, [ic, label]]) => h('button', {
+    class: 'fb-kind', type: 'button', role: 'radio', 'aria-checked': String(kind === k), onclick: () => { kind = k; drawKinds(); },
+  }, h('span', { 'aria-hidden': 'true' }, ic), label)));
+  drawKinds();
+  const mine = h('div', { class: 'fb-mine' }, h('p', { class: 'note' }, '내가 쓴 건의를 불러오는 중…'));
+  const send = h('button', { class: 'btn btn-go', type: 'button', onclick: async () => {
+    if (sending) return;
+    const body = text.value.trim();
+    if ([...body].length < 2) { toast('두 글자 넘게 써 주세요.', 2200); return; }
+    sending = true;
+    send.disabled = true;
+    try {
+      await rpc('kids_feedback_send', { p_token: token(), p_kind: kind, p_body: body });
+      sfx.success();
+      toast('건의함에 넣었어요! 들려줘서 고마워요.', 2800);
+      text.value = '';
+      count.textContent = '0/300';
+      loadMine();
+    } catch (e) {
+      if (e.code === 'SESSION') { sessionLost(); return; }
+      toast(message(e), 3000);
+    } finally { sending = false; send.disabled = false; }
+  } }, '건의함에 넣기');
+  const loadMine = async () => {
+    let list = [];
+    try { list = await rpc('kids_feedback_mine', { p_token: token() }); } catch (e) { mine.replaceChildren(h('p', { class: 'note' }, '내가 쓴 건의를 불러오지 못했어요.')); return; }
+    if (!list.length) { mine.replaceChildren(); return; }
+    mine.replaceChildren(h('h3', {}, '내가 쓴 건의'), ...list.map((f) => h('div', { class: 'fb-item' + (f.new_reply ? ' new' : '') },
+      h('div', { class: 'fb-head' }, h('span', {}, (FB_KIND[f.kind] || FB_KIND.etc)[0]), h('span', { class: 'fb-status ' + f.status }, FB_STATUS[f.status] || ''), h('small', {}, dayText(f.at))),
+      h('p', {}, f.body),
+      f.reply ? h('p', { class: 'fb-reply' }, h('b', {}, '선생님: '), f.reply) : null)));
+  };
+  openSheet('마을 건의함', h('div', { class: 'talk fb' },
+    h('p', {}, '진숲 마을을 더 좋게 만들 생각이 있나요? 바라는 것이나 고쳐야 할 곳을 적어 주세요.'),
+    h('p', { class: 'note' }, '건의함에 넣은 글은 선생님만 읽어요. 친구들에게는 보이지 않아요. 하루에 다섯 번까지 넣을 수 있어요.'),
+    kinds, text, h('div', { class: 'row end' }, count, send), mine), 'talk-sheet');
+  loadMine();
+}
+function dayText(iso) {
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}월 ${d.getDate()}일`;
+}
+// 선생님이 내 건의에 답을 달았으면 마을에 들어올 때 알려 준다
+async function checkFeedbackReply() {
+  if (!state.features.feedback) return;
+  try {
+    const list = await rpc('kids_feedback_mine', { p_token: token(), p_peek: true });
+    if (list.some((f) => f.new_reply)) {
+      notices.unshift(['숲지기 솔: 네 건의에 선생님이 답해 주셨어! 내 옆 마을 건의함에서 볼 수 있어.', 5600, null]);
+      if (!noticeOn) { noticeOn = true; setTimeout(nextNotice, 2500); }
+    }
+  } catch (e) { /* 다음에 */ }
 }
 
 function openBoard() {
@@ -1223,6 +1376,7 @@ function askLogout() {
 
 async function logout() {
   modal.close();
+  if (homeUI && village.atHome) { try { await homeUI.exit(); } catch (e) { /* 그대로 나간다 */ } }
   try { await rpc('kids_logout', { p_token: token() }); } catch (e) { /* 이미 끊겼어도 괜찮다 */ }
   state.token = null;
   state.me = null;

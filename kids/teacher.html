@@ -228,6 +228,7 @@ dialog::backdrop { background: rgba(60, 45, 30, .35); }
       <button class="tab" role="tab" data-tab="posts" aria-selected="false" type="button">아이들 글<span class="count" id="postCount"></span></button>
       <button class="tab" role="tab" data-tab="verses" aria-selected="false" type="button">암송 구절<span class="count" id="verseCount"></span></button>
       <button class="tab" role="tab" data-tab="village" aria-selected="false" type="button">마을 대화<span class="count" id="chatCount"></span></button>
+      <button class="tab" role="tab" data-tab="feedback" aria-selected="false" type="button">건의함<span class="count" id="fbCount"></span></button>
       <button class="tab" role="tab" data-tab="teachers" aria-selected="false" type="button">선생님 계정</button>
     </nav>
 
@@ -283,8 +284,14 @@ dialog::backdrop { background: rgba(60, 45, 30, .35); }
       <p class="note" style="margin-bottom:10px">아이들이 ‘마음대로 요리하기’로 만들어 마을 식탁에 올린 요리예요. 가장 최근 네 접시가 놀이 마당 남쪽 식탁에 놓여요. 요리 이름도 대화처럼 거친 말이 가려져요. 보이면 안 될 이름은 ‘숨기기’를 눌러 주세요.</p>
       <div class="chat-list" id="dishList"></div>
       <h3 style="margin:22px 0 8px;font-family:var(--display);font-weight:400">열매 상점에서 산 것</h3>
-      <p class="note" style="margin-bottom:10px">아이들이 모은 열매로 불꽃놀이를 산 기록이에요. 반짝 불꽃은 열매 1개, 꽃 불꽃은 3개, 하트 불꽃은 5개예요. 산 만큼 열매가 줄어들어요.</p>
+      <p class="note" style="margin-bottom:10px">아이들이 모은 열매로 산 기록이에요. 불꽃놀이(반짝 1개, 꽃 3개, 하트 5개), 애완동물(30개), 내 집 꾸미기 가구와 씨앗(1~9개)을 살 수 있어요. 산 만큼 열매가 줄어들어요.</p>
       <div class="chat-list" id="shopList"></div>
+    </section>
+
+    <section id="tab-feedback" hidden>
+      <div class="bar"><h2>마을 건의함</h2><button class="btn btn-sm" id="fbRefresh" type="button">새로 보기</button></div>
+      <p class="note" style="margin-bottom:12px">아이들이 마을 광장의 숲지기 솔 옆 ‘마을 건의함’에 넣은 글이에요. 친구들에게는 보이지 않고 선생님 화면에만 보여요. ‘읽었어요’, ‘고쳤어요’를 누르면 아이 화면의 ‘내가 쓴 건의’에 그대로 보이고, 답을 쓰면 그 아이가 다음에 마을에 들어올 때 숲지기 솔이 알려 줘요. 최근 200개까지 보여요.</p>
+      <div class="chat-list" id="fbList"></div>
     </section>
 
     <section id="tab-teachers" hidden>

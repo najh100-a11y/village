@@ -2,6 +2,7 @@
 import { rpc, message, DEMO, store } from './api.js';
 import { h, showImage } from './ui.js';
 import { drawFaceIcon, normalizeAvatar } from './face.js';
+import { HOME_ITEMS } from './homeitems.js';
 
 const $ = (s) => document.querySelector(s);
 let token = store.get('teacher.token');
@@ -133,6 +134,7 @@ function bind() {
     await refresh();
   });
   $('#chatRefresh').addEventListener('click', () => reloadVillage());
+  $('#fbRefresh').addEventListener('click', () => reloadFeedback());
   $('#addVerseBtn').addEventListener('click', () => {
     const list = $('#verseList');
     const max = Math.max(0, ...data.verses.map((v) => v.sort_order));
@@ -179,7 +181,8 @@ async function refresh() {
     rpc('kids_t_storage', { p_token: token }).catch(() => null),
     rpc('kids_t_signup', { p_token: token }).catch(() => null),
     rpc('kids_t_village', { p_token: token }).catch(() => null),
-  ]).then((r) => { villageConf = r[5]; return r; });
+    rpc('kids_t_feedback', { p_token: token }).catch(() => null),
+  ]).then((r) => { villageConf = r[5]; feedback = r[6]; return r; });
   signup = su;
   data = o;
   weeks = w || [];
@@ -195,7 +198,7 @@ function showMain() {
 function showTab(t) {
   tab = t;
   for (const b of document.querySelectorAll('.tab')) b.setAttribute('aria-selected', String(b.dataset.tab === t));
-  for (const id of ['kids', 'weeks', 'posts', 'verses', 'village', 'teachers']) $(`#tab-${id}`).hidden = id !== t;
+  for (const id of ['kids', 'weeks', 'posts', 'verses', 'village', 'feedback', 'teachers']) $(`#tab-${id}`).hidden = id !== t;
 }
 
 // ---------- 그리기 ----------
@@ -210,7 +213,44 @@ function render() {
   renderPosts();
   renderVerses();
   renderVillage();
+  renderFeedback();
   renderTeachers();
+}
+
+// ---------- 마을 건의함 ----------
+let feedback = null;
+const FB_KIND = { idea: '바라는 것', bug: '이상한 곳', like: '좋은 점', etc: '그 밖의 이야기' };
+async function reloadFeedback() {
+  try { feedback = await call('kids_t_feedback', {}); } catch (e) { return; }
+  renderFeedback();
+}
+function renderFeedback() {
+  const list = $('#fbList');
+  if (!list) return;
+  if (!feedback) { list.replaceChildren(h('div', { class: 'card empty' }, '건의함을 불러오지 못했어요. 서버에 건의함 기능이 아직 없을 수 있어요.')); $('#fbCount').textContent = ''; return; }
+  const fresh = feedback.filter((f) => f.status === 'new').length;
+  $('#fbCount').textContent = fresh ? `(새 글 ${fresh})` : feedback.length ? `(${feedback.length})` : '';
+  if (!feedback.length) { list.replaceChildren(h('div', { class: 'card empty' }, '아직 들어온 건의가 없어요.')); return; }
+  list.replaceChildren(...feedback.map((f) => {
+    const reply = h('input', { value: f.reply || '', maxlength: 300, placeholder: '아이에게 짧게 답하기 (선택)', 'aria-label': '답하기', style: 'width:100%' });
+    const set = async (status) => {
+      try { await call('kids_t_feedback_set', { p_id: f.id, p_status: status, p_reply: reply.value }); } catch (e) { return; }
+      toast(status === 'done' ? '고쳤어요로 표시했어요.' : status === 'seen' ? '읽었어요로 표시했어요.' : '새 글로 되돌렸어요.');
+      reloadFeedback();
+    };
+    return h('div', { class: 'chat-row', style: 'grid-template-columns:96px minmax(0,1fr)' },
+      h('time', { datetime: f.at }, timeOf(f.at)),
+      h('div', { style: 'display:grid;gap:6px' },
+        h('div', {}, h('span', { class: 'who' }, f.name || '-', h('small', {}, f.village_name || '')), ' ',
+          h('span', { class: 'pill' }, FB_KIND[f.kind] || f.kind), ' ',
+          h('span', { class: 'pill ' + (f.status === 'done' ? 'green' : f.status === 'seen' ? 'sun' : 'red') }, f.status === 'done' ? '고쳤어요' : f.status === 'seen' ? '읽었어요' : '새 글')),
+        h('div', { class: 'body', style: 'white-space:pre-wrap' }, f.body),
+        reply,
+        h('div', { style: 'display:flex;gap:6px;flex-wrap:wrap' },
+          h('button', { class: 'btn btn-sm', type: 'button', onclick: () => set('seen') }, '읽었어요'),
+          h('button', { class: 'btn btn-sm btn-go', type: 'button', onclick: () => set('done') }, '고쳤어요'),
+          f.status !== 'new' ? h('button', { class: 'btn btn-sm btn-ghost', type: 'button', onclick: () => set('new') }, '새 글로 되돌리기') : null)));
+  }));
 }
 
 // ---------- 마을 설정과 대화 ----------
@@ -259,7 +299,8 @@ function renderVillage() {
       renderVillage();
     } }, d.hidden ? '다시 보이기' : '숨기기'))) : [h('div', { class: 'card empty' }, '아직 올린 요리가 없어요.')]));
   const sl = $('#shopList');
-  const ITEM = { fw_spark: '반짝 불꽃', fw_flower: '꽃 불꽃', fw_heart: '하트 불꽃', pet_dog: '애완동물 강아지', pet_cat: '애완동물 고양이', pet_rabbit: '애완동물 토끼', pet_chick: '애완동물 병아리' };
+  const ITEM = { fw_spark: '반짝 불꽃', fw_flower: '꽃 불꽃', fw_heart: '하트 불꽃', pet_dog: '애완동물 강아지', pet_cat: '애완동물 고양이', pet_rabbit: '애완동물 토끼', pet_chick: '애완동물 병아리',
+    ...Object.fromEntries(Object.entries(HOME_ITEMS).map(([k, it]) => [k, `내 집 ${it.name}`])) };
   const shop = v.shop || [];
   if (sl) sl.replaceChildren(...(shop.length ? shop.map((l) => h('div', { class: 'chat-row' },
     h('time', { datetime: l.at }, timeOf(l.at)),

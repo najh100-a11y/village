@@ -106,16 +106,17 @@ export class Fireworks {
     const def = FIREWORKS[item] || FIREWORKS.fw_spark;
     if (this.shows.length > 8) return;
     const top = new THREE.Vector3(x + (Math.random() - 0.5) * 1.0, 9.0 + Math.random() * 1.2, z + (Math.random() - 0.5) * 1.0);
-    const trail = new Sparks(this.v.scene, this.tex, 70, 0.32);
+    const scene = this.v.sceneFor ? this.v.sceneFor(x, z) : this.v.scene; // 내 집에서 쏘면 내 집 하늘에
+    const trail = new Sparks(scene, this.tex, 70, 0.32);
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), new THREE.MeshBasicMaterial({ color: '#FFF4CF' }));
     head.position.set(x, 1.0, z);
-    this.v.scene.add(head);
-    this.shows.push({ item, def, from: new THREE.Vector3(x, 1.0, z), top, t: 0, rise: 1.25, trail, head, bursts: [], done: false, emit: 0 });
+    scene.add(head);
+    this.shows.push({ item, def, from: new THREE.Vector3(x, 1.0, z), top, t: 0, rise: 1.25, trail, head, bursts: [], done: false, emit: 0, scene });
     if (this.onLaunch) this.onLaunch(item, x, z);
   }
 
   burst(s, center, kind, delay = 0) {
-    const sp = new Sparks(this.v.scene, this.tex, kind === 'heart' ? 190 : kind === 'flower2' ? 90 : 160, kind === 'spark' ? 0.55 : 0.62);
+    const sp = new Sparks(s.scene || this.v.scene, this.tex, kind === 'heart' ? 190 : kind === 'flower2' ? 90 : 160, kind === 'spark' ? 0.55 : 0.62);
     const col = new THREE.Color();
     const dir = new THREE.Vector3();
     const cols = s.def.colors;

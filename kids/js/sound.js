@@ -4,7 +4,11 @@
 
 const KEY = 'kv.sound.v1';
 const MODES = ['all', 'sfx', 'off']; // 음악+효과음 → 효과음만 → 모두 끔
-const MUSIC_VOL = 0.34;
+// 배경음악은 크게 녹음된 곡이라(평균 약 -15dBFS) 조금 작게 틀고, 효과음은 짧아서 작게 들리므로 크게 키운 뒤 리미터로 깨지지 않게 막는다.
+// 마을에서 음악 평균은 약 -26dBFS, 짧은 효과음의 가장 큰 0.1초는 대개 -24~-17dBFS가 되도록 맞췄다.
+const MUSIC_VOL = 0.28;
+const SFX_GAIN = 3.2;
+const FW_GAIN = 0.3; // 불꽃 소리는 원래 커서 덜 키운다
 const SCENE = { village: 1, game: 0.7, quiet: 0.32, login: 0.8 };
 
 let mode = 'all';
@@ -24,8 +28,16 @@ function ensureCtx() {
   try {
     ac = new AC();
     master = ac.createGain();
-    master.gain.value = 0.9;
-    master.connect(ac.destination);
+    master.gain.value = SFX_GAIN;
+    // 여러 소리가 겹쳐도 깨지지 않게 마지막에 리미터를 둔다
+    const lim = ac.createDynamicsCompressor();
+    lim.threshold.value = -3;
+    lim.knee.value = 0;
+    lim.ratio.value = 20;
+    lim.attack.value = 0.001;
+    lim.release.value = 0.12;
+    master.connect(lim);
+    lim.connect(ac.destination);
   } catch (e) { ac = null; }
   return ac;
 }
@@ -55,6 +67,27 @@ export function initSound({ src } = {}) {
 }
 
 // ---------- 배경음악 ----------
+// 아이폰·아이패드는 audio.volume을 바꿔도 소리 크기가 그대로라서, 음악도 Web Audio의 음량 조절을 거쳐 내보낸다.
+// (그렇게 못 하는 브라우저에서는 audio.volume을 쓴다)
+let musicGain = null, musicVol = 0;
+function wireMusic() {
+  if (musicGain || !bgm) return;
+  const c = ensureCtx();
+  if (!c || !c.createMediaElementSource) return;
+  try {
+    const src = c.createMediaElementSource(bgm);
+    musicGain = c.createGain();
+    musicGain.gain.value = musicVol;
+    src.connect(musicGain);
+    musicGain.connect(c.destination);
+    bgm.volume = 1;
+  } catch (e) { musicGain = null; }
+}
+function setMusicVol(v) {
+  musicVol = Math.max(0, Math.min(1, v));
+  if (musicGain) musicGain.gain.value = musicVol;
+  else if (bgm) bgm.volume = musicVol;
+}
 function playMusic() {
   if (!bgm) {
     bgm = new Audio(bgmSrc);
@@ -62,6 +95,7 @@ function playMusic() {
     bgm.preload = 'auto';
     bgm.volume = 0;
   }
+  wireMusic();
   const p = bgm.play();
   if (p && p.catch) p.catch(() => { /* 아직 터치 전이면 다음 터치 때 다시 */ });
   fadeTo(MUSIC_VOL * (SCENE[scene] || 1), 900);
@@ -70,10 +104,10 @@ function playMusic() {
 function fadeTo(target, ms) {
   if (!bgm) return;
   clearInterval(fadeTimer);
-  const from = bgm.volume, t0 = performance.now();
+  const from = musicVol, t0 = performance.now();
   fadeTimer = setInterval(() => {
     const k = Math.min(1, (performance.now() - t0) / ms);
-    bgm.volume = Math.max(0, Math.min(1, from + (target - from) * k));
+    setMusicVol(from + (target - from) * k);
     if (k >= 1) {
       clearInterval(fadeTimer);
       if (target === 0) bgm.pause();
@@ -157,7 +191,10 @@ function bus() {
     fxBus.ratio.value = 4;
     fxBus.attack.value = 0.003;
     fxBus.release.value = 0.3;
-    fxBus.connect(master);
+    const g = ac.createGain();
+    g.gain.value = FW_GAIN;
+    fxBus.connect(g);
+    g.connect(master);
   }
   return fxBus;
 }
@@ -254,10 +291,10 @@ export const sfx = {
   sizzle: play(() => { noise({ dur: 0.5, vol: 0.09, freq: 5200, q: 0.6, kind: 'highpass' }); noise({ dur: 0.35, vol: 0.05, freq: 2600, freq2: 4200, q: 1.2, delay: 0.12 }); }),
   door: play(() => { tone({ f: 330, f2: 410, type: 'triangle', dur: 0.12, vol: 0.08 }); noise({ dur: 0.1, vol: 0.05, freq: 900, q: 1 }); }),
   // 범퍼카: 쿵 부딪히는 소리와 빵빵
-  bonk: play(() => { tone({ f: 190, f2: 90, type: 'sine', dur: 0.16, vol: 0.2 }); noise({ dur: 0.08, vol: 0.12, freq: 700, q: 0.8, kind: 'lowpass' }); tone({ f: 620, f2: 880, type: 'triangle', dur: 0.08, vol: 0.06, delay: 0.05 }); }),
+  bonk: play(() => { tone({ f: 190, f2: 90, type: 'sine', dur: 0.16, vol: 0.14 }); noise({ dur: 0.08, vol: 0.12, freq: 700, q: 0.8, kind: 'lowpass' }); tone({ f: 620, f2: 880, type: 'triangle', dur: 0.08, vol: 0.06, delay: 0.05 }); }),
   honk: play(() => { [0, 0.18].forEach((d) => { tone({ f: 415, type: 'square', dur: 0.12, vol: 0.05, delay: d }); tone({ f: 523, type: 'square', dur: 0.12, vol: 0.04, delay: d }); }); }),
   // 열매 먹기: 아삭
-  munch: play(() => { noise({ dur: 0.07, vol: 0.16, freq: rnd(2400, 3200), q: 1.4 }); noise({ dur: 0.05, vol: 0.1, freq: rnd(1500, 2000), q: 1.2, delay: 0.06 }); }),
+  munch: play(() => { noise({ dur: 0.08, vol: 0.3, freq: rnd(2400, 3200), q: 1.4 }); noise({ dur: 0.06, vol: 0.18, freq: rnd(1500, 2000), q: 1.2, delay: 0.06 }); }),
   // 동물 소리 (soft면 작게)
   bark: play((soft = false) => { const v = soft ? 0.07 : 0.13; tone({ f: 520, f2: 330, type: 'sawtooth', dur: 0.09, vol: v * 0.6 }); tone({ f: 470, f2: 300, type: 'triangle', dur: 0.1, vol: v, delay: 0.16 }); }),
   meow: play((soft = false) => { const v = soft ? 0.06 : 0.11; tone({ f: 620, f2: 880, type: 'triangle', dur: 0.16, vol: v }); tone({ f: 880, f2: 520, type: 'triangle', dur: 0.26, vol: v, delay: 0.15 }); }),
