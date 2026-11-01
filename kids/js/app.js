@@ -829,7 +829,7 @@ async function openBag(focusBug) {
     const nf = Object.values(shop.sell.fish || {}).reduce((a, n) => a + n, 0);
     const nb = Object.values(shop.sell.bugs || {}).reduce((a, n) => a + n, 0);
     const sec = h('section', { class: 'bag-sec' }, h('h3', {}, '🧺 팔 수 있는 것'),
-      h('p', { class: 'note' }, nf || nb ? `물고기 ${nf}마리, 곤충 ${nb}마리가 가방에 있어요. 열매 상점에서 팔면 열매를 받아요 (오늘 ${shop.sell.today || 0}/${shop.sell.cap || 0}개 받음).` : '잡은 물고기와 곤충이 없어요. 낚시하고 곤충을 잡으면 열매 상점에서 팔 수 있어요.'));
+      h('p', { class: 'note' }, nf || nb ? `물고기 ${nf}마리, 곤충 ${nb}마리가 가방에 있어요. 열매 상점에서 팔면 흔한 것은 10마리에 열매 1개를 받아요 (오늘 ${shop.sell.today || 0}/${shop.sell.cap || 0}개 받음).` : '잡은 물고기와 곤충이 없어요. 낚시하고 곤충을 잡으면 열매 상점에서 팔 수 있어요.'));
     if (nf || nb) sec.append(h('div', { class: 'row' }, h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => { shopTab = 'sell'; modal.close(); village.walkTo('shop'); } }, '열매 상점으로 가기')));
     secs.push(sec);
   }
@@ -999,7 +999,7 @@ const SHOP_NOTE = {
   room: "방에 놓는 가구예요. 내 집에 들어가서 '집 꾸미기'를 누르면 놓을 수 있어요. 산 가구는 없어지지 않아요.",
   yard: "마당에 놓는 물건이에요. 내 집에 들어가서 '집 꾸미기'를 누르면 놓을 수 있어요. 산 물건은 없어지지 않아요.",
   garden: '씨앗과 모종은 밭 한 칸에 하나씩 심어요. 다 자란 채소를 거두면 그 씨앗은 없어지고, 꽃은 다 피면 계속 피어 있어요.',
-  sell: '잡은 물고기와 곤충을 팔면 열매를 받아요. 팔아도 도감 기록은 그대로 남아요. 낡은 장화와 빈 깡통은 팔 수 없어요.',
+  sell: '잡은 물고기와 곤충은 같은 것끼리 모아서 팔아요. 흔한 것은 10마리, 가끔 보이는 것은 5마리, 드문 것은 2마리, 아주 드문 것은 1마리에 열매 1개예요. 팔아도 도감 기록은 그대로 남아요. 쓰레기(낡은 장화, 빈 깡통 같은 것)는 팔 수 없어요.',
   gift: '모은 열매를 친구에게 선물해요. 한 번에 1~10개, 하루에 모두 열매 10개까지 보낼 수 있어요. 선생님도 선물 기록을 볼 수 있어요.',
 };
 // 원래 값과 지금 값 (선생님이 할인을 켜면 지금 값이 싸다)
@@ -1104,41 +1104,43 @@ function sellRows(shop) {
   const cap = sell.cap || 0, today = sell.today || 0, left = Math.max(0, cap - today);
   const head = h('div', { class: 'sell-head' },
     cap > 0 ? h('b', {}, `오늘 팔아서 받은 열매 ${today} / ${cap}개`) : h('b', {}, '지금은 팔기를 쉬고 있어요.'),
-    h('p', {}, cap > 0 ? (left ? `오늘은 열매 ${left}개만큼 더 팔 수 있어요.` : '오늘은 다 팔았어요. 내일 또 팔아요!') : '선생님이 다시 열어 주면 팔 수 있어요.'));
+    h('p', {}, cap > 0 ? (left ? `흔한 물고기와 곤충은 10마리를 모으면 열매 1개예요. 오늘은 열매 ${left}개 더 받을 수 있어요.` : '오늘은 다 팔았어요. 내일 또 팔아요!') : '선생님이 다시 열어 주면 팔 수 있어요.'));
   const out = [head];
-  const row = (kind, id, name, count, price, icon) => {
-    const n = Math.min(count, price > 0 ? Math.floor(left / price) : 0);
+  // size마리를 모으면 열매 1개
+  const row = (kind, id, name, count, size, icon) => {
+    const can = Math.min(Math.floor(count / size), left);
     const acts = h('div', { class: 'acts' },
-      h('button', { class: 'btn btn-go btn-small', type: 'button', disabled: price > left, onclick: () => sellNow(kind, id, 1) }, `1마리 팔기 (열매 ${price}개)`),
-      n > 1 ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => sellNow(kind, id, n) }, `${n}마리 팔기 (열매 ${price * n}개)`) : null);
-    return h('div', { class: 'shop-item sell' }, icon, h('div', {}, h('b', {}, name), h('p', {}, `가방에 ${count}마리 · 한 마리에 열매 ${price}개`)), acts);
+      h('button', { class: 'btn btn-go btn-small', type: 'button', disabled: count < size || left < 1, onclick: () => sellNow(kind, id, 1, size) }, `${size}마리 팔기 (열매 1개)`),
+      can > 1 ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => sellNow(kind, id, can, size) }, `${can * size}마리 팔기 (열매 ${can}개)`) : null);
+    const need = count < size ? ` · 열매 1개까지 ${size - count}마리 더 모아요` : '';
+    return h('div', { class: 'shop-item sell' }, icon, h('div', {}, h('b', {}, name), h('p', {}, `가방에 ${count}마리 · ${size}마리에 열매 1개${need}`)), acts);
   };
-  const fishes = FISH.filter((f) => (sell.fish || {})[f.id] > 0);
-  const bugs = BUGS.filter((b) => (sell.bugs || {})[b.id] > 0);
+  const bundle = sell.bundle || {};
+  const fishes = FISH.filter((f) => (sell.fish || {})[f.id] > 0 && (bundle.fish || {})[f.id]);
+  const bugs = BUGS.filter((b) => (sell.bugs || {})[b.id] > 0 && (bundle.bug || {})[b.id]);
   for (const f of fishes) {
     const ic = h('div', { class: 'fw-ic fish', 'aria-hidden': 'true' }, fishCanvas(f, 60, 40));
-    out.push(row('fish', f.id, f.name, sell.fish[f.id], ((sell.prices || {}).fish || {})[f.id] || 1, ic));
+    out.push(row('fish', f.id, f.name, sell.fish[f.id], bundle.fish[f.id], ic));
   }
   for (const b of bugs) {
     const ic = h('div', { class: 'fw-ic bug', 'aria-hidden': 'true' });
     ic.innerHTML = bugIcon(b.id, true);
-    out.push(row('bug', b.id, b.name, sell.bugs[b.id], ((sell.prices || {}).bug || {})[b.id] || 1, ic));
+    out.push(row('bug', b.id, b.name, sell.bugs[b.id], bundle.bug[b.id], ic));
   }
-  if (!fishes.length && !bugs.length) out.push(h('p', { class: 'fb-empty' }, '팔 물고기나 곤충이 없어요. 반짝 연못에서 낚시하고, 반짝이는 곤충을 잡아 와요!'));
+  if (!fishes.length && !bugs.length) out.push(h('p', { class: 'fb-empty' }, '팔 물고기나 곤충이 없어요. 반짝 연못과 바다에서 낚시하고, 반짝이는 곤충을 잡아 와요!'));
   return out;
 }
 let selling = false;
-async function sellNow(kind, id, n) {
+// k: 받을 열매 수(묶음 수), size: 묶음 하나의 마릿수
+async function sellNow(kind, id, k, size) {
   if (selling) return;
   selling = true;
   try {
-    const before = shopData && shopData.fruits;
-    const r = await rpc('kids_sell', { p_token: token(), p_kind: kind, p_item: id, p_n: n });
+    const r = await rpc('kids_sell_bundle', { p_token: token(), p_kind: kind, p_item: id, p_bundles: k });
     setFruits(r.fruits);
     sfx.success();
     const name = kind === 'fish' ? (fishById(id) || {}).name : (bugById(id) || {}).name;
-    const got = Number.isFinite(before) ? r.fruits - before : null;
-    toast(`${name} ${n}마리를 팔고 열매${got ? ` ${got}개` : ''}를 받았어요!`, 2600);
+    toast(`${name} ${k * size}마리를 팔고 열매 ${k}개를 받았어요!`, 2600);
     redrawShop(r);
   } catch (e) {
     if (e.code === 'SESSION') { sessionLost(); return; }

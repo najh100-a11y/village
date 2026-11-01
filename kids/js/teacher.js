@@ -370,7 +370,7 @@ function shopRows(v) {
       pick(SALES, v.sale, '열매 상점 할인', (x) => (x ? `${x}% 할인` : '할인 없음'), (x) => call('kids_t_set_shop', { p_sale: x, p_sell_day: null }))),
     h('div', { class: 'village-row' },
       h('div', {}, h('h3', { style: 'margin:0' }, '하루에 팔아서 받는 열매'),
-        h('p', { class: 'note' }, v.sell_day ? `아이들이 잡은 물고기와 곤충을 열매 상점에서 팔면 하루에 열매 ${v.sell_day}개까지 받아요 (흔한 것 1개, 가끔 2개, 드문 것 3개, 황금잉어 5개). 놀이로 버는 열매가 말씀 활동보다 많아지지 않게 정해 주세요.` : '지금은 팔기를 쉬고 있어요. 아이들은 물고기와 곤충을 팔 수 없어요.')),
+        h('p', { class: 'note' }, v.sell_day ? `아이들이 잡은 물고기와 곤충을 열매 상점에서 팔면 하루에 열매 ${v.sell_day}개까지 받아요. 흔한 것은 10마리, 가끔 보이는 것은 5마리, 드문 것은 2마리, 아주 드문 것(황금잉어 같은)은 1마리에 열매 1개예요. 놀이로 버는 열매가 말씀 활동보다 많아지지 않게 정해 주세요.` : '지금은 팔기를 쉬고 있어요. 아이들은 물고기와 곤충을 팔 수 없어요.')),
       pick(SELL_DAY_CHOICES.includes(v.sell_day) ? SELL_DAY_CHOICES : [...SELL_DAY_CHOICES, v.sell_day].sort((a, b) => a - b), v.sell_day, '하루에 팔아서 받는 열매', (x) => (x ? `하루 ${x}개` : '팔기 쉬기'), (x) => call('kids_t_set_shop', { p_sale: null, p_sell_day: x }))),
   ];
 }

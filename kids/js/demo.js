@@ -6,15 +6,15 @@ import { toJpeg } from './images.js';
 import { cleanChat } from './chatfilter.js';
 import { HOME_ITEMS, HOME_IDS, isSeed } from './homeitems.js';
 import { WARDROBE, WARDROBE_IDS, wearItem } from './wardrobe.js';
-import { SELL_PRICE, SELL_DAY_DEFAULT, GIFT, GIFT_MSGS, SALES, salePrice } from './economy.js';
+import { SELL_BUNDLE, SELL_DAY_DEFAULT, GIFT, GIFT_MSGS, SALES, salePrice } from './economy.js';
 const BUG_KINDS = ['cabbage_white', 'swallowtail', 'honeybee', 'ladybug', 'grasshopper', 'red_dragonfly', 'mantis', 'cicada', 'stag_beetle', 'rhino_beetle', 'firefly'];
 const BUG_RARITY = [0, 1, 0, 0, 0, 0, 1, 1, 2, 2, 2]; // js/bugs.js와 같은 차례
 const ITEM_PRICE = { fw_spark: 1, fw_flower: 3, fw_heart: 5, pet_dog: 30, pet_cat: 30, pet_rabbit: 30, pet_chick: 30, ...Object.fromEntries(HOME_IDS.map((id) => [id, HOME_ITEMS[id].price])),
   ...Object.fromEntries(WARDROBE_IDS.map((id) => [id, WARDROBE[id].price])) };
-// 팔 때 받는 열매 (서버 kids__sell_price와 같다)
-function sellPrice(kind, id) {
-  if (kind === 'fish') { const f = FISH.find((x) => x.id === id); return f && f.rarity >= 0 ? SELL_PRICE.fish[f.rarity] : null; }
-  if (kind === 'bug') { const i = BUG_KINDS.indexOf(id); return i >= 0 ? SELL_PRICE.bug[BUG_RARITY[i]] : null; }
+// 열매 1개가 되는 묶음 마릿수 (서버 kids__sell_bundle과 같다)
+function sellBundle(kind, id) {
+  if (kind === 'fish') { const f = FISH.find((x) => x.id === id); return f && f.rarity >= 0 ? SELL_BUNDLE.fish[f.rarity] : null; }
+  if (kind === 'bug') { const i = BUG_KINDS.indexOf(id); return i >= 0 ? SELL_BUNDLE.bug[BUG_RARITY[i]] : null; }
   return null;
 }
 
@@ -384,32 +384,34 @@ export class DemoBackend {
   // ---------- 팔기: 잡은 물고기와 곤충 (팔아도 도감 기록은 남는다) ----------
   sellInfo(me) {
     const fish = {}, bugs = {};
-    for (const f of this.db.fish) if (f.child === me && !f.sold && sellPrice('fish', f.fish)) fish[f.fish] = (fish[f.fish] || 0) + 1;
+    for (const f of this.db.fish) if (f.child === me && !f.sold && sellBundle('fish', f.fish)) fish[f.fish] = (fish[f.fish] || 0) + 1;
     for (const b of this.db.bugs || []) if (b.child === me && !b.sold) bugs[b.bug] = (bugs[b.bug] || 0) + 1;
     const today0 = startOfToday();
     return {
       fish, bugs,
-      prices: { fish: Object.fromEntries(FISH.filter((f) => f.rarity >= 0).map((f) => [f.id, sellPrice('fish', f.id)])),
-        bug: Object.fromEntries(BUG_KINDS.map((b) => [b, sellPrice('bug', b)])) },
+      bundle: { fish: Object.fromEntries(FISH.filter((f) => f.rarity >= 0).map((f) => [f.id, sellBundle('fish', f.id)])),
+        bug: Object.fromEntries(BUG_KINDS.map((b) => [b, sellBundle('bug', b)])) },
       today: (this.db.sellLog || []).filter((l) => l.child === me && l.at >= today0).reduce((a, l) => a + l.fruits, 0),
       cap: this.villageConf().sell_day,
     };
   }
-  kids_sell({ p_token, p_kind, p_item, p_n }) {
+  kids_sell() { fail('APP_OLD'); }
+  // p_bundles: 받을 열매 수 (묶음 수). 묶음 하나 = 그 물고기·곤충 bundle마리
+  kids_sell_bundle({ p_token, p_kind, p_item, p_bundles }) {
     const me = this.session(p_token, 'child');
-    const price = sellPrice(p_kind, p_item);
-    const n = p_n || 1;
-    if (!price || n < 1 || n > 99) fail('BAD_ITEM');
+    const size = sellBundle(p_kind, p_item);
+    const k = p_bundles || 1;
+    if (!size || !Number.isInteger(k) || k < 1 || k > 30) fail('BAD_ITEM');
     const info = this.sellInfo(me);
     if (info.cap <= 0) fail('SELL_CLOSED');
-    if (info.today + price * n > info.cap) fail('SELL_DAY');
+    if (info.today + k > info.cap) fail('SELL_DAY');
     const list = (p_kind === 'fish' ? this.db.fish.filter((f) => f.fish === p_item) : (this.db.bugs || []).filter((b) => b.bug === p_item))
       .filter((x) => x.child === me && !x.sold).sort((a, b) => a.at.localeCompare(b.at));
-    if (list.length < n) fail('NO_ITEM');
-    list.slice(0, n).forEach((x) => { x.sold = nowIso(); });
-    this.child(me).fruits += price * n;
+    if (list.length < k * size) fail('NO_ITEM');
+    list.slice(0, k * size).forEach((x) => { x.sold = nowIso(); });
+    this.child(me).fruits += k;
     this.db.sellLog = this.db.sellLog || [];
-    this.db.sellLog.push({ id: Date.now(), child: me, kind: p_kind, item: p_item, n, fruits: price * n, at: nowIso() });
+    this.db.sellLog.push({ id: Date.now(), child: me, kind: p_kind, item: p_item, n: k * size, fruits: k, at: nowIso() });
     return this.kids_shop({ p_token });
   }
   // ---------- 선물: 친구에게 열매 주기 ----------
