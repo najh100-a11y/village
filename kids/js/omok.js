@@ -39,9 +39,11 @@ function scoreAt(board, x, y, c) {
   return total;
 }
 
-export function aiMove(board, me) {
+// 숲지기 솔의 난이도: easy 쉬움(가끔 실수하고 잘 안 막는다), normal 보통, hard 어려움(꼭 막고 한 수 앞을 본다)
+export const OMOK_LEVELS = [['easy', '쉬움', '새싹처럼 살살 둬요. 처음 해 보는 친구에게 좋아요.'],
+  ['normal', '보통', '숲지기 솔이 평소처럼 둬요.'], ['hard', '어려움', '꼭 막고 한 수 앞을 내다봐요. 이겨 보세요!']];
+function candidates(board, me, defW) {
   const opp = me === 1 ? 2 : 1;
-  if (!board.some((v) => v)) return [6, 6];
   const cands = [];
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
     if (board[idx(x, y)]) continue;
@@ -49,15 +51,55 @@ export function aiMove(board, me) {
     for (let j = -2; j <= 2 && !near; j++) for (let i = -2; i <= 2; i++) if (inside(x + i, y + j) && board[idx(x + i, y + j)]) { near = true; break; }
     if (!near) continue;
     const att = scoreAt(board, x, y, me), def = scoreAt(board, x, y, opp);
-    cands.push({ x, y, s: att + def * 0.9, att, def });
+    cands.push({ x, y, s: att + def * defW, att, def });
   }
   cands.sort((a, b) => b.s - a.s);
+  return cands;
+}
+export function aiMove(board, me, level = 'normal') {
+  if (!board.some((v) => v)) return level === 'easy' ? [6 + Math.floor(Math.random() * 3) - 1, 6 + Math.floor(Math.random() * 3) - 1] : [6, 6];
+  const opp = me === 1 ? 2 : 1;
+  if (level === 'easy') {
+    // 쉬움: 이길 수 있으면 대개 이기고, 다섯 줄은 반쯤만 막고, 막는 것보다 내 돌을 잇는 것을 좋아한다
+    const cands = candidates(board, me, 0.35);
+    const win = cands.find((c) => c.att >= 100000);
+    if (win && Math.random() < 0.8) return [win.x, win.y];
+    const block = cands.find((c) => c.def >= 100000);
+    if (block && Math.random() < 0.55) return [block.x, block.y];
+    const top = cands.slice(0, 8);
+    const pick = top[Math.floor(Math.random() * top.length)];
+    return [pick.x, pick.y];
+  }
+  if (level === 'hard') {
+    const cands = candidates(board, me, 1.0);
+    const win = cands.find((c) => c.att >= 100000);
+    if (win) return [win.x, win.y];
+    const block = cands.find((c) => c.def >= 100000);
+    if (block) return [block.x, block.y];
+    // 두 수 앞: 내가 두고, 상대가 가장 좋은 곳에 두고, 내가 다시 둘 때를 따져 고른다
+    let best = cands[0], bestV = -Infinity;
+    for (const c of cands.slice(0, 8)) {
+      board[idx(c.x, c.y)] = me;
+      const reply = candidates(board, opp, 1.0)[0];
+      let v = c.s;
+      if (reply) {
+        board[idx(reply.x, reply.y)] = opp;
+        const next = candidates(board, me, 0)[0];
+        board[idx(reply.x, reply.y)] = 0;
+        v = c.s - reply.att * 0.6 + (next ? next.att * 0.3 : 0);
+      }
+      board[idx(c.x, c.y)] = 0;
+      if (v > bestV) { bestV = v; best = c; }
+    }
+    return [best.x, best.y];
+  }
+  const cands = candidates(board, me, 0.9);
   const win = cands.find((c) => c.att >= 100000);
   if (win) return [win.x, win.y];
   const block = cands.find((c) => c.def >= 100000);
   if (block) return [block.x, block.y];
   if (cands[0].s >= 9000) return [cands[0].x, cands[0].y];
-  // 어린이와 두는 컴퓨터: 좋은 자리 셋 가운데 하나를 고른다
+  // 보통: 좋은 자리 셋 가운데 하나를 고른다
   const top = cands.slice(0, 3);
   const pick = top[Math.random() < 0.6 ? 0 : Math.floor(Math.random() * top.length)];
   return [pick.x, pick.y];

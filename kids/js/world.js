@@ -6,7 +6,7 @@ import { mergeStatic, Instancer } from './merge.js';
 import { Park, RIDE_IDS, resetLimbs } from './park.js';
 import { Critters, Follower, PET_ITEMS } from './critters.js';
 import { Pool, inPool, SWIM_Y, swimPose, STROKES, LOUNGER } from './pool.js';
-import { clampWalk, makeBridge, BRIDGES, WORLD_CENTER, WORLD_HALF, route, PARK_ISLE } from './isles.js';
+import { clampWalk, makeBridge, BRIDGES, WORLD_CENTER, WORLD_HALF, route, PARK_ISLE, pierPoint } from './isles.js';
 import { POOL } from './pool.js';
 // 줌: 1이 처음 시점. 마을은 1.6, 놀이기구는 2.0을 넘으면 지도 보기로 바뀌기 시작해 MAP_ZOOM에서 섬 전체가 보인다
 const MAP_ZOOM = 4;
@@ -14,6 +14,7 @@ const mapFrom = (mode) => (mode === 'game' ? 2.0 : 1.6);
 import { Bugs, makeBug } from './bugs.js';
 import { Fireworks } from './fireworks.js';
 import { HomeSpace, HOME_O } from './home.js';
+import { Sea } from './sea.js';
 // 내 집(따로 된 장면) 근처 좌표인지: 마을 친구와 동물은 늘 마을 좌표라서 좌표로 가른다
 const nearHome = (p) => Math.abs(p.x - HOME_O.x) < 200 && Math.abs(p.z - HOME_O.z) < 200;
 
@@ -343,6 +344,7 @@ export class Village {
       this.addObstacleCircle(x, z, 0.15);
     }
     this.buildNature();
+    this.sea = new Sea(this, { signMesh }); // 나무를 심은 뒤에 짓는다 (나무 자리가 바뀌지 않게)
     this.critters = new Critters(this);
     this.critters.onSound = (kind, soft) => this.on.onCritterSound && this.on.onCritterSound(kind, soft);
     this.bugs = new Bugs(this);
@@ -1730,6 +1732,7 @@ export class Village {
     const r = this.remotes.get(id);
     if (!r) return;
     this.setPet(id, null);
+    if (r.pin && r.pin.car && r.pin.kind === 'sea') r.pin.car.removeFromParent(); // 친구 배
     this.scene.remove(r.av.root);
     r.av.dispose();
     r.tag.remove();
@@ -2372,6 +2375,7 @@ export class Village {
       }
     }
     for (const [x, z] of [[0, 29.6], [0, 37], [0, 43.8], [29.6, -4], [37, -4], [44.4, -4]]) add(x, z);
+    for (const u of [-1.0, 3.5, 8.0, 12.5]) { const q = pierPoint(u, 0); add(q.x, q.z); } // 바다 낚시 나루터
     // 큰 네모(집, 놀이기구) 모서리 바깥: 이 점들로 집 뒤를 돌아간다
     for (const o of this.obstacles) {
       if (o.t !== 'b' || Math.max(o.hw, o.hd) < 1.2) continue;
@@ -2631,6 +2635,7 @@ export class Village {
       }
     }
 
+    if (this.sea) this.sea.update(dt, t); // 배가 먼저 움직여야 배에 탄 친구가 제자리에 붙는다
     this.updateRemotes(dt);
     if (this.atHome && this.homeSpace) {
       const H = this.homeSpace;

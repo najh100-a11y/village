@@ -158,8 +158,13 @@ button { font: inherit; color: inherit; }
 .stamp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
 .stamp { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 10px; align-items: center; text-align: left; background: #fff; border: 3px solid var(--line); border-radius: 18px; padding: 10px 12px; cursor: pointer; min-height: 64px; }
 .stamp-dot { grid-row: span 2; width: 34px; height: 34px; border-radius: 50%; border: 3px dashed var(--line); }
-.stamp.practiced .stamp-dot { border: 0; background: radial-gradient(circle at 50% 60%, #8BD46A 0 40%, #E3F3D6 41%); }
-.stamp.passed .stamp-dot { border: 3px solid var(--apple); background: radial-gradient(circle, var(--apple) 0 34%, #FFE3E1 35%); }
+.stamp-dot { display: grid; place-items: center; font-family: var(--display); font-size: 12px; line-height: 1; }
+.stamp.practiced .stamp-dot { border: 3px solid #8BD46A; background: #E3F3D6; color: var(--leaf-deep); font-size: 20px; }
+.stamp.today .stamp-dot { background: #8BD46A; color: #fff; }
+.stamp.passed .stamp-dot { border: 3px solid var(--apple); background: #FFE3E1; color: var(--apple); transform: rotate(-12deg); }
+.stamp-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 8px 0 0; font-size: 13px; color: var(--ink-soft); }
+.stamp-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.stamp-legend i { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; font-style: normal; font-size: 12px; }
 .stamp.current { border-color: var(--sun); box-shadow: 0 0 0 3px #FFF1B8; }
 .stamp-ref { font-family: var(--display); font-size: 16px; line-height: 1.2; }
 .stamp-state { font-size: 13px; color: var(--ink-soft); }
@@ -594,6 +599,8 @@ button.online[data-unread]:not([data-unread=""])::after { content: ' 💌' attr(
 .fb-photo { justify-self: start; display: grid; gap: 2px; font-size: 12px; color: var(--ink-soft); }
 .fb-photo img { width: 120px; height: 90px; object-fit: cover; border-radius: 12px; display: block; box-shadow: 0 3px 0 var(--line); }
 .mode-pick.three { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.mode-pick.levels { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.mode-pick.levels .mode.last { border-color: var(--leaf); background: #F2FAEA; }
 .viewer { position: fixed; inset: 0; z-index: 60; background: rgba(30, 30, 30, .82); display: grid; place-items: center; align-content: center; gap: 10px; padding: 16px; cursor: zoom-out; }
 .viewer img { max-width: 100%; max-height: 80vh; border-radius: 14px; background: #fff; }
 .viewer p { margin: 0; color: #fff; font-family: var(--display); font-size: 18px; text-align: center; }
@@ -688,8 +695,9 @@ button.online[data-unread]:not([data-unread=""])::after { content: ' 💌' attr(
 .tool:disabled { opacity: .45; }
 .sub-row { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
 .sub-row[hidden] { display: none; }
-.stamp { width: 52px; height: 52px; border-radius: 14px; border: 3px solid var(--line); background: #fff; display: grid; place-items: center; cursor: pointer; padding: 0; }
-.stamp.on { border-color: var(--leaf); background: #EEF8E6; }
+/* 그림 그리기의 도장 고르기 (암송의 집 '말씀 도장판'의 .stamp와 이름이 겹치지 않게 pstamp) */
+.pstamp { width: 52px; height: 52px; border-radius: 14px; border: 3px solid var(--line); background: #fff; display: grid; place-items: center; cursor: pointer; padding: 0; }
+.pstamp.on { border-color: var(--leaf); background: #EEF8E6; }
 .sw.custom { padding: 0; overflow: hidden; background: conic-gradient(#EF6461, #F6D55C, #5DB760, #7EC8F2, #A07FE3, #EF6461); -webkit-appearance: none; appearance: none; }
 .sw.custom::-webkit-color-swatch-wrapper { padding: 0; opacity: 0; }
 .sw.custom::-moz-color-swatch { opacity: 0; }

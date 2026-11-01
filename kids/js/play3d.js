@@ -7,10 +7,12 @@ import { message } from './api.js';
 import { sfx } from './sound.js';
 import { fishById, SHADOW_LEN, RARITY, RECIPES, INGREDIENTS, FISH, FRIDGE, NO_CUT, COOK_KIND, ingInfo, dishName } from './play-data.js';
 import { cleanChat } from './chatfilter.js';
-import { aiMove, lineAt } from './omok.js';
+import { aiMove, lineAt, OMOK_LEVELS } from './omok.js';
 import { friendPicker, waitInvite } from './play.js';
 import { renderFishBook } from './fishing.js';
 import { createRides } from './rides.js';
+import { SEA_Y, SEA_SPOTS, MOOR, BOARD, BOAT_FACE, seatOf } from './sea.js';
+import { onPier } from './isles.js';
 
 // ---------- 도우미 ----------
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -112,6 +114,12 @@ export const rodPose = (av) => {
   av.arms[1].rotation.x = -1.05; av.arms[1].rotation.z = 0.05;
   av.arms[0].rotation.x = -0.8; av.arms[0].rotation.z = 0.35;
 };
+// 배에 앉아 낚싯대를 든 친구
+const seaRodPose = (av) => {
+  rodPose(av);
+  av.legs[0].rotation.x = av.legs[1].rotation.x = -1.45;
+  av.body.position.y = 0;
+};
 
 // ---------- 화면 위 단추와 말풍선 ----------
 class GameUI {
@@ -204,6 +212,22 @@ function makeFish3D(f, len = 0.5) {
       g.add(mk(new THREE.CylinderGeometry(len * 0.2, len * 0.2, len * 0.55, 14), toon('#A9B4BE')));
       g.add(mk(new THREE.CylinderGeometry(len * 0.205, len * 0.205, len * 0.18, 14), toon('#EF6461')));
       g.rotation.z = 0.5;
+    } else if (f && f.id === 'bottle') {
+      // 초록 유리병과 코르크 마개
+      const glass = toon('#7CC59A', { transparent: true, opacity: 0.85 });
+      g.add(mk(new THREE.CylinderGeometry(len * 0.13, len * 0.13, len * 0.42, 14), glass));
+      g.add(mk(new THREE.CylinderGeometry(len * 0.055, len * 0.12, len * 0.14, 12), glass, 0, len * 0.28, 0));
+      g.add(mk(new THREE.CylinderGeometry(len * 0.05, len * 0.05, len * 0.1, 10), toon('#B98A5B'), 0, len * 0.39, 0));
+      g.rotation.z = -1.1;
+    } else if (f && f.id === 'oldnet') {
+      // 엉킨 그물 뭉치와 주황 찌
+      const net = toon('#6F8A7A');
+      for (let i = 0; i < 5; i++) {
+        const r = mk(new THREE.TorusGeometry(len * (0.16 + i * 0.025), len * 0.012, 5, 18), net);
+        r.rotation.set(i * 0.7, i * 1.1, i * 0.4);
+        g.add(r);
+      }
+      g.add(mk(new THREE.SphereGeometry(len * 0.09, 12, 8), toon('#F28A3C'), len * 0.2, len * 0.14, 0));
     } else {
       const boot = toon('#6B4B3A');
       g.add(mk(new THREE.BoxGeometry(len * 0.26, len * 0.55, len * 0.26), boot, 0, len * 0.1, 0));
@@ -212,22 +236,133 @@ function makeFish3D(f, len = 0.5) {
     }
     return g;
   }
+  const eyes = (x, y, z, r) => {
+    for (const s of [-1, 1]) {
+      g.add(mk(new THREE.SphereGeometry(r, 10, 8), toon('#FFFFFF'), x, y, s * z));
+      g.add(mk(new THREE.SphereGeometry(r * 0.55, 8, 6), toon('#2E2A2A'), x - r * 0.25, y, s * (z + r * 0.45)));
+    }
+  };
+  const body = f.mat || toon(f.body), finM = toon(f.fin);
+  if (f.shape === 'squid') {
+    // 몸통은 뒤(+x)로 길고 끝에 세모 지느러미, 앞(-x)에 머리와 다리
+    const mantle = mk(new THREE.ConeGeometry(len * 0.11, len * 0.62, 14), body, len * 0.2, 0, 0);
+    mantle.rotation.z = -Math.PI / 2;
+    g.add(mantle);
+    for (const s of [-1, 1]) {
+      const fin = mk(new THREE.ConeGeometry(len * 0.1, len * 0.2, 3), finM, len * 0.44, 0, s * len * 0.08);
+      fin.rotation.set(s * Math.PI / 2, 0, 0);
+      fin.scale.set(1, 1, 0.25);
+      g.add(fin);
+    }
+    g.add(mk(new THREE.SphereGeometry(len * 0.09, 12, 10), body, -len * 0.14, 0, 0));
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2, long = i === 2 || i === 7;
+      const arm = mk(new THREE.CylinderGeometry(len * 0.012, len * 0.022, len * (long ? 0.46 : 0.26), 5), body);
+      arm.rotation.z = Math.PI / 2 + Math.sin(a) * 0.25;
+      arm.rotation.y = Math.cos(a) * 0.25;
+      arm.position.set(-len * (long ? 0.42 : 0.3), Math.sin(a) * len * 0.03, Math.cos(a) * len * 0.03);
+      g.add(arm);
+    }
+    eyes(-len * 0.14, len * 0.02, len * 0.07, len * 0.035);
+    return g;
+  }
+  if (f.shape === 'octopus') {
+    // 둥근 머리와 꼬불꼬불한 다리 여덟 개 (낚으면 다리가 아래로 늘어진다)
+    const head = mk(new THREE.SphereGeometry(len * 0.17, 16, 12), body, 0, len * 0.16, 0);
+    head.scale.set(1, 1.2, 1);
+    g.add(head);
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const up = mk(new THREE.CylinderGeometry(len * 0.035, len * 0.05, len * 0.22, 6), body, Math.cos(a) * len * 0.1, -len * 0.04, Math.sin(a) * len * 0.1);
+      up.rotation.set(Math.sin(a) * 0.55, 0, -Math.cos(a) * 0.55);
+      g.add(up);
+      const lo = mk(new THREE.CylinderGeometry(len * 0.018, len * 0.035, len * 0.22, 6), body, Math.cos(a) * len * 0.17, -len * 0.22, Math.sin(a) * len * 0.17);
+      lo.rotation.set(-Math.sin(a) * 0.35, 0, Math.cos(a) * 0.35);
+      g.add(lo);
+      g.add(mk(new THREE.SphereGeometry(len * 0.022, 6, 5), finM, Math.cos(a) * len * 0.13, -len * 0.12, Math.sin(a) * len * 0.13));
+    }
+    eyes(-len * 0.12, len * 0.12, len * 0.07, len * 0.035);
+    return g;
+  }
+  if (f.shape === 'ribbon') {
+    // 갈치: 은빛 띠처럼 길고 꼬리 끝이 뾰족하다
+    const b = mk(new THREE.SphereGeometry(0.5, 20, 10), body);
+    b.scale.set(len * 1.3, len * 0.12, len * 0.035);
+    g.add(b);
+    const tail = mk(new THREE.ConeGeometry(len * 0.03, len * 0.5, 6), body, len * 0.85, 0, 0);
+    tail.rotation.z = -Math.PI / 2;
+    g.add(tail);
+    const fin = mk(new THREE.BoxGeometry(len * 1.05, len * 0.03, len * 0.008), finM, len * 0.1, len * 0.065, 0);
+    g.add(fin);
+    eyes(-len * 0.52, len * 0.015, len * 0.02, len * 0.025);
+    return g;
+  }
+  if (f.shape === 'flat') {
+    // 광어: 납작하고 넓으며 두 눈이 한쪽(위)에 몰려 있다
+    const L = len, H = len * 0.62;
+    const rim = mk(new THREE.SphereGeometry(0.5, 20, 12), finM);
+    rim.scale.set(L * 0.9, H * 1.0, len * 0.05);
+    g.add(rim);
+    const b = mk(new THREE.SphereGeometry(0.5, 20, 12), body);
+    b.scale.set(L * 0.8, H * 0.82, len * 0.09);
+    g.add(b);
+    const tail = mk(new THREE.ConeGeometry(H * 0.3, L * 0.22, 4), finM, L * 0.5, 0, 0);
+    tail.rotation.z = Math.PI / 2;
+    tail.scale.z = 0.2;
+    g.add(tail);
+    if (f.spots) for (let i = 0; i < 7; i++) g.add(mk(new THREE.SphereGeometry(len * 0.03, 6, 5), toon(f.spots), -L * 0.15 + (i % 4) * L * 0.1, (i < 4 ? 1 : -1) * H * 0.12 + (i % 2) * H * 0.05, len * 0.04));
+    for (const [x, y] of [[-L * 0.26, H * 0.12], [-L * 0.2, H * 0.2]]) {
+      g.add(mk(new THREE.SphereGeometry(len * 0.035, 10, 8), toon('#FFFFFF'), x, y, len * 0.045));
+      g.add(mk(new THREE.SphereGeometry(len * 0.02, 8, 6), toon('#2E2A2A'), x - len * 0.005, y, len * 0.07));
+    }
+    return g;
+  }
+  const tuna = f.shape === 'tuna';
   const L = f.long ? len * 1.15 : len;
-  const H = f.long ? len * 0.17 : f.id === 'goldfish' ? len * 0.42 : len * 0.32;
-  const body = mk(new THREE.SphereGeometry(0.5, 20, 14), f.mat || toon(f.body));
-  body.scale.set(L * 0.84, H, H * 0.6);
-  g.add(body);
-  const finM = toon(f.fin);
-  const tail = mk(new THREE.ConeGeometry(H * 0.55, L * 0.3, 4), finM, L * 0.5, 0, 0);
-  tail.rotation.z = Math.PI / 2;
-  tail.scale.z = 0.25;
-  g.add(tail);
-  const dorsal = mk(new THREE.ConeGeometry(H * 0.25, H * 0.5, 4), finM, -L * 0.02, H * 0.5, 0);
-  dorsal.scale.z = 0.25;
-  dorsal.rotation.z = -0.4;
-  g.add(dorsal);
+  const H = f.long ? len * 0.17 : f.slim ? len * 0.2 : f.id === 'goldfish' || f.deep ? len * 0.42 : tuna ? len * 0.34 : len * 0.32;
+  const b = mk(new THREE.SphereGeometry(0.5, 20, 14), body);
+  b.scale.set(L * 0.84, H, H * (tuna ? 0.72 : 0.6));
+  g.add(b);
+  if (f.back) {
+    // 등은 짙은 색 (고등어, 참치처럼)
+    const bk = mk(new THREE.SphereGeometry(0.5, 20, 10, 0, Math.PI * 2, 0, Math.PI * 0.45), toon(f.back));
+    bk.scale.set(L * 0.85, H * 1.02, H * (tuna ? 0.73 : 0.61));
+    g.add(bk);
+  }
+  if (tuna) {
+    // 초승달 꼬리, 꼬리 쪽 노란 작은 지느러미들
+    for (const s of [-1, 1]) {
+      const lobe = mk(new THREE.ConeGeometry(H * 0.14, H * 0.9, 4), finM, L * 0.5, s * H * 0.32, 0);
+      lobe.rotation.z = s * -0.6;
+      lobe.scale.z = 0.3;
+      g.add(lobe);
+      for (let i = 0; i < 4; i++) {
+        const fl = mk(new THREE.ConeGeometry(H * 0.05, H * 0.12, 3), toon('#F2C94C'), L * (0.18 + i * 0.06), s * H * (0.42 - i * 0.05), 0);
+        fl.rotation.z = s > 0 ? 0 : Math.PI;
+        g.add(fl);
+      }
+    }
+  } else {
+    const tail = mk(new THREE.ConeGeometry(H * 0.55, L * 0.3, 4), finM, L * 0.5, 0, 0);
+    tail.rotation.z = Math.PI / 2;
+    tail.scale.z = 0.25;
+    g.add(tail);
+  }
+  if (f.spiny) {
+    for (let i = 0; i < 5; i++) {
+      const sp = mk(new THREE.ConeGeometry(H * 0.07, H * 0.32, 4), finM, -L * 0.14 + i * L * 0.07, H * 0.55, 0);
+      sp.scale.z = 0.4;
+      g.add(sp);
+    }
+  } else {
+    const dorsal = mk(new THREE.ConeGeometry(H * 0.25, H * 0.5, 4), tuna ? toon(f.back) : finM, -L * 0.02, H * 0.5, 0);
+    dorsal.scale.z = 0.25;
+    dorsal.rotation.z = -0.4;
+    g.add(dorsal);
+  }
   if (f.stripe) { const st = mk(new THREE.SphereGeometry(0.5, 16, 8), toon(f.stripe)); st.scale.set(L * 0.7, H * 0.25, H * 0.62); g.add(st); }
-  if (f.spots) for (let i = 0; i < 6; i++) g.add(mk(new THREE.SphereGeometry(H * 0.07, 6, 5), toon(f.spots), -L * 0.18 + i * L * 0.08, (i % 2 ? -1 : 1) * H * 0.12, H * 0.28));
+  if (f.lateral) { const st = mk(new THREE.SphereGeometry(0.5, 16, 8), toon(f.lateral)); st.scale.set(L * 0.7, H * 0.08, H * 0.62); g.add(st); }
+  if (f.spots) for (let i = 0; i < 6; i++) g.add(mk(new THREE.SphereGeometry(H * 0.07, 6, 5), toon(f.spots), -L * 0.18 + i * L * 0.08, (i % 2 ? -1 : 1) * H * 0.12 + (f.deep ? H * 0.12 : 0), H * 0.28));
   for (const s of [-1, 1]) {
     g.add(mk(new THREE.SphereGeometry(H * 0.13, 10, 8), toon('#FFFFFF'), -L * 0.28, H * 0.12, s * H * 0.24));
     g.add(mk(new THREE.SphereGeometry(H * 0.07, 8, 6), toon('#2E2A2A'), -L * 0.3, H * 0.12, s * H * 0.3));
@@ -478,7 +613,7 @@ export function createPlay3D(ctx) {
   function begin(id, name, game, side = [], seat = -1) {
     cur = { id, game };
     v.enterGame(game);
-    ui.open({ name, onExit: () => stopAll(), side });
+    ui.open({ name, onExit: () => (game.onExit ? game.onExit() : stopAll()), side });
     setActivity(id, seat);
     setScene('game');
   }
@@ -510,6 +645,25 @@ export function createPlay3D(ctx) {
       if (s && s.d < 1.6) v.pinRemote(r.id, { x: s.x, y: 0.2, z: s.z, rot: -Math.PI / 2, pose: rodPose, auto: true });
       return;
     }
+    if (act === 'sea' && v.sea) {
+      // 바다 낚시: 친구 배를 띄워 친구를 앉힌다. 친구가 알려 준 자리로 배가 노를 저어 간다
+      const near = (q) => onPier(q.x, q.z, 0.5) || Math.hypot(q.x - MOOR.x, q.z - MOOR.z) < 3;
+      const goal = near(p) ? MOOR : { x: p.x, z: p.z };
+      const spot = SEA_SPOTS.find((s) => Math.hypot(s.x - goal.x, s.z - goal.z) < 1.5);
+      const face = goal === MOOR ? BOAT_FACE : spot ? spot.face : null;
+      if (r.pin && r.pin.kind === 'sea') {
+        const bp = r.pin.car.position;
+        if (Math.hypot(bp.x - goal.x, bp.z - goal.z) > 0.3) v.sea.sail(r.pin.car, v.sea.route(r.pin.car, goal), { face });
+        return;
+      }
+      if (r.pin && r.pin.auto) v.unpinRemote(r.id);
+      const b = v.sea.friendBoat();
+      b.position.x = goal.x; b.position.z = goal.z;
+      if (face != null) b.rotation.y = face;
+      if (!av.held || !av.held.obj.userData.isRod) av.hold(makeRod());
+      v.pinRemote(r.id, { kind: 'sea', obj: seatOf(b), car: b, auto: true, pose: seaRodPose });
+      return;
+    }
     if (act === 'omok') {
       const s = nearest(omokSeats(), p);
       if (s && s.d < 1.6) v.pinRemote(r.id, { x: s.x, y: SEAT_Y, z: s.z, rot: s.rot, pose: seatPose({}), auto: true });
@@ -517,11 +671,11 @@ export function createPlay3D(ctx) {
     }
     if (r.pin && r.pin.auto) v.unpinRemote(r.id);
     if (av.held && av.held.obj.userData.isRod) { const o = av.held.obj; av.drop(); disposeTree(o); }
-    if (av.pose === rodPose) av.pose = null;
+    if (av.pose === rodPose || av.pose === seaRodPose) av.pose = null;
   }
 
   // =====================================================================
-  // 낚시
+  // 낚시: 반짝 연못과 바다 낚시 나루터가 같은 놀이를 쓴다
   // =====================================================================
   const POND = { x: -9.5, z: 13, rx: 3.6, rz: 3.06 };
   const CAM_F = [3.4, 6.4, 5.0]; // 낚시 카메라: 아이 뒤쪽 옆 높은 곳에서 연못을 내려다본다 (머리가 찌를 가리지 않게)
@@ -530,31 +684,89 @@ export function createPlay3D(ctx) {
     return [[0.36, -1.85], [-0.36, -1.85]].map(([lx, lz]) => spotPoint(sp, lx, 0.2, lz));
   }
 
+  // 연못: 낚시터 데크 두 자리 가운데 빈 곳에 서서 서쪽 연못으로 던진다
   function fishing() {
     stopAll();
-    const pl = v.player;
     const stands = fishStands();
     let stand = stands[0];
     for (const s of stands) {
       const busy = [...v.remotes.values()].some((r) => Math.hypot(r.av.root.position.x - s.x, r.av.root.position.z - s.z) < 0.5);
       if (!busy) { stand = s; break; }
     }
+    v.placePlayer(stand.x, stand.z, -Math.PI / 2, 0.2);
+    const inPond = (x, z, m = 0) => ((x - POND.x) / (POND.rx - m)) ** 2 + ((z - POND.z) / (POND.rz - m)) ** 2 < 1 && !(x > -8.3 && Math.abs(z - 12.9) < 0.95);
+    const far = portrait() ? 1.3 : 1;
+    fishGame({
+      id: 'fish', title: '반짝 연못 낚시터', hook: 'kids_fish_hook', place: 'pond', wy: 0, water: '연못',
+      kid: V(stand.x, 0.2, stand.z), fwd: V(-1, 0, 0),
+      inWater: inPond,
+      spawnPt: () => V(POND.x + (Math.random() - 0.5) * POND.rx * 1.7, 0, POND.z + (Math.random() - 0.5) * POND.rz * 1.7),
+      canCast: (pt) => inPond(pt.x, pt.z, 0.15) && pt.x < stand.x - 0.6 && Math.hypot(pt.x - stand.x, pt.z - stand.z) < 3.8,
+      cams: () => ({
+        normal: { pos: V(stand.x + CAM_F[0] * far, CAM_F[1] * far, stand.z + CAM_F[2] * far), look: V(stand.x - 2.3, 0.2, stand.z - 0.15) },
+        catch: { pos: V(stand.x - 4.6 * far, 2.2, stand.z + 1.3 * far), look: V(stand.x, 1.35, stand.z) },
+      }),
+    });
+  }
+
+  // 바다: 나루터에 묶인 배에 앉아 노를 저어 바다로 나간 뒤, 뱃머리 앞바다에 던진다
+  function seaFishing() {
+    stopAll();
+    const sea = v.sea;
+    if (!sea) return;
+    sea.dock(sea.boat);
+    const K = V(), F = V(0, 0, 1);
+    const far = portrait() ? 1.3 : 1;
+    const area = () => K.clone().addScaledVector(F, 3.0); // 물고기 그림자가 노는 곳 (뱃머리 앞)
+    const inSea = (x, z, m = 0) => {
+      const c = area();
+      return Math.hypot(x - c.x, z - c.z) < 2.5 - m && Math.hypot(x - K.x, z - K.z) > 1.55 + m;
+    };
+    fishGame({
+      id: 'sea', title: '바다 낚시 나루터', hook: 'kids_sea_hook', place: 'sea', wy: SEA_Y, water: '바다', sit: true,
+      boat: sea.boat, sea, kid: K, fwd: F,
+      inWater: inSea,
+      spawnPt: () => { const c = area(), a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * 2.4; return V(c.x + Math.cos(a) * r, 0, c.z + Math.sin(a) * r); },
+      canCast: (pt) => inSea(pt.x, pt.z, 0.15) && Math.hypot(pt.x - K.x, pt.z - K.z) < 5.2,
+      cams: () => {
+        const S = V(-F.z, 0, F.x);
+        return {
+          normal: { pos: K.clone().addScaledVector(F, -6.2 * far).addScaledVector(S, 2.6 * far).setY(SEA_Y + 4.4 * far), look: K.clone().addScaledVector(F, 2.2).setY(SEA_Y + 1.0) },
+          catch: { pos: K.clone().addScaledVector(F, 5.8 * far).addScaledVector(S, 1.6 * far).setY(K.y + 2.0), look: K.clone().setY(K.y + 1.35) },
+        };
+      },
+    });
+  }
+
+  // P: { id, title, hook(서버 함수), place, wy(물 높이), water(물 이름), sit(앉아서), kid(아이 자리), fwd(바라보는 쪽),
+  //      inWater(x, z, 가장자리 여유), spawnPt(), canCast(누른 곳), cams(), boat와 sea(바다일 때) }
+  function fishGame(P) {
+    const pl = v.player;
+    const boat = P.boat || null, sea = P.sea || null;
+    const WY = P.wy;
     const grp = new THREE.Group();
     v.scene.add(grp);
-    v.placePlayer(stand.x, stand.z, -Math.PI / 2, 0.2);
     const rod = makeRod();
     pl.hold(rod, 1);
     let armA = -1.05, armTarget = -1.05;
+    const sitLegs = (av) => { if (P.sit) { av.legs[0].rotation.x = av.legs[1].rotation.x = -1.45; av.body.position.y = 0; } };
     const holdPose = (av, dt) => {
       armA = lerp(armA, armTarget, 1 - Math.exp(-dt * 14));
       av.arms[1].rotation.x = armA; av.arms[1].rotation.z = 0.05;
       av.arms[0].rotation.x = armA * 0.78; av.arms[0].rotation.z = 0.35;
+      sitLegs(av);
+    };
+    const catchPose = (av, dt, t) => { showPose(av, dt, t); sitLegs(av); };
+    // 노 젓기: 노 손잡이를 따라 두 팔을 앞뒤로
+    const rowPose = (av) => {
+      const u = boat.userData;
+      av.arms[0].rotation.x = av.arms[1].rotation.x = -1.05 - Math.sin(u.ph) * 0.35 * u.row;
+      av.arms[0].rotation.z = 0.25; av.arms[1].rotation.z = -0.25;
+      sitLegs(av);
     };
     pl.pose = holdPose;
-    const far = portrait() ? 1.3 : 1;
-    const camNormal = { pos: V(stand.x + CAM_F[0] * far, CAM_F[1] * far, stand.z + CAM_F[2] * far), look: V(stand.x - 2.3, 0.2, stand.z - 0.15) };
-    const camCatch = { pos: V(stand.x - 4.6 * far, 2.2, stand.z + 1.3 * far), look: V(stand.x, 1.35, stand.z) };
-    const game = { cam: camNormal, camSpeed: 2.6 };
+    let cams = P.cams();
+    const game = { cam: cams.normal, camSpeed: 2.6 };
 
     // 찌와 낚싯줄
     const bob = new THREE.Group();
@@ -580,14 +792,14 @@ export function createPlay3D(ctx) {
     function ripple(x, z, size = 1) {
       const m = new THREE.Mesh(new THREE.RingGeometry(0.07, 0.1, 28), basicMat('#FFFFFF', 0.85));
       m.rotation.x = -Math.PI / 2;
-      m.position.set(x, 0.05, z);
+      m.position.set(x, WY + 0.05, z);
       grp.add(m);
       fx.push({ m, life: 0, max: 0.9, kind: 'ring', size });
     }
     function splash(x, z, n = 8) {
       for (let i = 0; i < n; i++) {
         const m = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 4), basicMat('#DFF4FF', 0.95));
-        m.position.set(x, 0.06, z);
+        m.position.set(x, WY + 0.06, z);
         grp.add(m);
         const a = Math.random() * Math.PI * 2, s = 0.6 + Math.random() * 0.8;
         fx.push({ m, life: 0, max: 0.6, kind: 'drop', vel: V(Math.cos(a) * s * 0.6, 1.4 + Math.random(), Math.sin(a) * s * 0.6) });
@@ -595,17 +807,17 @@ export function createPlay3D(ctx) {
     }
 
     // 물고기 그림자
-    const inPond = (x, z, m = 0) => ((x - POND.x) / (POND.rx - m)) ** 2 + ((z - POND.z) / (POND.rz - m)) ** 2 < 1 && !(x > -8.3 && Math.abs(z - 12.9) < 0.95);
+    const inWater = P.inWater;
     const SIZES = ['tiny', 'small', 'small', 'medium', 'medium', 'large'];
     const shadows = [];
     function placeShadow(s, nearX, nearZ, dist) {
       for (let i = 0; i < 60; i++) {
         let x, z;
         if (nearX != null) { const a = Math.random() * Math.PI * 2; x = nearX + Math.cos(a) * dist; z = nearZ + Math.sin(a) * dist; } else {
-          x = POND.x + (Math.random() - 0.5) * POND.rx * 1.7;
-          z = POND.z + (Math.random() - 0.5) * POND.rz * 1.7;
+          const q = P.spawnPt();
+          x = q.x; z = q.z;
         }
-        if (inPond(x, z, 0.45)) { s.x = x; s.z = z; return true; }
+        if (inWater(x, z, 0.45)) { s.x = x; s.z = z; return true; }
       }
       return false;
     }
@@ -618,11 +830,11 @@ export function createPlay3D(ctx) {
     }
     for (let i = 0; i < 4; i++) {
       const holder = new THREE.Group();
-      const mat = basicMat('#163545', 0.001);
+      const mat = basicMat(boat ? '#0E3550' : '#163545', 0.001);
       const body = new THREE.Mesh(new THREE.CircleGeometry(0.5, 22), mat);
       body.rotation.x = -Math.PI / 2;
       holder.add(body);
-      holder.position.y = 0.04;
+      holder.position.y = WY + 0.04;
       grp.add(holder);
       const s = { holder, body, mat };
       spawnShadow(s);
@@ -632,6 +844,7 @@ export function createPlay3D(ctx) {
     // 상태
     let st = 'idle', t = 0, active = null, pending = null, hooking = false, lastHook = 0;
     let nibbles = 0, nextNibble = 0, biteUntil = 0, waitT = 0, held = null, landed = null, showTimer = null;
+    let spotI = 0, leaving = false;
     const target = V(), from = V();
     const say = (txt) => ui.say(txt);
 
@@ -641,25 +854,28 @@ export function createPlay3D(ctx) {
       armTarget = -1.05;
       rod.visible = true;
       pl.pose = holdPose;
-      game.cam = camNormal;
+      game.cam = cams.normal;
       say(msg);
       ui.setMain('던지기', { onClick: () => cast() });
     }
 
     function cast(pt) {
       if (st !== 'idle') return;
+      const K = P.kid, F = P.fwd;
       if (!pt) {
         // 가장 가까운 그림자 쪽으로 던진다
         let best = null, bd = 9;
         for (const s of shadows) {
           if (s.state !== 'wander' || s.op < 0.4) continue;
-          const d = Math.hypot(s.x - stand.x, s.z - stand.z);
-          if (d < bd && d > 1.4 && d < 3.4) { bd = d; best = s; }
+          const d = Math.hypot(s.x - K.x, s.z - K.z);
+          if (d < bd && d > 1.4 && d < (boat ? 4.8 : 3.4)) { bd = d; best = s; }
         }
-        pt = best ? V(best.x + (Math.random() - 0.5) * 0.5, 0.05, best.z + (Math.random() - 0.5) * 0.5) : V(stand.x - 1.9 - Math.random() * 0.7, 0.05, stand.z + (Math.random() - 0.5) * 1.0);
-        if (!inPond(pt.x, pt.z, 0.3)) pt.set(stand.x - 2.0, 0.05, stand.z);
+        const side = (Math.random() - 0.5) * 1.0;
+        pt = best ? V(best.x + (Math.random() - 0.5) * 0.5, 0, best.z + (Math.random() - 0.5) * 0.5)
+          : K.clone().addScaledVector(F, (boat ? 2.6 : 1.9) + Math.random() * 0.7).add(V(-F.z * side, 0, F.x * side));
+        if (!inWater(pt.x, pt.z, 0.3)) pt = K.clone().addScaledVector(F, boat ? 3.0 : 2.0);
       }
-      target.copy(pt).setY(0.05);
+      target.copy(pt).setY(WY + 0.05);
       st = 'cast'; t = 0;
       armTarget = -2.8;
       ui.setMain('…', { disabled: true });
@@ -681,7 +897,7 @@ export function createPlay3D(ctx) {
       if (st !== 'approach' && st !== 'nibble') { hooking = false; return; }
       lastHook = performance.now();
       try {
-        const res = await rpc('kids_fish_hook', { p_token: getToken() });
+        const res = await rpc(P.hook, { p_token: getToken() });
         if (st !== 'approach' && st !== 'nibble') return;
         pending = res;
         const f = fishById(res.fish);
@@ -723,7 +939,7 @@ export function createPlay3D(ctx) {
       sfx.splash();
       const f = pending ? fishById(pending.fish) : null;
       const len = f && f.rarity >= 0 ? Math.max(0.3, Math.min(0.8, 0.22 + (pending.size || 10) / 90)) : 0.38;
-      held = makeFish3D(f || fishById('crucian'), len);
+      held = makeFish3D(f || fishById(boat ? 'jack' : 'crucian'), len);
       held.position.copy(bob.position);
       grp.add(held);
       from.copy(bob.position);
@@ -732,6 +948,7 @@ export function createPlay3D(ctx) {
       landed = null;
       try { landed = await rpc('kids_fish_land', { p_token: getToken() }); } catch (e) {
         if (lost(e)) return;
+        if (st !== 'landing') return;
         disposeTree(held); held = null;
         setIdle(message(e));
       }
@@ -743,12 +960,12 @@ export function createPlay3D(ctx) {
       const f = fishById(r.fish) || { name: r.name, rarity: r.rarity };
       st = 'show'; t = 0;
       rod.visible = false;
-      pl.pose = showPose;
-      game.cam = camCatch;
+      pl.pose = catchPose;
+      game.cam = cams.catch;
       if (f.rarity < 0) {
-        ui.banner(`${josa(f.name, '을', '를')} 건졌다!`, '연못이 조금 깨끗해졌어요', 3000);
+        ui.banner(`${josa(f.name, '을', '를')} 건졌다!`, `${josa(P.water, '이', '가')} 조금 깨끗해졌어요`, 3000);
         sfx.blub();
-        say('물고기는 아니지만 괜찮아요. 연못 청소를 했네요!');
+        say(`물고기는 아니지만 괜찮아요. ${P.water} 청소를 했네요!`);
       } else {
         const note = r.first ? '처음 잡았어요! 도감에 올랐어요' : r.best ? '내 기록보다 커요!' : RARITY[f.rarity];
         ui.banner(`${josa(f.name, '을', '를')} 잡았다!`, `${r.size}cm · ${note}`, 3000);
@@ -765,27 +982,96 @@ export function createPlay3D(ctx) {
       }, 3300);
     }
 
+    // ---------- 배 (바다에서만) ----------
+    const followCam = { pos: V(), look: V() };
+    function aimFollow() {
+      const b = boat.position, a = boat.rotation.y, far = portrait() ? 1.3 : 1;
+      const fx0 = Math.sin(a), fz0 = Math.cos(a);
+      followCam.pos.set(b.x - fx0 * 7.5 * far - fz0 * 3.0 * far, SEA_Y + 6.0 * far, b.z - fz0 * 7.5 * far + fx0 * 3.0 * far);
+      followCam.look.set(b.x + fx0 * 2.2, SEA_Y + 0.4, b.z + fz0 * 2.2);
+    }
+    function clearLine() {
+      if (active) flee(active);
+      active = null; pending = null;
+      bob.visible = false; line.visible = false;
+      if (held) { disposeTree(held); held = null; }
+      clearTimeout(showTimer);
+    }
+    // i번째 바다 자리로 노를 저어 간다
+    function sailTo(i, msg) {
+      clearLine();
+      st = 'sail';
+      spotI = i;
+      rod.visible = false;
+      pl.pose = rowPose;
+      for (const s of shadows) { s.state = 'gone'; s.t = -99; s.op = 0; }
+      aimFollow();
+      game.cam = followCam;
+      ui.setMain('…', { disabled: true });
+      say(msg);
+      const spot = SEA_SPOTS[i];
+      sea.sail(boat, sea.route(boat, spot), { face: spot.face, onArrive: arrive });
+    }
+    function arrive() {
+      if (st !== 'sail' || leaving || !live(game)) return;
+      boat.updateMatrixWorld(true);
+      seatOf(boat).getWorldPosition(P.kid);
+      P.fwd.set(Math.sin(boat.rotation.y), 0, Math.cos(boat.rotation.y));
+      v.placePlayer(P.kid.x, P.kid.z, boat.rotation.y, P.kid.y); // 친구들에게 배가 선 자리를 알린다
+      cams = P.cams();
+      for (const s of shadows) { spawnShadow(s); s.op = 0; }
+      setIdle(spotI === 0 ? '바다에 왔어요! 물고기 그림자 가까이 물을 누르거나 ‘던지기’를 눌러요.' : '여기서 던져 볼까요?');
+    }
+    function moveSpot() {
+      if (!boat || leaving) return;
+      if (st !== 'idle') { say('낚싯줄을 다 감은 다음에 옮겨요.'); return; }
+      sailTo((spotI + 1) % SEA_SPOTS.length, '다른 자리로 가 볼까요? 영차영차!');
+    }
+    // 그만: 나루터까지 노를 저어 돌아간 뒤 내린다 (한 번 더 누르면 바로 내린다)
+    game.onExit = () => {
+      if (!boat || leaving || st === 'stopped') { stopAll(); return; }
+      leaving = true;
+      clearLine();
+      st = 'sail';
+      rod.visible = false;
+      pl.pose = rowPose;
+      for (const s of shadows) if (s.state !== 'gone') flee(s);
+      aimFollow();
+      game.cam = followCam;
+      ui.setMain('…', { disabled: true });
+      say('나루터로 돌아가요. ‘그만’을 한 번 더 누르면 바로 내려요.');
+      sea.sail(boat, sea.route(boat, MOOR), { face: BOAT_FACE, speed: 3.4, onArrive: () => { if (live(game)) stopAll(); } });
+    };
+
     game.onTap = (ray) => {
       if (st === 'idle') {
         const pt = V();
-        const ok = ray.ray.intersectPlane(new THREE.Plane(V(0, 1, 0), -0.05), pt);
-        if (ok && inPond(pt.x, pt.z, 0.15) && pt.x < stand.x - 0.6 && pt.distanceTo(V(stand.x, 0.05, stand.z)) < 3.8) cast(pt);
-        else if (ok && inPond(pt.x, pt.z, 0)) say('조금 더 가까운 물을 눌러 봐요.');
+        const ok = ray.ray.intersectPlane(new THREE.Plane(V(0, 1, 0), -(WY + 0.05)), pt);
+        if (ok && P.canCast(pt)) cast(pt);
+        else if (ok && inWater(pt.x, pt.z, 0)) say('조금 더 가까운 물을 눌러 봐요.');
       } else if (st === 'bite' || st === 'wait' || st === 'approach' || st === 'nibble') pull();
     };
 
     game.update = (dt, time) => {
+      if (boat) {
+        // 배에 앉은 채로 배와 함께 흔들린다
+        const seat = seatOf(boat);
+        boat.updateMatrixWorld(true);
+        seat.getWorldPosition(pl.root.position);
+        pl.root.rotation.set(0, boat.rotation.y, 0); // 방향만 (기울기까지 옮기면 rotation.y가 뒤집혀 읽힌다)
+        if (st === 'sail') aimFollow();
+      }
       for (const s of shadows) {
         s.t += dt;
         if (s.state === 'gone') { s.op = 0; if (s.t > 2.5) spawnShadow(s); } else if (s.state === 'flee') {
           s.x += Math.sin(s.a) * 1.6 * dt; s.z += Math.cos(s.a) * 1.6 * dt;
           s.op = Math.max(0, s.op - dt * 1.4);
-          if (s.op <= 0) { s.state = 'gone'; s.t = 0; }
+          if (s.op <= 0) { s.state = 'gone'; s.t = st === 'sail' ? -99 : 0; }
         } else if (s.state === 'wander') {
           s.op = Math.min(1, s.op + dt * 0.8);
           s.a += (Math.sin(time * 0.7 + s.len * 9) * 0.6 + (Math.random() - 0.5)) * dt;
           const nx = s.x + Math.sin(s.a) * s.speed * dt, nz = s.z + Math.cos(s.a) * s.speed * dt;
-          if (inPond(nx, nz, 0.3)) { s.x = nx; s.z = nz; } else s.a += Math.PI * (0.6 + Math.random() * 0.4);
+          if (inWater(nx, nz, 0.3)) { s.x = nx; s.z = nz; } else s.a += Math.PI * (0.6 + Math.random() * 0.4);
         } else {
           s.op = Math.min(1, s.op + dt);
           const nose = s.len * 0.5 + 0.05;
@@ -874,11 +1160,11 @@ export function createPlay3D(ctx) {
         }
         if (st !== 'reel') {
           bob.userData.dip = Math.max(0, (bob.userData.dip || 0) - dt * 0.25);
-          bob.position.set(target.x, 0.05 + Math.sin(time * 2.4) * 0.008 - bob.userData.dip, target.z);
+          bob.position.set(target.x, WY + 0.05 + Math.sin(time * 2.4) * 0.008 - bob.userData.dip, target.z);
         }
       } else if (st === 'landing') {
         t += dt;
-        const head = handFront(pl, 0.5, 1.0);
+        const head = handFront(pl, 0.5, P.sit ? 0.85 : 1.0);
         if (held) {
           const k = clamp01(t / 0.7);
           held.position.lerpVectors(from, head, ease(k));
@@ -889,7 +1175,7 @@ export function createPlay3D(ctx) {
       } else if (st === 'show') {
         t += dt;
         if (held) {
-          held.position.copy(handFront(pl, 0.5, 1.0));
+          held.position.copy(handFront(pl, 0.5, P.sit ? 0.85 : 1.0));
           held.rotation.set(0, pl.root.rotation.y, Math.sin(t * 9) * 0.12);
         }
       }
@@ -924,16 +1210,22 @@ export function createPlay3D(ctx) {
       pl.drop();
       disposeTree(rod);
       pl.pose = null;
+      if (boat) {
+        // 배는 나루터에 다시 묶고, 나는 배 타는 곳에 내려 선다 (섬 쪽을 보고)
+        sea.dock(boat);
+        v.placePlayer(BOARD.x, BOARD.z, BOAT_FACE + Math.PI, 0);
+      }
     };
     game.state = () => st;
 
     const book = () => {
       const box = h('div', { class: 'mem pond-tabs' }, h('p', { class: 'empty-big' }, '도감을 꺼내고 있어요…'));
       modal.open('물고기 도감', box, { cls: 'game-sheet' });
-      renderFishBook(box, { rpc, getToken, onSessionLost: () => lost({ code: 'SESSION' }) });
+      renderFishBook(box, { rpc, getToken, onSessionLost: () => lost({ code: 'SESSION' }), place: P.place });
     };
-    begin('fish', '반짝 연못 낚시터', game, [['book', '도감', book]]);
-    setIdle();
+    begin(P.id, P.title, game, boat ? [['book', '도감', book], ['swap', '배 옮기기', moveSpot]] : [['book', '도감', book]]);
+    if (boat) sailTo(0, '영차영차! 노를 저어 바다로 나가요.');
+    else setIdle();
   }
 
   // =====================================================================
@@ -945,6 +1237,9 @@ export function createPlay3D(ctx) {
     return [{ x: a.x, z: a.z, rot: sp.rot + Math.PI, side: 1 }, { x: b.x, z: b.z, rot: sp.rot, side: -1 }];
   }
 
+  // 혼자 둘 때 고른 난이도 (기기에 기억)
+  function omokLevel() { try { const v = localStorage.getItem('kv.omokLevel'); return OMOK_LEVELS.some(([k]) => k === v) ? v : 'normal'; } catch (e) { return 'normal'; } }
+  function setOmokLevel(v) { try { localStorage.setItem('kv.omokLevel', v); } catch (e) { /* 이번만 */ } }
   function omokMenu() {
     const tok = ++menuTok;
     const friends = onlineFriends();
@@ -955,9 +1250,11 @@ export function createPlay3D(ctx) {
           h('li', {}, h('b', {}, '번갈아 놓아요'), h('span', {}, '검은 돌이 먼저예요. 판에서 줄이 만나는 곳을 누르면 돌이 비쳐 보이고, 한 번 더 누르거나 ‘놓기’를 누르면 놓여요.')),
           h('li', {}, h('b', {}, '다섯 개를 한 줄로'), h('span', {}, '가로, 세로, 대각선 어느 쪽이든 내 돌 다섯 개를 먼저 이으면 이겨요.')),
           h('li', {}, h('b', {}, '친구를 막아요'), h('span', {}, '친구 돌이 셋이나 넷으로 이어지면 끝을 막아 줘요.')))),
-      h('div', { class: 'mode-pick' },
-        h('button', { class: 'mode', type: 'button', onclick: () => { menuTok++; modal.close(); omok({}); } },
-          h('b', {}, '숲지기 솔과 두기'), h('span', {}, '컴퓨터와 연습해요. 내가 먼저 검은 돌이에요.'))),
+      h('div', { class: 'sub-head' }, h('h3', {}, '숲지기 솔과 두기'), h('p', {}, '난이도를 골라요. 내가 먼저 검은 돌이에요.')),
+      h('div', { class: 'mode-pick levels' }, OMOK_LEVELS.map(([lv, name, desc]) => h('button', {
+        class: 'mode' + (lv === omokLevel() ? ' last' : ''), type: 'button', 'data-level': lv,
+        onclick: () => { menuTok++; setOmokLevel(lv); modal.close(); omok({ level: lv }); },
+      }, h('b', {}, `${{ easy: '🌱', normal: '🌳', hard: '🏔️' }[lv]} ${name}`), h('span', {}, desc)))),
       ...(() => {
         const games = ctx.watchable ? ctx.watchable() : [];
         if (!games.length) return [];
@@ -979,8 +1276,9 @@ export function createPlay3D(ctx) {
     modal.open('오목 놀이터', body, { cls: 'game-sheet', onClose: () => { if (tok === menuTok) menuTok++; } });
   }
 
-  function omok({ session = null } = {}) {
+  function omok({ session = null, level = omokLevel() } = {}) {
     stopAll();
+    const LV_NAME = Object.fromEntries(OMOK_LEVELS.map(([k, n]) => [k, n]));
     const sp = v.spots.omok;
     const N = 13, BS = 1.08, C = BS / (N + 1);
     const idx = (x, y) => y * N + x;
@@ -1051,6 +1349,7 @@ export function createPlay3D(ctx) {
     const camClose = camAt(sp, [1.05 * S, 2.7, 0], [0, 0.86, 0], 1.2);
     const game = { cam: camWide, camSpeed: 2.2 };
     const oppName = session ? session.peerName : '숲지기 솔';
+    const oppTag = session ? oppName : `${oppName}(${LV_NAME[level] || '보통'})`;
 
     let g = null;
     let meLabel = null, opLabel = null;
@@ -1076,7 +1375,7 @@ export function createPlay3D(ctx) {
       setTimeout(broadcast, 50);
       if (meLabel) { meLabel.remove(); opLabel.remove(); }
       meLabel = ui.label(`나 · ${colorName(me)}`);
-      opLabel = ui.label(`${oppName} · ${colorName(me === 1 ? 2 : 1)}`);
+      opLabel = ui.label(`${oppTag} · ${colorName(me === 1 ? 2 : 1)}`);
       turnText();
       if (g.turn !== g.me) opponentTurn();
     }
@@ -1191,7 +1490,7 @@ export function createPlay3D(ctx) {
       setTimeout(() => {
         if (!live(game) || !g || g.over || g.round !== round) return;
         const c = g.me === 1 ? 2 : 1;
-        const [x, y] = aiMove(g.board, c);
+        const [x, y] = aiMove(g.board, c, session ? 'normal' : level);
         place(x, y, c);
       }, 700 + Math.random() * 800);
     }
@@ -2539,7 +2838,7 @@ export function createPlay3D(ctx) {
 
   return {
     ride: rides.ride,
-    fishing, omokMenu, omok, omokWatch, cookMenu, cook, cookFree, easel, artSaved,
+    fishing, seaFishing, omokMenu, omok, omokWatch, cookMenu, cook, cookFree, easel, artSaved,
     observe(id, st) { if (watchUpdate) watchUpdate(id, st); },
     stop: stopAll, decorateRemote,
     get active() { return cur && cur.id; },

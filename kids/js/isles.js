@@ -17,6 +17,19 @@ export const BRIDGES = [
 export const WORLD_CENTER = { x: 19, z: 27 };
 export const WORLD_HALF = { w: 53, h: 61 };
 
+// 바다 낚시 나루터: 마을 섬 남동쪽(45도) 바닷가에서 바다로 곧게 뻗은 나무 다리.
+// (x, z)는 섬 안쪽 시작점, (ux, uz)는 바다 쪽 방향. 길이 len, 걷는 반너비 hw. 끝 end만큼은 hw2로 넓은 마당(배 타는 곳)이다.
+const PA = Math.PI / 4;
+export const PIER = { x: Math.cos(PA) * 28.4, z: Math.sin(PA) * 28.4, ux: Math.cos(PA), uz: Math.sin(PA), len: 14.6, hw: 0.95, end: 3.2, hw2: 1.75 };
+// 나루터 자리(u: 바다 쪽으로 간 거리, w: 오른쪽 옆, 배가 묶인 쪽)를 마을 좌표로
+export function pierPoint(u, w = 0) { return { x: PIER.x + PIER.ux * u - PIER.uz * w, z: PIER.z + PIER.uz * u + PIER.ux * w }; }
+export function pierLocal(x, z) { const dx = x - PIER.x, dz = z - PIER.z; return { u: dx * PIER.ux + dz * PIER.uz, w: -dx * PIER.uz + dz * PIER.ux }; }
+const PIER_RECTS = [[0, PIER.len, PIER.hw], [PIER.len - PIER.end, PIER.len, PIER.hw2]];
+export function onPier(x, z, m = 0) {
+  const { u, w } = pierLocal(x, z);
+  return PIER_RECTS.some(([u0, u1, hw]) => u >= u0 - m && u <= u1 + m && Math.abs(w) <= hw + m);
+}
+
 // 섬과 다리를 한 줄로 놓으면: 놀이동산 섬 - 다리 - 마을 섬 - 다리 - 수영장 섬
 // 서로 다른 곳으로 갈 때는 다리 끝을 거쳐 간다.
 const CHAIN = ['park', 'b-park', 'main', 'b-pool', 'pool'];
@@ -42,6 +55,7 @@ export function clampWalk(p) {
   const circles = [{ x: 0, z: 0, r: MAIN_WALK }, { x: PARK_ISLE.x, z: PARK_ISLE.z, r: PARK_ISLE.walk }, { x: POOL_ISLE.x, z: POOL_ISLE.z, r: POOL_ISLE.walk }];
   for (const c of circles) if (Math.hypot(p.x - c.x, p.z - c.z) <= c.r) return p;
   for (const b of BRIDGES) if (p.x >= b.x0 && p.x <= b.x1 && p.z >= b.z0 && p.z <= b.z1) return p;
+  if (onPier(p.x, p.z)) return p;
   let bx = p.x, bz = p.z, bd = Infinity;
   for (const c of circles) {
     const dx = p.x - c.x, dz = p.z - c.z, d = Math.hypot(dx, dz) || 1;
@@ -53,6 +67,12 @@ export function clampWalk(p) {
     const qx = Math.max(b.x0, Math.min(b.x1, p.x)), qz = Math.max(b.z0, Math.min(b.z1, p.z));
     const e = Math.hypot(p.x - qx, p.z - qz);
     if (e < bd) { bd = e; bx = qx; bz = qz; }
+  }
+  const { u, w } = pierLocal(p.x, p.z);
+  for (const [u0, u1, hw] of PIER_RECTS) {
+    const q = pierPoint(Math.max(u0, Math.min(u1, u)), Math.max(-hw, Math.min(hw, w)));
+    const e = Math.hypot(p.x - q.x, p.z - q.z);
+    if (e < bd) { bd = e; bx = q.x; bz = q.z; }
   }
   p.x = bx;
   p.z = bz;

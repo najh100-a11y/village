@@ -41,6 +41,7 @@ const token = () => state.token;
 
 const SOON = {
   shop: ['열매 상점', '모은 열매로 옷과 모자, 꾸미기 도구를 사는 곳이에요.'],
+  sea: ['바다 낚시 나루터', '배를 타고 바다에 나가 바다 물고기를 낚는 곳이에요.'],
 };
 const DONE_TEXT = {
   memory: '이번 주 말씀을 연습했어요',
@@ -402,7 +403,7 @@ async function refreshToday() {
 // 놀이 마당: 그날 암송·묵상·필사 가운데 하나라도 마쳐야 열린다
 const playOpen = () => !!(state.today && state.today.cleared);
 const GAMES = {
-  fish: () => play3d.fishing(), omok: () => play3d.omokMenu(), cook: () => play3d.cookMenu(), art: () => play3d.easel(),
+  fish: () => play3d.fishing(), sea: () => play3d.seaFishing(), omok: () => play3d.omokMenu(), cook: () => play3d.cookMenu(), art: () => play3d.easel(),
   ferris: () => play3d.ride('ferris'), viking: () => play3d.ride('viking'), carousel: () => play3d.ride('carousel'), bumper: () => play3d.ride('bumper'), coaster: () => play3d.ride('coaster'),
 };
 let benchTold = false, munchSaid = false, jumpSent = 0;
@@ -962,7 +963,8 @@ function showNews() {
   news.push(['run', "새 소식! '달리기' 단추를 누르면 빨리 달려요(컴퓨터는 Shift 키). 내 집 침대에 누울 수도 있어요."]);
   if (state.features.wardrobe) news.push(['wardrobe', "새 소식! 열매 상점에 천사 날개, 망토, 안경 같은 꾸미기 물건이 왔어요. '꾸미기'(옷장)에는 잠옷도 생겼어요."]);
   if (state.features.gift) news.push(['gift', '새 소식! 친구에게 열매를 선물할 수 있어요. 열매 상점의 선물 칸이나 친구 목록에서 보내요.']);
-  if (state.features.sell) news.push(['sell', '새 소식! 잡은 물고기와 곤충을 열매 상점에서 팔 수 있어요.']);
+  if (state.features.sell) news.push(['sell2', '새 소식! 잡은 물고기와 곤충을 열매 상점에서 팔 수 있어요. 흔한 것은 10마리에 열매 1개예요.']);
+  if (state.features.sea) news.push(['sea', '새 소식! 마을 남동쪽 바닷가에 바다 낚시 나루터가 생겼어요. 배를 타고 나가 바다 물고기를 낚아 봐요.']);
   const fresh = news.filter(([k]) => { try { return !localStorage.getItem(`kv.news.${k}`); } catch (e) { return false; } });
   fresh.forEach(([k, text]) => notice(text, 5200, () => { try { localStorage.setItem(`kv.news.${k}`, '1'); } catch (e) { /* 다음에 또 */ } }));
 }
@@ -1510,7 +1512,7 @@ function onEnter(id) {
   if (id === 'memory') return openHouse(() => memory.open(), 'memory');
   if (id === 'qt') return openHouse(() => qt.open(), 'qt');
   if (id === 'library') return openHouse(() => copy.open(), 'copy');
-  if (GAMES[id]) return openGame(id);
+  if (GAMES[id] && (id !== 'sea' || state.features.sea)) return openGame(id);
   if (id === 'shop' && state.features.shop) return openShop();
   const s = SOON[id];
   if (s) {
@@ -1535,7 +1537,7 @@ function onNpc() {
   if (t.qt && !t.qt.done) { lines.push(`오늘 묵상은 '${t.qt.title}'이야. 묵상의 숲에 가 볼래?`); go = ['묵상의 숲으로', 'qt']; }
   else if (cur && !cur.practiced_today && !cur.passed) { lines.push(`이번 주 말씀은 ${cur.ref}이야. 암송의 집에서 연습해 볼까?`); go = ['암송의 집으로', 'memory']; }
   else if (t.copy && !t.copy.done) { if (state.features.photo10) lines.push('이번 주 이야기를 공책에 손으로 써서 사진을 올리면 열매를 10개나 받을 수 있어!'); lines.push(t.theme ? `이번 주 필사는 '${t.theme}' 이야기야(${t.copy.ref}). 필사 도서관에서 읽고 따라 써 볼래?` : `이번 주 필사는 ${t.copy.ref}이야. 필사 도서관에서 따라 써 볼래?`); go = ['필사 도서관으로', 'library']; }
-  else if (t.qt || cur) { lines.push('오늘 할 일을 벌써 다 했구나. 정말 멋지다! 친구들 글에 응원도 보내 봐.'); lines.push('남쪽 다리를 건너면 놀이동산 섬이야. 친구랑 회전목마나 바이킹을 타도 좋아. 동쪽 다리 건너 수영장 섬에서 헤엄쳐도 좋고!'); }
+  else if (t.qt || cur) { lines.push('오늘 할 일을 벌써 다 했구나. 정말 멋지다! 친구들 글에 응원도 보내 봐.'); lines.push('남쪽 다리를 건너면 놀이동산 섬이야. 친구랑 회전목마나 바이킹을 타도 좋아. 동쪽 다리 건너 수영장 섬에서 헤엄쳐도 좋고!'); if (state.features.sea) lines.push('남동쪽 바닷가 나루터에서 배를 타고 바다 낚시를 할 수도 있어!'); }
   else lines.push('마을을 천천히 둘러보렴. 남쪽 다리를 건너면 놀이동산 섬, 동쪽 다리를 건너면 수영장 섬이야. 열매가 달린 나무를 누르면 열매를 따 먹을 수 있어.');
   if (state.features.feedback) lines.push('마을에 바라는 게 있거나 이상한 곳을 찾았니? 내 옆 건의함에 적어 주면 선생님께 꼭 전할게.');
   openSheet('숲지기 솔', h('div', { class: 'talk' },

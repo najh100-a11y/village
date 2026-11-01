@@ -81,7 +81,7 @@ export function createArt({ rpc, getToken, onSessionLost, onCelebrate, onShared,
       } else if (tool.tool === 'stamp') {
         subRow.hidden = false;
         subRow.replaceChildren(...STAMPS.map(([id, label]) => h('button', {
-          class: 'stamp' + (tool.stamp === id ? ' on' : ''), type: 'button', 'aria-label': `${label} 도장`, title: label,
+          class: 'pstamp' + (tool.stamp === id ? ' on' : ''), type: 'button', 'aria-label': `${label} 도장`, title: label,
           onclick: () => { tool.stamp = id; drawTools(); },
         }, stampIcon(id, tool.color, 30))));
       } else if (tool.tool === 'hand') {

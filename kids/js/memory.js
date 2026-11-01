@@ -57,14 +57,15 @@ export function createMemory({ rpc, getToken, onFruits, onCelebrate, onBoard, on
 
   function stampGrid() {
     if (!verses.length) return null;
+    // 빨간 도장: 선생님 앞에서 외워서 받은 말씀, 초록 ✓: 연습한 말씀 (진한 초록은 오늘 연습)
     return h('div', { class: 'stamp-grid' }, verses.map((v) => h('button', {
-      class: 'stamp' + (v.passed ? ' passed' : v.practice_count ? ' practiced' : '') + (v.is_current ? ' current' : ''),
+      class: 'stamp' + (v.passed ? ' passed' : v.practice_count ? ' practiced' : '') + (!v.passed && v.practiced_today ? ' today' : '') + (v.is_current ? ' current' : ''),
       type: 'button',
       onclick: () => showVerse(v),
     },
-    h('span', { class: 'stamp-dot', 'aria-hidden': 'true' }),
+    h('span', { class: 'stamp-dot', 'aria-hidden': 'true' }, v.passed ? '참 잘' : v.practice_count ? '✓' : ''),
     h('span', { class: 'stamp-ref' }, v.ref),
-    h('span', { class: 'stamp-state' }, v.passed ? '도장 받음' : v.practice_count ? `연습 ${v.practice_count}번` : '아직이에요'))));
+    h('span', { class: 'stamp-state' }, v.passed ? '선생님 도장 받음' : v.practiced_today ? `오늘 연습했어요 (${v.practice_count}번)` : v.practice_count ? `연습 ${v.practice_count}번` : '아직이에요'))));
   }
 
   function showGuide(back) {
@@ -88,7 +89,10 @@ export function createMemory({ rpc, getToken, onFruits, onCelebrate, onBoard, on
         h('h3', {}, '말씀 도장판'),
         h('p', {}, `${verses.length}개 중 ${passed}개 도장`)) : null,
       stampGrid(),
-      h('p', { class: 'note' }, '연습을 마치면 하루에 한 구절마다 열매 1개를 받아요. 선생님 앞에서 외우면 도장과 열매 10개를 받아요.')));
+      verses.length ? h('p', { class: 'stamp-legend' },
+        h('span', {}, h('i', { style: 'background:#E3F3D6;border:2px solid #8BD46A;color:#2F7A3A' }, '✓'), '연습한 말씀'),
+        h('span', {}, h('i', { style: 'background:#FFE3E1;border:2px solid #EF6461;color:#EF6461' }, '도'), '선생님 앞에서 외워 도장 받은 말씀')) : null,
+      h('p', { class: 'note' }, '외우기 연습을 끝까지 마치면 초록 ✓가 생기고, 하루에 한 구절마다 열매 1개를 받아요. 다 외우면 선생님 앞에서 외워 보세요. 선생님이 빨간 도장을 찍어 주고 열매 10개를 받아요.')));
     if (cur) {
       rpc('kids_house_memory', { p_token: getToken() }).then((r) => {
         if (!r || !r.verse) return;

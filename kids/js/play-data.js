@@ -2,24 +2,39 @@
 
 // 서버 kids_fish_kinds 표와 같은 순서·같은 값 (체험판도 이 표로 뽑는다)
 // rarity: -1 물건, 0 흔함, 1 가끔, 2 드묾, 3 아주 드묾
+// 물고기: place는 잡는 곳(pond 반짝 연못, sea 바다 낚시 나루터). 값은 서버 kids_fish_kinds와 같다.
+// 크기(cm)는 놀이용으로 정한 범위다. shape: 모양이 다른 것(flat 광어처럼 납작한 것, squid 오징어, ribbon 갈치, octopus 문어, tuna 참치)
 export const FISH = [
-  { id: 'medaka', shadow: 'tiny', name: '송사리', weight: 22, min: 2, max: 4, rarity: 0, body: '#B9C7C9', fin: '#8FA3A6' },
-  { id: 'minnow', shadow: 'small', name: '피라미', weight: 20, min: 8, max: 15, rarity: 0, body: '#C9D6E0', fin: '#E98D8D' },
-  { id: 'crucian', shadow: 'small', name: '붕어', weight: 18, min: 10, max: 30, rarity: 0, body: '#B59A5E', fin: '#8C7440' },
-  { id: 'loach', shadow: 'small', name: '미꾸라지', weight: 14, min: 10, max: 20, rarity: 0, body: '#9C8661', fin: '#7A6646', long: true },
-  { id: 'smelt', shadow: 'small', name: '빙어', weight: 10, min: 8, max: 15, rarity: 1, body: '#DDEBF2', fin: '#A9C6D6' },
-  { id: 'carp', shadow: 'large', name: '잉어', weight: 8, min: 30, max: 70, rarity: 1, body: '#8E7A55', fin: '#C27A46' },
-  { id: 'catfish', shadow: 'large', name: '메기', weight: 6, min: 30, max: 60, rarity: 1, body: '#5F5A52', fin: '#46423C', whisker: true },
-  { id: 'trout', shadow: 'medium', name: '무지개송어', weight: 5, min: 25, max: 50, rarity: 2, body: '#9FB7A8', fin: '#E6837A', stripe: '#F2A0A8' },
-  { id: 'mandarin', shadow: 'medium', name: '쏘가리', weight: 3, min: 20, max: 45, rarity: 2, body: '#C9B26A', fin: '#8B7A3E', spots: '#6B5A2E' },
-  { id: 'goldfish', shadow: 'small', name: '금붕어', weight: 3, min: 5, max: 15, rarity: 2, body: '#F28A3C', fin: '#F6B26B' },
-  { id: 'golden', shadow: 'large', name: '황금잉어', weight: 1, min: 40, max: 70, rarity: 3, body: '#F4C542', fin: '#E39B2D' },
-  { id: 'boot', shadow: 'medium', name: '낡은 장화', weight: 6, min: 0, max: 0, rarity: -1 },
-  { id: 'can', shadow: 'medium', name: '빈 깡통', weight: 5, min: 0, max: 0, rarity: -1 },
+  { id: 'medaka', place: 'pond', shadow: 'tiny', name: '송사리', weight: 22, min: 2, max: 4, rarity: 0, body: '#B9C7C9', fin: '#8FA3A6' },
+  { id: 'minnow', place: 'pond', shadow: 'small', name: '피라미', weight: 20, min: 8, max: 15, rarity: 0, body: '#C9D6E0', fin: '#E98D8D' },
+  { id: 'crucian', place: 'pond', shadow: 'small', name: '붕어', weight: 18, min: 10, max: 30, rarity: 0, body: '#B59A5E', fin: '#8C7440' },
+  { id: 'loach', place: 'pond', shadow: 'small', name: '미꾸라지', weight: 14, min: 10, max: 20, rarity: 0, body: '#9C8661', fin: '#7A6646', long: true },
+  { id: 'smelt', place: 'pond', shadow: 'small', name: '빙어', weight: 10, min: 8, max: 15, rarity: 1, body: '#DDEBF2', fin: '#A9C6D6' },
+  { id: 'carp', place: 'pond', shadow: 'large', name: '잉어', weight: 8, min: 30, max: 70, rarity: 1, body: '#8E7A55', fin: '#C27A46' },
+  { id: 'catfish', place: 'pond', shadow: 'large', name: '메기', weight: 6, min: 30, max: 60, rarity: 1, body: '#5F5A52', fin: '#46423C', whisker: true },
+  { id: 'trout', place: 'pond', shadow: 'medium', name: '무지개송어', weight: 5, min: 25, max: 50, rarity: 2, body: '#9FB7A8', fin: '#E6837A', stripe: '#F2A0A8' },
+  { id: 'mandarin', place: 'pond', shadow: 'medium', name: '쏘가리', weight: 3, min: 20, max: 45, rarity: 2, body: '#C9B26A', fin: '#8B7A3E', spots: '#6B5A2E' },
+  { id: 'goldfish', place: 'pond', shadow: 'small', name: '금붕어', weight: 3, min: 5, max: 15, rarity: 2, body: '#F28A3C', fin: '#F6B26B' },
+  { id: 'golden', place: 'pond', shadow: 'large', name: '황금잉어', weight: 1, min: 40, max: 70, rarity: 3, body: '#F4C542', fin: '#E39B2D' },
+  { id: 'boot', place: 'pond', shadow: 'medium', name: '낡은 장화', weight: 6, min: 0, max: 0, rarity: -1 },
+  { id: 'can', place: 'pond', shadow: 'medium', name: '빈 깡통', weight: 5, min: 0, max: 0, rarity: -1 },
+  { id: 'anchovy', place: 'sea', shadow: 'tiny', name: '멸치', weight: 22, min: 6, max: 14, rarity: 0, body: '#D3DDE3', fin: '#A9BAC6', back: '#7F9DB2', slim: true },
+  { id: 'jack', place: 'sea', shadow: 'small', name: '전갱이', weight: 20, min: 15, max: 35, rarity: 0, body: '#C6D0D6', fin: '#D9C36A', back: '#6F8C9C', lateral: '#E3CF7E' },
+  { id: 'mackerel', place: 'sea', shadow: 'medium', name: '고등어', weight: 18, min: 20, max: 45, rarity: 0, body: '#E1E8EC', fin: '#7F9AA8', back: '#3F7E88', wave: '#1F3E48' },
+  { id: 'rockfish', place: 'sea', shadow: 'medium', name: '우럭', weight: 10, min: 20, max: 50, rarity: 1, body: '#77716A', fin: '#55504A', spots: '#4B463F', spiny: true, deep: true },
+  { id: 'flounder', place: 'sea', shadow: 'large', name: '광어', weight: 8, min: 30, max: 80, rarity: 1, body: '#9A8263', fin: '#B39A79', spots: '#6E5A42', shape: 'flat' },
+  { id: 'squid', place: 'sea', shadow: 'medium', name: '오징어', weight: 8, min: 20, max: 40, rarity: 1, body: '#F1D3C3', fin: '#E4B19F', shape: 'squid' },
+  { id: 'seabream', place: 'sea', shadow: 'medium', name: '참돔', weight: 4, min: 25, max: 70, rarity: 2, body: '#EE8F8C', fin: '#DD6B68', spots: '#6FC3EA', deep: true },
+  { id: 'hairtail', place: 'sea', shadow: 'large', name: '갈치', weight: 4, min: 50, max: 120, rarity: 2, body: '#E6ECF2', fin: '#C3CED9', shape: 'ribbon' },
+  { id: 'octopus', place: 'sea', shadow: 'large', name: '문어', weight: 3, min: 30, max: 90, rarity: 2, body: '#D6735C', fin: '#F3C2B2', shape: 'octopus' },
+  { id: 'tuna', place: 'sea', shadow: 'huge', name: '참치', weight: 1, min: 80, max: 180, rarity: 3, body: '#CCD5DD', fin: '#F2C94C', back: '#24476B', shape: 'tuna' },
+  { id: 'bottle', place: 'sea', shadow: 'medium', name: '빈 병', weight: 6, min: 0, max: 0, rarity: -1 },
+  { id: 'oldnet', place: 'sea', shadow: 'medium', name: '낡은 그물', weight: 5, min: 0, max: 0, rarity: -1 },
 ];
 export const fishById = (id) => FISH.find((f) => f.id === id);
+export const fishAt = (place) => FISH.filter((f) => (f.place || 'pond') === place);
 // 물속 그림자 길이 (마을 단위)
-export const SHADOW_LEN = { tiny: 0.2, small: 0.32, medium: 0.48, large: 0.68 };
+export const SHADOW_LEN = { tiny: 0.2, small: 0.32, medium: 0.48, large: 0.68, huge: 0.95 };
 export const RARITY = { '-1': '물건', 0: '흔해요', 1: '가끔 나와요', 2: '드물어요', 3: '아주 드물어요' };
 
 // 요리: 성경 이야기는 개역한글판 본문을 확인해 쉬운 말로 풀었다. 요리법은 놀이로 꾸민 것이다.
@@ -111,8 +126,8 @@ export function dishName(items, kind) {
   return `${head}${uniq.length > 2 ? ' 듬뿍' : ''} ${COOK_KIND[kind][0]}`.trim();
 }
 
-export const ACT_ICON = { fish: '🎣', omok: '⚫', cook: '🍳', art: '🎨', memory: '📖', qt: '🌿', copy: '✏️', watch: '👀', ferris: '🎡', viking: '⛵', carousel: '🎠', bumper: '🚗', bench: '🪑', eat: '🍎', home: '🏠', coaster: '🎢', swim: '🏊' };
+export const ACT_ICON = { fish: '🎣', omok: '⚫', cook: '🍳', art: '🎨', memory: '📖', qt: '🌿', copy: '✏️', watch: '👀', ferris: '🎡', viking: '⛵', carousel: '🎠', bumper: '🚗', bench: '🪑', eat: '🍎', home: '🏠', coaster: '🎢', swim: '🏊', sea: '🚣' };
 export const ACT_TEXT = {
   fish: '낚시하는 중', omok: '오목 두는 중', cook: '요리하는 중', art: '그림 그리는 중', memory: '암송하는 중', qt: '묵상하는 중', copy: '필사하는 중', watch: '오목 구경하는 중',
-  ferris: '대관람차 타는 중', viking: '바이킹 타는 중', carousel: '회전목마 타는 중', bumper: '범퍼카 타는 중', bench: '벤치나 선베드에서 쉬는 중', eat: '열매 먹는 중', home: '내 집에 있는 중', coaster: '롤러코스터 타는 중', swim: '수영하는 중',
+  ferris: '대관람차 타는 중', viking: '바이킹 타는 중', carousel: '회전목마 타는 중', bumper: '범퍼카 타는 중', bench: '벤치나 선베드에서 쉬는 중', eat: '열매 먹는 중', home: '내 집에 있는 중', coaster: '롤러코스터 타는 중', swim: '수영하는 중', sea: '배 타고 바다 낚시하는 중',
 };

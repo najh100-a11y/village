@@ -17,6 +17,13 @@ function sellBundle(kind, id) {
   if (kind === 'bug') { const i = BUG_KINDS.indexOf(id); return i >= 0 ? SELL_BUNDLE.bug[BUG_RARITY[i]] : null; }
   return null;
 }
+// 낚시터(pond 연못, sea 바다)에서 무게대로 물고기 하나 뽑기 (서버 kids_fish_hook, kids_sea_hook과 같다)
+function pickFish(place) {
+  const list = FISH.filter((f) => f.place === place);
+  let r = Math.floor(Math.random() * list.reduce((a, f) => a + f.weight, 0));
+  for (const f of list) { if (r < f.weight) return f; r -= f.weight; }
+  return list[0];
+}
 
 const FIRST = PLAN.weeks[0].week_start;
 const LAST = PLAN.weeks[PLAN.weeks.length - 1].days.slice(-1)[0].date;
@@ -246,7 +253,7 @@ export class DemoBackend {
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true }; }
   kids_dm_send({ p_token, p_to, p_text }) {
     const me = this.session(p_token, 'child');
     if (!this.villageConf().chat_open) fail('CHAT_OFF');
@@ -839,9 +846,7 @@ export class DemoBackend {
     const last = mine.map((f) => f.at).sort().pop();
     if (last && Date.now() - new Date(last).getTime() < 3000) fail('TOO_FAST');
     if (mine.filter((f) => f.at >= startOfToday()).length >= 80) fail('FISH_TIRED');
-    const total = FISH.reduce((a, f) => a + f.weight, 0);
-    let r = Math.floor(Math.random() * total), k = FISH[0];
-    for (const f of FISH) { if (r < f.weight) { k = f; break; } r -= f.weight; }
+    const k = pickFish('pond');
     const size = k.rarity < 0 ? 0 : Math.round((k.min + Math.random() * (k.max - k.min)) * 10) / 10;
     const same = mine.filter((f) => f.fish === k.id);
     const first = !same.length;
@@ -849,17 +854,17 @@ export class DemoBackend {
     this.db.fish.push({ child: me, fish: k.id, size, at: nowIso() });
     return { fish: k.id, name: k.name, rarity: k.rarity, size, first, best, today: mine.filter((f) => f.at >= startOfToday()).length + 1 };
   }
-  // 3D 낚시: 다가오는 물고기를 먼저 정하고(hook), 제때 당기면 잡는다(land)
-  kids_fish_hook({ p_token }) {
+  // 3D 낚시: 다가오는 물고기를 먼저 정하고(hook), 제때 당기면 잡는다(land). 연못과 바다는 나오는 물고기만 다르다
+  kids_fish_hook({ p_token }) { return this.fishHook(p_token, 'pond'); }
+  kids_sea_hook({ p_token }) { return this.fishHook(p_token, 'sea'); }
+  fishHook(p_token, place) {
     const me = this.session(p_token, 'child');
     this.gate(me);
     this.fishPending = this.fishPending || {};
     const pnd = this.fishPending[me];
     if (pnd && Date.now() - pnd.t < 2000) fail('TOO_FAST');
     if (this.db.fish.filter((f) => f.child === me && f.at >= startOfToday()).length >= 80) fail('FISH_TIRED');
-    const total = FISH.reduce((a, f) => a + f.weight, 0);
-    let r = Math.floor(Math.random() * total), k = FISH[0];
-    for (const f of FISH) { if (r < f.weight) { k = f; break; } r -= f.weight; }
+    const k = pickFish(place);
     const size = k.rarity < 0 ? 0 : Math.round((k.min + Math.random() * (k.max - k.min)) * 10) / 10;
     this.fishPending[me] = { fish: k.id, size, t: Date.now() };
     return { fish: k.id, size, rarity: k.rarity };
@@ -885,12 +890,12 @@ export class DemoBackend {
       m.count++; m.best = Math.max(m.best, f.size);
     }
     const kinds = Object.fromEntries(FISH.map((f) => [f.id, f]));
-    const today_top = this.db.fish.filter((f) => f.at >= startOfToday() && kinds[f.fish] && kinds[f.fish].rarity >= 0)
-      .sort((a, b) => b.size - a.size || a.at.localeCompare(b.at)).slice(0, 5).map((f) => {
+    const top = (place) => this.db.fish.filter((f) => f.at >= startOfToday() && kinds[f.fish] && kinds[f.fish].rarity >= 0 && kinds[f.fish].place === place)
+      .sort((a, b) => b.size - a.size || a.at.localeCompare(b.at)).map((f) => {
         const c = this.db.children.find((x) => x.id === f.child) || {};
         return { name: c.village_name, avatar: c.avatar, me: f.child === me, fish: f.fish, size: f.size, at: f.at };
-      }).filter((t) => t.name);
-    return { mine, today_top, my_today: this.db.fish.filter((f) => f.child === me && f.at >= startOfToday()).length };
+      }).filter((t) => t.name).slice(0, 5);
+    return { mine, today_top: top('pond'), today_sea: top('sea'), my_today: this.db.fish.filter((f) => f.child === me && f.at >= startOfToday()).length };
   }
 
   // ---------- 요리 ----------

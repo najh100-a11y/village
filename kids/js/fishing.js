@@ -3,19 +3,43 @@
 import { h, modal, toast, confetti, josa } from './ui.js';
 import { message } from './api.js';
 import { drawFaceIcon, normalizeAvatar } from './face.js';
-import { FISH, fishById, RARITY } from './play-data.js';
+import { fishById, fishAt, RARITY } from './play-data.js';
 import { sfx } from './sound.js';
 
 export function drawFish(ctx, kind, cx, cy, len, { silhouette = false } = {}) {
   const f = typeof kind === 'string' ? fishById(kind) : kind;
+  const S = silhouette ? '#C9BFAE' : null, S2 = silhouette ? '#B5AA97' : null;
   ctx.save();
   ctx.translate(cx, cy);
   if (!f || f.rarity < 0) {
     // 물건
-    ctx.fillStyle = silhouette ? '#C9BFAE' : f && f.id === 'can' ? '#A9B4BE' : '#6B4B3A';
+    ctx.fillStyle = S || (f && f.id === 'can' ? '#A9B4BE' : '#6B4B3A');
     if (f && f.id === 'can') {
       ctx.fillRect(-len * 0.22, -len * 0.3, len * 0.44, len * 0.6);
       if (!silhouette) { ctx.fillStyle = '#EF6461'; ctx.fillRect(-len * 0.22, -len * 0.1, len * 0.44, len * 0.18); }
+    } else if (f && f.id === 'bottle') {
+      // 비스듬히 누운 유리병과 코르크 마개
+      ctx.rotate(-0.45);
+      ctx.fillStyle = S || 'rgba(110,190,140,.9)';
+      ctx.beginPath(); ctx.roundRect(-len * 0.3, -len * 0.13, len * 0.42, len * 0.26, len * 0.07); ctx.fill();
+      ctx.fillRect(len * 0.1, -len * 0.06, len * 0.17, len * 0.12);
+      if (!silhouette) {
+        ctx.fillStyle = '#B98A5B'; ctx.fillRect(len * 0.26, -len * 0.05, len * 0.07, len * 0.1);
+        ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.fillRect(-len * 0.24, -len * 0.08, len * 0.28, len * 0.04);
+      }
+    } else if (f && f.id === 'oldnet') {
+      // 엉킨 그물과 동그란 찌
+      ctx.save();
+      ctx.beginPath(); ctx.ellipse(0, 0, len * 0.34, len * 0.24, 0, 0, 7);
+      ctx.fillStyle = S || 'rgba(111,138,122,.25)'; ctx.fill();
+      ctx.clip();
+      ctx.strokeStyle = S2 || '#6F8A7A'; ctx.lineWidth = Math.max(1, len * 0.025);
+      for (let i = -4; i <= 4; i++) {
+        ctx.beginPath(); ctx.moveTo(i * len * 0.09 - len * 0.14, -len * 0.26); ctx.lineTo(i * len * 0.09 + len * 0.14, len * 0.26); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(i * len * 0.09 + len * 0.14, -len * 0.26); ctx.lineTo(i * len * 0.09 - len * 0.14, len * 0.26); ctx.stroke();
+      }
+      ctx.restore();
+      ctx.fillStyle = S2 || '#F28A3C'; ctx.beginPath(); ctx.arc(len * 0.28, -len * 0.18, len * 0.09, 0, 7); ctx.fill();
     } else {
       ctx.beginPath();
       ctx.moveTo(-len * 0.2, -len * 0.35); ctx.lineTo(len * 0.08, -len * 0.35); ctx.lineTo(len * 0.08, len * 0.1);
@@ -25,20 +49,127 @@ export function drawFish(ctx, kind, cx, cy, len, { silhouette = false } = {}) {
     ctx.restore();
     return;
   }
-  const L = f.long ? len * 1.1 : len, H = f.long ? len * 0.16 : f.id === 'goldfish' ? len * 0.42 : len * 0.3;
-  const body = silhouette ? '#C9BFAE' : f.body, fin = silhouette ? '#B5AA97' : f.fin;
+  const body = S || f.body, fin = S2 || f.fin;
+  const eye = (x, y, r) => {
+    if (silhouette) return;
+    ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+    ctx.fillStyle = '#2E2A2A'; ctx.beginPath(); ctx.arc(x - r * 0.1, y, r * 0.55, 0, 7); ctx.fill();
+  };
+  ctx.lineCap = 'round';
+  if (f.shape === 'squid') {
+    // 오징어: 몸통은 오른쪽, 끝에 세모 지느러미, 왼쪽에 머리와 다리
+    ctx.fillStyle = fin;
+    ctx.beginPath(); ctx.moveTo(len * 0.3, 0); ctx.lineTo(len * 0.47, -len * 0.15); ctx.lineTo(len * 0.56, 0); ctx.lineTo(len * 0.47, len * 0.15); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = body;
+    ctx.beginPath(); ctx.ellipse(len * 0.17, 0, len * 0.3, len * 0.1, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(-len * 0.14, 0, len * 0.07, len * 0.08, 0, 0, 7); ctx.fill();
+    ctx.strokeStyle = body;
+    ctx.lineWidth = Math.max(1, len * 0.025);
+    for (let i = 0; i < 8; i++) {
+      const y = (i - 3.5) * len * 0.022;
+      ctx.beginPath(); ctx.moveTo(-len * 0.18, y * 0.6); ctx.quadraticCurveTo(-len * 0.3, y * 1.5, -len * 0.4, y * 1.7 + Math.sin(i * 1.7) * len * 0.02); ctx.stroke();
+    }
+    ctx.lineWidth = Math.max(1, len * 0.014);
+    for (const s of [-1, 1]) {
+      ctx.beginPath(); ctx.moveTo(-len * 0.18, 0); ctx.quadraticCurveTo(-len * 0.38, s * len * 0.11, -len * 0.5, s * len * 0.06); ctx.stroke();
+      ctx.fillStyle = body; ctx.beginPath(); ctx.ellipse(-len * 0.51, s * len * 0.06, len * 0.035, len * 0.018, 0, 0, 7); ctx.fill();
+    }
+    if (!silhouette) { ctx.fillStyle = 'rgba(200,110,90,.35)'; for (let i = 0; i < 7; i++) { ctx.beginPath(); ctx.arc(len * (0.02 + i * 0.05), (i % 2 ? -1 : 1) * len * 0.03, len * 0.012, 0, 7); ctx.fill(); } }
+    eye(-len * 0.14, -len * 0.025, len * 0.035);
+    ctx.restore();
+    return;
+  }
+  if (f.shape === 'octopus') {
+    // 문어: 둥근 머리 아래로 꼬불꼬불한 다리 여덟 개
+    ctx.strokeStyle = body;
+    ctx.lineWidth = Math.max(2, len * 0.055);
+    for (let i = 0; i < 8; i++) {
+      const a = -0.2 + (i / 7) * (Math.PI + 0.4);
+      const sx = Math.cos(a) * len * 0.08, ex = Math.cos(a) * len * 0.4, ey = len * 0.1 + Math.sin(a) * len * 0.16;
+      ctx.beginPath(); ctx.moveTo(sx, len * 0.06); ctx.quadraticCurveTo((sx + ex) / 2 + (i % 2 ? 1 : -1) * len * 0.07, len * 0.3, ex, ey); ctx.stroke();
+      if (!silhouette) { ctx.fillStyle = f.fin; ctx.beginPath(); ctx.arc((sx + ex) / 2, len * 0.22, len * 0.015, 0, 7); ctx.fill(); }
+    }
+    ctx.fillStyle = body;
+    ctx.beginPath(); ctx.ellipse(0, -len * 0.08, len * 0.18, len * 0.2, 0, 0, 7); ctx.fill();
+    if (!silhouette) { ctx.fillStyle = 'rgba(255,255,255,.3)'; ctx.beginPath(); ctx.ellipse(-len * 0.06, -len * 0.16, len * 0.06, len * 0.04, -0.5, 0, 7); ctx.fill(); }
+    eye(-len * 0.07, len * 0.03, len * 0.035);
+    eye(len * 0.07, len * 0.03, len * 0.035);
+    ctx.restore();
+    return;
+  }
+  if (f.shape === 'ribbon') {
+    // 갈치: 은빛 띠처럼 길고 꼬리 끝이 뾰족하다
+    ctx.fillStyle = body;
+    ctx.beginPath(); ctx.moveTo(-len * 0.56, -len * 0.01); ctx.quadraticCurveTo(-len * 0.42, -len * 0.075, -len * 0.1, -len * 0.065);
+    ctx.lineTo(len * 0.58, -len * 0.004); ctx.lineTo(len * 0.58, len * 0.004); ctx.lineTo(-len * 0.1, len * 0.055);
+    ctx.quadraticCurveTo(-len * 0.45, len * 0.05, -len * 0.56, -len * 0.01); ctx.fill();
+    ctx.strokeStyle = fin; ctx.lineWidth = Math.max(1, len * 0.018);
+    ctx.beginPath(); ctx.moveTo(-len * 0.36, -len * 0.075); ctx.quadraticCurveTo(0, -len * 0.09, len * 0.55, -len * 0.012); ctx.stroke();
+    if (!silhouette) { ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = Math.max(1, len * 0.012); ctx.beginPath(); ctx.moveTo(-len * 0.4, 0); ctx.lineTo(len * 0.4, 0); ctx.stroke(); }
+    eye(-len * 0.45, -len * 0.025, len * 0.028);
+    ctx.restore();
+    return;
+  }
+  if (f.shape === 'flat') {
+    // 광어: 납작하고 넓은 몸, 두 눈이 한쪽에 몰려 있다 (위에서 본 모습)
+    const W = len * 0.84, Hh = len * 0.56;
+    ctx.fillStyle = fin;
+    ctx.beginPath(); ctx.ellipse(-len * 0.03, 0, W * 0.5, Hh * 0.5, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(W * 0.4, 0); ctx.lineTo(W * 0.62, -Hh * 0.3); ctx.lineTo(W * 0.62, Hh * 0.3); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = body;
+    ctx.beginPath(); ctx.ellipse(-len * 0.03, 0, W * 0.42, Hh * 0.4, 0, 0, 7); ctx.fill();
+    if (!silhouette && f.spots) {
+      ctx.fillStyle = f.spots;
+      for (const [x, y] of [[-0.05, -0.1], [0.08, 0.08], [0.18, -0.05], [-0.12, 0.12], [0.25, 0.1], [0.02, 0.18]]) { ctx.beginPath(); ctx.arc(len * x, len * y, len * 0.025, 0, 7); ctx.fill(); }
+    }
+    eye(-W * 0.3, -Hh * 0.12, len * 0.032);
+    eye(-W * 0.22, -Hh * 0.24, len * 0.032);
+    ctx.restore();
+    return;
+  }
+  const tuna = f.shape === 'tuna';
+  const L = f.long ? len * 1.1 : len;
+  const H = f.long ? len * 0.16 : f.slim ? len * 0.19 : f.id === 'goldfish' || f.deep ? len * 0.42 : tuna ? len * 0.34 : len * 0.3;
   // 꼬리
   ctx.fillStyle = fin;
   ctx.beginPath();
-  ctx.moveTo(L * 0.36, 0); ctx.lineTo(L * 0.56, -H * 0.62); ctx.lineTo(L * 0.52, 0); ctx.lineTo(L * 0.56, H * 0.62); ctx.closePath(); ctx.fill();
+  if (tuna) {
+    // 참치: 초승달 꼬리
+    ctx.moveTo(L * 0.36, 0); ctx.quadraticCurveTo(L * 0.48, -H * 0.2, L * 0.6, -H * 0.8); ctx.quadraticCurveTo(L * 0.5, 0, L * 0.6, H * 0.8); ctx.quadraticCurveTo(L * 0.48, H * 0.2, L * 0.36, 0);
+  } else {
+    ctx.moveTo(L * 0.36, 0); ctx.lineTo(L * 0.56, -H * 0.62); ctx.lineTo(L * 0.52, 0); ctx.lineTo(L * 0.56, H * 0.62); ctx.closePath();
+  }
+  ctx.fill();
   // 지느러미
-  ctx.beginPath(); ctx.ellipse(0, -H * 0.42, L * 0.14, H * 0.22, -0.3, 0, 7); ctx.fill();
+  if (f.spiny) {
+    for (let i = 0; i < 6; i++) { ctx.beginPath(); ctx.moveTo(-L * 0.17 + i * L * 0.06, -H * 0.42); ctx.lineTo(-L * 0.14 + i * L * 0.06, -H * 0.78); ctx.lineTo(-L * 0.1 + i * L * 0.06, -H * 0.42); ctx.closePath(); ctx.fill(); }
+  } else {
+    if (tuna && !silhouette) ctx.fillStyle = f.back;
+    ctx.beginPath(); ctx.ellipse(0, -H * 0.42, L * 0.14, H * 0.22, -0.3, 0, 7); ctx.fill();
+  }
+  if (tuna && !silhouette) {
+    ctx.fillStyle = f.fin;
+    for (let i = 0; i < 4; i++) for (const s of [-1, 1]) { const x = L * (0.16 + i * 0.05); ctx.beginPath(); ctx.moveTo(x, s * H * 0.36); ctx.lineTo(x + L * 0.025, s * H * 0.5); ctx.lineTo(x + L * 0.04, s * H * 0.33); ctx.closePath(); ctx.fill(); }
+  }
   // 몸
   ctx.fillStyle = body;
   ctx.beginPath(); ctx.ellipse(0, 0, L * 0.42, H * 0.5, 0, 0, 7); ctx.fill();
   if (!silhouette) {
+    if (f.back) {
+      // 등은 짙은 색, 고등어는 물결무늬
+      ctx.save();
+      ctx.beginPath(); ctx.ellipse(0, 0, L * 0.42, H * 0.5, 0, 0, 7); ctx.clip();
+      ctx.fillStyle = f.back;
+      ctx.beginPath(); ctx.ellipse(0, -H * 0.32, L * 0.46, H * 0.36, 0, 0, 7); ctx.fill();
+      if (f.wave) {
+        ctx.strokeStyle = f.wave; ctx.lineWidth = Math.max(1, H * 0.07);
+        for (let i = 0; i < 7; i++) { const x = -L * 0.2 + i * L * 0.075; ctx.beginPath(); ctx.moveTo(x, -H * 0.5); ctx.quadraticCurveTo(x + L * 0.035, -H * 0.3, x - L * 0.01, -H * 0.08); ctx.stroke(); }
+      }
+      ctx.restore();
+    }
+    if (f.lateral) { ctx.strokeStyle = f.lateral; ctx.lineWidth = Math.max(1, H * 0.07); ctx.beginPath(); ctx.moveTo(-L * 0.3, -H * 0.04); ctx.quadraticCurveTo(0, -H * 0.16, L * 0.38, 0); ctx.stroke(); }
     if (f.stripe) { ctx.fillStyle = f.stripe; ctx.beginPath(); ctx.ellipse(0, H * 0.02, L * 0.36, H * 0.12, 0, 0, 7); ctx.fill(); }
-    if (f.spots) { ctx.fillStyle = f.spots; for (let i = 0; i < 6; i++) { ctx.beginPath(); ctx.arc(-L * 0.2 + i * L * 0.08, (i % 2 ? -1 : 1) * H * 0.12, H * 0.07, 0, 7); ctx.fill(); } }
+    if (f.spots) { ctx.fillStyle = f.spots; for (let i = 0; i < 6; i++) { ctx.beginPath(); ctx.arc(-L * 0.2 + i * L * 0.08, (i % 2 ? -1 : 1) * H * 0.12 - (f.deep ? H * 0.1 : 0), H * 0.07, 0, 7); ctx.fill(); } }
     ctx.fillStyle = 'rgba(255,255,255,.35)';
     ctx.beginPath(); ctx.ellipse(-L * 0.05, H * 0.2, L * 0.25, H * 0.12, 0, 0, 7); ctx.fill();
     ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(-L * 0.28, -H * 0.1, H * 0.13, 0, 7); ctx.fill();
@@ -240,28 +371,39 @@ export function createFishing({ rpc, getToken, onSessionLost, onCelebrate, onRar
   return { open };
 }
 
-export async function renderFishBook(box, { rpc, getToken, onSessionLost }) {
+// 물고기 도감: 연못과 바다를 나눠 보여 준다 (place: 먼저 볼 곳)
+export async function renderFishBook(box, { rpc, getToken, onSessionLost, place = 'pond' }) {
   let b;
   try { b = await rpc('kids_fish_book', { p_token: getToken() }); } catch (e) {
     if (e.code === 'SESSION') { modal.close(); return onSessionLost(); }
     return;
   }
-  const fishes = FISH.filter((f) => f.rarity >= 0);
-  const got = fishes.filter((f) => b.mine[f.id]).length;
-  const book = h('div', { class: 'fish-book' }, FISH.map((f) => {
-    const m = b.mine[f.id];
-    return h('div', { class: 'fb-cell' + (m ? '' : ' unknown') },
-      fishCanvas(f, 84, 48, { silhouette: !m }),
-      h('b', {}, m ? f.name : '?'),
-      h('span', {}, m ? (f.rarity < 0 ? `${m.count}번` : `최고 ${m.best}cm · ${m.count}마리`) : RARITY[f.rarity]));
-  }));
-  const top = b.today_top.length ? h('ol', { class: 'fish-top' }, b.today_top.map((t, i) => {
-    const cv = h('canvas', { width: 80, height: 80, class: 'fb-face', 'aria-hidden': 'true' });
-    drawFaceIcon(cv, normalizeAvatar(t.avatar));
-    return h('li', { class: t.me ? 'me' : '' }, h('span', { class: `fb-rank r${i + 1}` }, String(i + 1)), cv,
-      h('b', {}, t.name), h('span', {}, `${(fishById(t.fish) || {}).name || ''} ${t.size}cm`));
-  })) : h('p', { class: 'fb-empty' }, '오늘은 아직 아무도 물고기를 낚지 않았어요.');
-  box.replaceChildren(
-    h('section', { class: 'fboard' }, h('div', { class: 'sub-head' }, h('h3', {}, '오늘의 큰 물고기'), h('p', {}, '마을 친구들 기록')), top),
-    h('section', { class: 'fboard' }, h('div', { class: 'sub-head' }, h('h3', {}, '내 물고기 도감'), h('p', {}, `${got} / ${fishes.length}`)), book));
+  const PLACES = [['pond', '🐟 반짝 연못'], ['sea', '🌊 바다']];
+  const draw = () => {
+    const list = fishAt(place);
+    const fishes = list.filter((f) => f.rarity >= 0);
+    const got = fishes.filter((f) => b.mine[f.id]).length;
+    const book = h('div', { class: 'fish-book' }, list.map((f) => {
+      const m = b.mine[f.id];
+      return h('div', { class: 'fb-cell' + (m ? '' : ' unknown') },
+        fishCanvas(f, 84, 48, { silhouette: !m }),
+        h('b', {}, m ? f.name : '?'),
+        h('span', {}, m ? (f.rarity < 0 ? `${m.count}번` : `최고 ${m.best}cm · ${m.count}마리`) : RARITY[f.rarity]));
+    }));
+    // 오늘의 큰 물고기는 연못과 바다를 따로 센다 (옛 서버는 today_sea가 없다)
+    const tops = place === 'sea' ? (b.today_sea || []) : (b.today_top || []).filter((t) => ((fishById(t.fish) || {}).place || 'pond') === 'pond');
+    const top = tops.length ? h('ol', { class: 'fish-top' }, tops.map((t, i) => {
+      const cv = h('canvas', { width: 80, height: 80, class: 'fb-face', 'aria-hidden': 'true' });
+      drawFaceIcon(cv, normalizeAvatar(t.avatar));
+      return h('li', { class: t.me ? 'me' : '' }, h('span', { class: `fb-rank r${i + 1}` }, String(i + 1)), cv,
+        h('b', {}, t.name), h('span', {}, `${(fishById(t.fish) || {}).name || ''} ${t.size}cm`));
+    })) : h('p', { class: 'fb-empty' }, place === 'sea' ? '오늘은 아직 아무도 바다에서 낚지 않았어요.' : '오늘은 아직 아무도 연못에서 낚지 않았어요.');
+    const tabs = h('div', { class: 'shop-tabs', role: 'tablist' }, PLACES.map(([k, label]) => h('button', {
+      class: 'shop-tab', role: 'tab', type: 'button', 'aria-selected': String(place === k), onclick: () => { place = k; draw(); },
+    }, label)));
+    box.replaceChildren(tabs,
+      h('section', { class: 'fboard' }, h('div', { class: 'sub-head' }, h('h3', {}, '오늘의 큰 물고기'), h('p', {}, place === 'sea' ? '바다 · 마을 친구들 기록' : '연못 · 마을 친구들 기록')), top),
+      h('section', { class: 'fboard' }, h('div', { class: 'sub-head' }, h('h3', {}, place === 'sea' ? '바다 도감' : '연못 도감'), h('p', {}, `${got} / ${fishes.length}`)), book));
+  };
+  draw();
 }
