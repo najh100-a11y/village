@@ -2,7 +2,8 @@
 import * as THREE from './three.module.min.js';
 import { Avatar, toon } from './avatar.js';
 import { PARTS, PALETTE, randomAvatar, normalizeAvatar, drawPartTile } from './face.js';
-import { h, icon } from './ui.js';
+import { h, icon, josa } from './ui.js';
+import { WARDROBE, wearItem, missingItems } from './wardrobe.js';
 
 const TABS = [
   { id: 'face', label: '얼굴', view: 'head', sections: [
@@ -28,11 +29,19 @@ const TABS = [
     { key: 'hat', title: '모자', type: 'thumb', part: 'hat' },
     { key: 'hatColor', title: '모자 색', type: 'color', pal: 'cloth' },
   ] },
+  // 열매 상점에서 산 꾸미기 물건 (🔒는 아직 사지 않은 것. 입어 볼 수는 있지만 저장하려면 사야 한다)
+  { id: 'acc', label: '꾸미기', view: 'body', shop: true, sections: [
+    { key: 'face', title: '안경', type: 'thumb', part: 'face' },
+    { key: 'back', title: '등에 메는 것', type: 'thumb', part: 'back' },
+    { key: 'backColor', title: '등 물건 색 (나비 날개, 망토, 가방)', type: 'color', pal: 'cloth' },
+  ] },
 ];
 const THUMB_DEPS = {
   hair: ['skin', 'hairColor'],
   outfit: ['skin', 'outfitColor', 'bottomColor', 'shoeColor'],
   hat: ['skin', 'hair', 'hairColor', 'hatColor'],
+  face: ['skin', 'eyes', 'eyeColor', 'hair', 'hairColor'],
+  back: ['skin', 'outfit', 'outfitColor', 'backColor'],
 };
 const FACE_DEPS = ['skin', 'eyeColor', 'hairColor'];
 const VIEWS = {
@@ -58,11 +67,19 @@ export class Maker {
     });
     document.getElementById('makerSave').addEventListener('click', () => this.finish(true));
     document.getElementById('makerCancel').addEventListener('click', () => this.finish(false));
-    this.tabsEl.replaceChildren(...TABS.map((t) => h('button', {
+    this.shop = { on: false, owned: {}, prices: {} };
+  }
+  // 탭 단추 (상점 꾸미기 물건이 없는 서버면 '꾸미기' 탭을 감춘다)
+  drawTabs() {
+    this.tabsEl.replaceChildren(...this.tabs().map((t) => h('button', {
       class: 'tab', type: 'button', role: 'tab', 'data-tab': t.id, 'aria-selected': 'false',
       onclick: () => this.showTab(t),
     }, t.label)));
   }
+  tabs() { return TABS.filter((t) => !t.shop || this.shop.on); }
+  // 상점 물건이면 그 이름, 아니면 null
+  shopItem(key, v) { return this.shop.on ? wearItem(key, v) : null; }
+  owns(id) { return this.shop.owned[id] > 0; }
 
   ensure3D() {
     if (this.renderer) return;
@@ -134,8 +151,13 @@ export class Maker {
     this.loop = this.loop.bind(this);
   }
 
-  open({ avatar, name, first }) {
+  // shop: { on, owned: {물건: 개수}, prices: {물건: 값} } 상점 꾸미기 물건을 쓸 수 있는지와 산 것
+  open({ avatar, name, first, shop }) {
+    this.shop = { on: false, owned: {}, prices: {}, ...(shop || {}) };
+    this.drawTabs();
     this.avatar = normalizeAvatar(avatar);
+    // 상점 물건을 쓸 수 없는 서버면 그 값은 기본으로 돌려 둔다
+    if (!this.shop.on) for (const k of ['hat', 'face', 'back', 'outfit']) if (wearItem(k, this.avatar[k])) this.avatar[k] = k === 'outfit' ? 'tee' : 'none';
     this.first = first;
     this.nameInput.value = name || '';
     this.errEl.textContent = '';
@@ -149,7 +171,7 @@ export class Maker {
     this.resize();
     this.clock.getDelta();
     requestAnimationFrame(this.loop);
-    this.showTab(TABS[0]);
+    this.showTab(this.tabs()[0]);
     return new Promise((resolve) => { this.resolve = resolve; });
   }
 
@@ -162,6 +184,11 @@ export class Maker {
         return;
       }
       if (name.length > 10) { this.errEl.textContent = '이름은 10글자까지 쓸 수 있어요.'; return; }
+      const miss = this.shop.on ? missingItems(this.avatar, this.shop.owned) : [];
+      if (miss.length) {
+        this.errEl.textContent = `🔒 ${josa(miss.map((id) => WARDROBE[id].name).join(', '), '은', '는')} 열매 상점에서 사야 입을 수 있어요. 벗거나 상점에서 사 주세요.`;
+        return;
+      }
     }
     const result = save ? { avatar: { ...this.avatar }, name: this.nameInput.value.trim() } : null;
     if (this.resolve) this.resolve(result);
@@ -229,11 +256,15 @@ export class Maker {
       });
     } else {
       PARTS[s.part].forEach(([id, label]) => {
+        const item = wearItem(s.key, id);
+        if (item && !this.shop.on) return; // 상점이 없는 서버에서는 상점 물건을 보이지 않는다
         const cv = h('canvas', { width: s.type === 'face' ? 120 : 160, height: s.type === 'face' ? 84 : 160, 'aria-hidden': 'true' });
+        const locked = item && !this.owns(item);
         const btn = h('button', {
-          class: 'tile', type: 'button', 'data-v': id, 'aria-pressed': String(this.avatar[s.key] === id),
+          class: 'tile' + (locked ? ' locked' : ''), type: 'button', 'data-v': id, 'aria-pressed': String(this.avatar[s.key] === id),
+          title: locked ? `열매 상점에서 열매 ${this.shop.prices[item] || WARDROBE[item].price}개로 살 수 있어요 (입어 볼 수는 있어요)` : label,
           onclick: () => this.select(s.key, id),
-        }, cv, h('span', {}, label));
+        }, cv, h('span', {}, label), locked ? h('small', { class: 'lock' }, `🔒 열매 ${this.shop.prices[item] || WARDROBE[item].price}`) : null);
         grid.append(btn);
         if (s.type === 'face') drawPartTile(cv, this.avatar, s.part, id);
         else this.queueThumb(cv, s.part, id);
@@ -245,6 +276,8 @@ export class Maker {
   select(key, value) {
     if (this.avatar[key] === value) return;
     this.avatar[key] = value;
+    const item = wearItem(key, value);
+    this.errEl.textContent = item && this.shop.on && !this.owns(item) ? `🔒 ${WARDROBE[item].name}: 입어 보는 중이에요. 저장하려면 열매 상점에서 사 주세요.` : '';
     this.preview.setData(this.avatar);
     this.preview.celebrate();
     this.idle = 0;
@@ -295,8 +328,8 @@ export class Maker {
     const av = new Avatar(data);
     av.update(0, false);
     av.body.position.y = 0;
-    const head = part !== 'outfit';
-    av.root.rotation.y = part === 'hair' ? 0.55 : part === 'hat' ? 0.3 : 0.25;
+    const head = part !== 'outfit' && part !== 'back';
+    av.root.rotation.y = part === 'hair' ? 0.55 : part === 'hat' ? 0.3 : part === 'back' ? Math.PI - 0.55 : part === 'face' ? 0.12 : 0.25;
     this.thumbScene.add(av.root);
     if (head) {
       this.thumbCam.position.set(0, 1.85, 3.6);

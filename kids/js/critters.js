@@ -325,7 +325,7 @@ export class Follower {
     if (this.react > 0) this.react -= dt;
     const d = Math.hypot(tx - pos.x, tz - pos.z);
     if (!wait && d > 0.45 && this.react <= 0) {
-      const sp = Math.min(7.5, Math.max(1.6, d * 2.4, (od - 1.2) * 3.4)) * (this.def.kind === 'chick' ? 0.9 : 1);
+      const sp = Math.min(10, Math.max(1.6, d * 2.4, (od - 1.2) * 3.4)) * (this.def.kind === 'chick' ? 0.9 : 1);
       const step = Math.min(d, sp * dt);
       const nx = pos.x + ((tx - pos.x) / d) * step, nz = pos.z + ((tz - pos.z) / d) * step;
       if (!inPool(nx, nz)) {

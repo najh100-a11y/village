@@ -5,8 +5,18 @@ import { FISH, FRIDGE as FRIDGE_IDS } from './play-data.js';
 import { toJpeg } from './images.js';
 import { cleanChat } from './chatfilter.js';
 import { HOME_ITEMS, HOME_IDS, isSeed } from './homeitems.js';
+import { WARDROBE, WARDROBE_IDS, wearItem } from './wardrobe.js';
+import { SELL_PRICE, SELL_DAY_DEFAULT, GIFT, GIFT_MSGS, SALES, salePrice } from './economy.js';
 const BUG_KINDS = ['cabbage_white', 'swallowtail', 'honeybee', 'ladybug', 'grasshopper', 'red_dragonfly', 'mantis', 'cicada', 'stag_beetle', 'rhino_beetle', 'firefly'];
-const ITEM_PRICE = { fw_spark: 1, fw_flower: 3, fw_heart: 5, pet_dog: 30, pet_cat: 30, pet_rabbit: 30, pet_chick: 30, ...Object.fromEntries(HOME_IDS.map((id) => [id, HOME_ITEMS[id].price])) };
+const BUG_RARITY = [0, 1, 0, 0, 0, 0, 1, 1, 2, 2, 2]; // js/bugs.js와 같은 차례
+const ITEM_PRICE = { fw_spark: 1, fw_flower: 3, fw_heart: 5, pet_dog: 30, pet_cat: 30, pet_rabbit: 30, pet_chick: 30, ...Object.fromEntries(HOME_IDS.map((id) => [id, HOME_ITEMS[id].price])),
+  ...Object.fromEntries(WARDROBE_IDS.map((id) => [id, WARDROBE[id].price])) };
+// 팔 때 받는 열매 (서버 kids__sell_price와 같다)
+function sellPrice(kind, id) {
+  if (kind === 'fish') { const f = FISH.find((x) => x.id === id); return f && f.rarity >= 0 ? SELL_PRICE.fish[f.rarity] : null; }
+  if (kind === 'bug') { const i = BUG_KINDS.indexOf(id); return i >= 0 ? SELL_PRICE.bug[BUG_RARITY[i]] : null; }
+  return null;
+}
 
 const FIRST = PLAN.weeks[0].week_start;
 const LAST = PLAN.weeks[PLAN.weeks.length - 1].days.slice(-1)[0].date;
@@ -227,11 +237,16 @@ export class DemoBackend {
   }
 
   // 누구나 놀이 날 (이 날짜까지는 말씀 활동을 안 해도 놀이 마당이 열린다)
-  villageConf() { return this.db.village || (this.db.village = { chat_open: true, free_until: '' }); }
+  villageConf() {
+    const v = this.db.village || (this.db.village = { chat_open: true, free_until: '' });
+    if (!SALES.includes(v.sale)) v.sale = 0;
+    if (!Number.isInteger(v.sell_day)) v.sell_day = SELL_DAY_DEFAULT;
+    return v;
+  }
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true }; }
   kids_dm_send({ p_token, p_to, p_text }) {
     const me = this.session(p_token, 'child');
     if (!this.villageConf().chat_open) fail('CHAT_OFF');
@@ -341,17 +356,22 @@ export class DemoBackend {
     const me = this.session(p_token, 'child');
     const items = {};
     for (const [k, n] of Object.entries((this.db.items || {})[me] || {})) if (n > 0) items[k] = n;
-    return { fruits: this.child(me).fruits, items, prices: { ...ITEM_PRICE }, pet: this.child(me).pet || null };
+    const sale = this.villageConf().sale;
+    const prices = Object.fromEntries(Object.entries(ITEM_PRICE).map(([k, p]) => [k, salePrice(p, sale)]));
+    return { fruits: this.child(me).fruits, items, sale, prices, base: { ...ITEM_PRICE }, pet: this.child(me).pet || null,
+      gift_left: this.giftLeft(me), sell: this.sellInfo(me) };
   }
   kids_shop_buy({ p_token, p_item, p_n }) {
     const me = this.session(p_token, 'child');
-    const price = ITEM_PRICE[p_item];
+    const price = ITEM_PRICE[p_item] ? salePrice(ITEM_PRICE[p_item], this.villageConf().sale) : 0;
     const pet = String(p_item || '').startsWith('pet_');
-    const n = pet ? 1 : p_n || 1;
+    const wear = String(p_item || '').startsWith('av_');
+    const n = pet || wear ? 1 : p_n || 1;
     if (!price || n < 1 || n > 5) fail('BAD_ITEM');
     this.db.items = this.db.items || {};
     const bag = this.db.items[me] || (this.db.items[me] = {});
     if (pet && (bag[p_item] || 0) >= 1) fail('HAVE_PET');
+    if (wear && (bag[p_item] || 0) >= 1) fail('HAVE_ITEM');
     if ((bag[p_item] || 0) + n > 99) fail('BAG_FULL');
     const c = this.child(me);
     if (c.fruits < price * n) fail('NO_FRUIT');
@@ -360,6 +380,65 @@ export class DemoBackend {
     this.db.shopLog = this.db.shopLog || [];
     this.db.shopLog.push({ id: Date.now(), child: me, item: p_item, n, price: price * n, at: nowIso() });
     return this.kids_shop({ p_token });
+  }
+  // ---------- 팔기: 잡은 물고기와 곤충 (팔아도 도감 기록은 남는다) ----------
+  sellInfo(me) {
+    const fish = {}, bugs = {};
+    for (const f of this.db.fish) if (f.child === me && !f.sold && sellPrice('fish', f.fish)) fish[f.fish] = (fish[f.fish] || 0) + 1;
+    for (const b of this.db.bugs || []) if (b.child === me && !b.sold) bugs[b.bug] = (bugs[b.bug] || 0) + 1;
+    const today0 = startOfToday();
+    return {
+      fish, bugs,
+      prices: { fish: Object.fromEntries(FISH.filter((f) => f.rarity >= 0).map((f) => [f.id, sellPrice('fish', f.id)])),
+        bug: Object.fromEntries(BUG_KINDS.map((b) => [b, sellPrice('bug', b)])) },
+      today: (this.db.sellLog || []).filter((l) => l.child === me && l.at >= today0).reduce((a, l) => a + l.fruits, 0),
+      cap: this.villageConf().sell_day,
+    };
+  }
+  kids_sell({ p_token, p_kind, p_item, p_n }) {
+    const me = this.session(p_token, 'child');
+    const price = sellPrice(p_kind, p_item);
+    const n = p_n || 1;
+    if (!price || n < 1 || n > 99) fail('BAD_ITEM');
+    const info = this.sellInfo(me);
+    if (info.cap <= 0) fail('SELL_CLOSED');
+    if (info.today + price * n > info.cap) fail('SELL_DAY');
+    const list = (p_kind === 'fish' ? this.db.fish.filter((f) => f.fish === p_item) : (this.db.bugs || []).filter((b) => b.bug === p_item))
+      .filter((x) => x.child === me && !x.sold).sort((a, b) => a.at.localeCompare(b.at));
+    if (list.length < n) fail('NO_ITEM');
+    list.slice(0, n).forEach((x) => { x.sold = nowIso(); });
+    this.child(me).fruits += price * n;
+    this.db.sellLog = this.db.sellLog || [];
+    this.db.sellLog.push({ id: Date.now(), child: me, kind: p_kind, item: p_item, n, fruits: price * n, at: nowIso() });
+    return this.kids_shop({ p_token });
+  }
+  // ---------- 선물: 친구에게 열매 주기 ----------
+  giftLeft(me) {
+    const t0 = startOfToday();
+    return Math.max(0, GIFT.day - (this.db.gifts || []).filter((g) => g.from === me && g.at >= t0).reduce((a, g) => a + g.n, 0));
+  }
+  kids_gift_send({ p_token, p_to, p_n, p_msg }) {
+    const me = this.session(p_token, 'child');
+    const to = this.db.children.find((c) => c.id === p_to);
+    if (!to || p_to === me || !to.village_name) fail('NOT_FOUND');
+    if (!Number.isInteger(p_n) || p_n < 1 || p_n > GIFT.max || !GIFT_MSGS[p_msg]) fail('BAD_GIFT');
+    this.db.gifts = this.db.gifts || [];
+    if (this.db.gifts.some((g) => g.from === me && Date.now() - Date.parse(g.at) < 3000)) fail('TOO_FAST');
+    const left = this.giftLeft(me);
+    if (p_n > left) fail('GIFT_DAY');
+    const c = this.child(me);
+    if (c.fruits < p_n) fail('NO_FRUIT');
+    c.fruits -= p_n;
+    to.fruits = (to.fruits || 0) + p_n;
+    this.db.gifts.push({ id: Date.now(), from: me, to: p_to, n: p_n, msg: p_msg, at: nowIso(), seen: false });
+    return { fruits: c.fruits, gift_left: left - p_n };
+  }
+  kids_gift_inbox({ p_token }) {
+    const me = this.session(p_token, 'child');
+    const list = (this.db.gifts || []).filter((g) => g.to === me && !g.seen);
+    list.forEach((g) => { g.seen = true; });
+    return { gifts: list.map((g) => ({ from: g.from, name: (this.db.children.find((c) => c.id === g.from) || {}).village_name || '친구', n: g.n, msg: g.msg, at: g.at })),
+      fruits: this.child(me).fruits };
   }
   kids_item_use({ p_token, p_item }) {
     const me = this.session(p_token, 'child');
@@ -429,7 +508,7 @@ export class DemoBackend {
     this.db.feedback = this.db.feedback || [];
     const mine = this.db.feedback.filter((f) => f.child === me);
     if (mine.some((f) => Date.now() - Date.parse(f.at) < 20000)) fail('TOO_FAST');
-    if (mine.filter((f) => Date.now() - Date.parse(f.at) < 86400000).length >= 5) fail('FEEDBACK_DAY');
+    if (mine.filter((f) => Date.now() - Date.parse(f.at) < 86400000).length >= 10) fail('FEEDBACK_DAY');
     this.db.feedback.push({ id: Date.now(), child: me, kind: p_kind, body, status: 'new', reply: null, reply_seen: true, at: nowIso() });
     return { ok: true };
   }
@@ -506,6 +585,11 @@ export class DemoBackend {
     const c = this.child(this.session(p_token, 'child'));
     const name = String(p_village_name || '').trim();
     if (name.length < 1 || name.length > 10) fail('BAD_NAME');
+    const bag = ((this.db.items || {})[c.id]) || {};
+    for (const slot of ['hat', 'face', 'back', 'outfit']) {
+      const it = p_avatar && wearItem(slot, p_avatar[slot]);
+      if (it && !(bag[it] > 0)) fail('NEED_ITEM'); // 상점 꾸미기 물건은 산 아이만 입는다
+    }
     c.avatar = p_avatar;
     c.village_name = name;
     return this.kids_me({ p_token });
@@ -1027,7 +1111,15 @@ export class DemoBackend {
     this.session(p_token, 'teacher');
     const v = this.villageConf();
     return {
-      today: today(), chat_open: v.chat_open, free_until: v.free_until, play_free: this.playFree(),
+      today: today(), chat_open: v.chat_open, free_until: v.free_until, play_free: this.playFree(), sale: v.sale, sell_day: v.sell_day,
+      sells: (this.db.sellLog || []).slice().reverse().slice(0, 100).map((l) => {
+        const c = this.db.children.find((x) => x.id === l.child) || {};
+        return { id: l.id, name: c.name, village_name: c.village_name, kind: l.kind, item: l.item, n: l.n, fruits: l.fruits, fruits_left: c.fruits, at: l.at };
+      }),
+      gifts: (this.db.gifts || []).slice().reverse().slice(0, 100).map((g) => {
+        const a = this.db.children.find((x) => x.id === g.from) || {}, b = this.db.children.find((x) => x.id === g.to) || {};
+        return { id: g.id, name: a.name, village_name: a.village_name, to_name: b.name, to_village_name: b.village_name, n: g.n, msg: g.msg, at: g.at };
+      }),
       chat: (this.db.chat || []).slice().reverse().slice(0, 200).map((m) => {
         const c = this.db.children.find((x) => x.id === m.child) || {};
         const t = m.to ? this.db.children.find((x) => x.id === m.to) || {} : null;
@@ -1055,6 +1147,13 @@ export class DemoBackend {
     const v = this.villageConf();
     if (p_chat_open != null) v.chat_open = !!p_chat_open;
     if (p_free_today != null) v.free_until = p_free_today ? today() : '';
+    return this.kids_t_village({ p_token });
+  }
+  kids_t_set_shop({ p_token, p_sale, p_sell_day }) {
+    this.session(p_token, 'teacher');
+    const v = this.villageConf();
+    if (p_sale != null) { if (!SALES.includes(p_sale)) fail('BAD_SALE'); v.sale = p_sale; }
+    if (p_sell_day != null) { if (!Number.isInteger(p_sell_day) || p_sell_day < 0 || p_sell_day > 30) fail('BAD_SALE'); v.sell_day = p_sell_day; }
     return this.kids_t_village({ p_token });
   }
   kids_t_chat_mute({ p_token, p_child, p_mute }) {

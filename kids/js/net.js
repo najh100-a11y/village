@@ -10,7 +10,7 @@ export const PHRASES = {
 export const EMOTES = { heart: '❤️', clap: '👏', smile: '😊', wave: '👋', pray: '🙏', star: '⭐' };
 // 놀이기구를 타며 외치는 말 (말하기 판에는 나오지 않는다)
 export const SHOUTS = { yay: '야호!', beep: '빵빵!', yum: '냠냠!' };
-const EVENTS = ['mv', 'st', 'say', 'chat', 'dm', 'done', 'av', 'inv', 'invr', 'act', 'fish', 'art', 'dish', 'ob', 'fw', 'ate', 'bug', 'jp'];
+const EVENTS = ['mv', 'st', 'say', 'chat', 'dm', 'done', 'av', 'inv', 'invr', 'act', 'fish', 'art', 'dish', 'ob', 'fw', 'ate', 'bug', 'jp', 'gift'];
 export const GAME_KINDS = ['omok', 'cook'];
 export const ACTS = ['', 'fish', 'omok', 'cook', 'art', 'memory', 'qt', 'copy', 'watch', 'ferris', 'viking', 'carousel', 'bumper', 'bench', 'eat', 'bug', 'home', 'coaster', 'swim'];
 const ID_RE = /^[A-Za-z0-9-]{1,64}$/;
@@ -21,7 +21,8 @@ const WORD_RE = /^[a-z]{2,12}$/;
 export function clean(type, p) {
   if (!p || typeof p !== 'object') return null;
   const num = (v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 100; // 섬 셋을 다 담는 넓이
-  if (type === 'mv') return num(p.x) && num(p.z) && num(p.tx) && num(p.tz) ? { x: p.x, z: p.z, tx: p.tx, tz: p.tz } : null;
+  // r: 1이면 달리는 중
+  if (type === 'mv') return num(p.x) && num(p.z) && num(p.tx) && num(p.tz) ? { x: p.x, z: p.z, tx: p.tx, tz: p.tz, ...(p.r === 1 ? { r: 1 } : {}) } : null;
   if (type === 'st') return num(p.x) && num(p.z) ? { x: p.x, z: p.z } : null;
   if (type === 'say') return PHRASES[p.p] || EMOTES[p.p] || SHOUTS[p.p] ? { p: p.p } : null;
   if (type === 'chat') { const t = typeof p.m === 'string' ? cleanChat(p.m) : ''; return t ? { m: t } : null; }
@@ -43,6 +44,8 @@ export function clean(type, p) {
   if (type === 'ate') return Number.isSafeInteger(p.d) && p.d > 0 ? { d: p.d } : null;
   // 곤충을 잡았다 (s: 자리, w: 시간 칸, b: 곤충)
   if (type === 'bug') return Number.isInteger(p.s) && p.s >= 0 && p.s < 32 && Number.isInteger(p.w) && p.w >= 0 && p.w < 1e9 && /^[a-z_]{3,20}$/.test(p.b) ? { s: p.s, w: p.w, b: p.b } : null;
+  // 열매 선물을 보냈다 (받는 아이가 서버에서 확인한다)
+  if (type === 'gift') return typeof p.to === 'string' && ID_RE.test(p.to) && Number.isInteger(p.n) && p.n >= 1 && p.n <= 10 && WORD_RE.test(p.m) ? { to: p.to, n: p.n, m: p.m } : null;
   // 둘이 대화: 받는 아이만 화면에 띄운다
   if (type === 'dm') { const t = typeof p.m === 'string' ? cleanChat(p.m) : ''; return t && typeof p.to === 'string' && ID_RE.test(p.to) ? { to: p.to, m: t } : null; }
   // 오목 구경: 판(13×13 = 169칸, 0 빈칸 1 검은 돌 2 흰 돌), 검은 돌·흰 돌 주인(g는 숲지기 솔), 이긴 쪽, 판 번호, 마지막 수
@@ -75,7 +78,7 @@ export class Outbox {
     return Math.min(MAX_RATE, REALTIME_BUDGET / (n * n));
   }
   push(ev, payload) {
-    if (ev === 'inv' || ev === 'invr' || ev === 'dm') { if (this.peerCount() > 0) this.post(ev, payload); return; } // 초대·대답·둘이 대화는 바로
+    if (ev === 'inv' || ev === 'invr' || ev === 'dm' || ev === 'gift') { if (this.peerCount() > 0) this.post(ev, payload); return; } // 초대·대답·둘이 대화·선물은 바로
     if (ev === 'ob') this.queue = this.queue.filter((m) => m[0] !== 'ob'); // 오목 판은 가장 새 것만
     if (ev === 'jp') this.queue = this.queue.filter((m) => m[0] !== 'jp'); // 점프는 하나만
     if (ev === 'mv' || ev === 'st') this.move = [ev, payload];
@@ -100,7 +103,7 @@ export class Outbox {
     const x = round2(now.x), z = round2(now.z);
     if (ev === 'mv' && p) {
       if (Math.hypot(p.tx - x, p.tz - z) < 0.2) return ['st', { x, z }];
-      return ['mv', { x, z, tx: p.tx, tz: p.tz }];
+      return ['mv', { x, z, tx: p.tx, tz: p.tz, ...(p.r === 1 ? { r: 1 } : {}) }];
     }
     return ['st', { x, z }];
   }

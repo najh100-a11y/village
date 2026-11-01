@@ -223,6 +223,10 @@ button { font: inherit; color: inherit; }
 .tile { display: grid; justify-items: center; gap: 2px; padding: 6px 4px 8px; border-radius: 18px; border: 3px solid var(--line); background: var(--paper); cursor: pointer; font-family: var(--display); font-size: 14px; color: var(--ink-soft); }
 .tile canvas { width: 100%; max-width: 100%; height: auto; display: block; }
 .tile[aria-pressed="true"] { border-color: var(--leaf); background: #EEF8E6; color: var(--leaf-deep); }
+.tile.locked { background: #FFF8E2; border-style: dashed; }
+.tile.locked canvas { opacity: .82; }
+.tile .lock { font-size: 12px; color: #B0781E; line-height: 1.1; }
+.tile.locked[aria-pressed="true"] { border-color: #E8A93C; border-style: solid; background: #FFF1CC; color: #9A6414; }
 .maker-actions { display: flex; flex-wrap: wrap; gap: 10px; padding: 12px 18px calc(12px + env(safe-area-inset-bottom)); border-top: 3px solid var(--line); background: var(--paper); align-items: center; }
 .maker-actions .grow { flex: 1; }
 .maker-actions .err { width: 100%; min-height: 0; }
@@ -287,6 +291,13 @@ html.touch .pad { position: fixed; left: max(14px, env(safe-area-inset-left)); b
 .pad-b.on { background: var(--sun); color: var(--ink); box-shadow: 0 1px 0 rgba(90, 61, 43, .25); transform: translateY(2px); }
 html.touch .jump-btn { position: fixed; right: max(16px, env(safe-area-inset-right)); bottom: calc(26px + env(safe-area-inset-bottom)); z-index: 11; width: 86px; height: 86px; border-radius: 50%; border: 4px solid #fff; background: radial-gradient(circle at 40% 32%, #FFB27A, #E5602F); color: #fff; box-shadow: 0 6px 0 #A8431F, 0 10px 20px rgba(120, 50, 20, .3); display: grid; place-items: center; align-content: center; gap: 0; font-family: var(--display); font-size: 16px; touch-action: manipulation; user-select: none; -webkit-user-select: none; cursor: pointer; }
 .jump-btn svg { width: 30px; height: 30px; }
+/* 달리기: 컴퓨터는 오른쪽 아래 작은 단추, 손가락 기기는 점프 단추 위 */
+.run-btn { position: fixed; right: max(16px, env(safe-area-inset-right)); bottom: calc(52px + env(safe-area-inset-bottom)); z-index: 11; display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 999px; border: 3px solid #fff; background: #FFFDF7; color: var(--ink); box-shadow: 0 4px 0 var(--line), 0 8px 18px rgba(70, 50, 30, .18); font-family: var(--display); font-size: 16px; cursor: pointer; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+.run-btn svg { width: 24px; height: 24px; }
+.run-btn[aria-pressed="true"] { background: radial-gradient(circle at 40% 32%, #8FE0A8, #3FAE66); color: #fff; box-shadow: 0 4px 0 #2B7F49, 0 8px 18px rgba(30, 90, 50, .25); }
+html.touch .run-btn { right: calc(max(16px, env(safe-area-inset-right)) + 98px); bottom: calc(33px + env(safe-area-inset-bottom)); width: 72px; height: 72px; padding: 0; border-radius: 50%; flex-direction: column; justify-content: center; gap: 0; font-size: 13px; }
+html.touch .run-btn svg { width: 26px; height: 26px; }
+body.map-view .run-btn, #hud[hidden] ~ .run-btn, #sayPanel:not([hidden]) ~ .run-btn, body.in-game .run-btn, body.home-editing .run-btn { display: none !important; }
 html.touch .jump-btn:active, html.touch .jump-btn.on { transform: translateY(4px); box-shadow: 0 2px 0 #A8431F, 0 6px 14px rgba(120, 50, 20, .3); }
 body.map-view .pad, body.map-view .jump-btn, #hud[hidden] ~ .view-ctl, #hud[hidden] ~ .pad, #hud[hidden] ~ .jump-btn, #sayPanel:not([hidden]) ~ .pad, #sayPanel:not([hidden]) ~ .jump-btn, body.in-game .jump-btn, body.in-game:not(.pad-game) .pad { display: none !important; }
 html.touch body.in-game.pad-game .pad { bottom: calc(150px + env(safe-area-inset-bottom)); }
@@ -551,6 +562,8 @@ button.online[data-unread]:not([data-unread=""])::after { content: ' 💌' attr(
   .chat-log { bottom: calc(150px + env(safe-area-inset-bottom)); }
   html.touch .pad { bottom: calc(92px + env(safe-area-inset-bottom)); width: 144px; height: 144px; left: max(10px, env(safe-area-inset-left)); }
   html.touch .jump-btn { bottom: calc(100px + env(safe-area-inset-bottom)); width: 80px; height: 80px; }
+  html.touch .run-btn { bottom: calc(107px + env(safe-area-inset-bottom)); width: 66px; height: 66px; right: calc(max(16px, env(safe-area-inset-right)) + 90px); }
+  .run-btn { bottom: calc(96px + env(safe-area-inset-bottom)); }
   html.touch .chat-log { bottom: calc(246px + env(safe-area-inset-bottom)); }
   html.touch #hint { bottom: auto; top: calc(100px + env(safe-area-inset-top)); }
   .view-ctl { top: 40%; gap: 6px; }
@@ -790,6 +803,33 @@ body.home-editing .pad, body.home-editing .jump-btn, body.home-editing #hud .hud
 .he-what { font-family: var(--display); font-size: 15px; padding: 0 4px; }
 .shop-tabs { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 6px 0 12px; }
 .shop-item .fw-ic.home img { width: 60px; height: 60px; display: block; background: #FFF3DA; border-radius: 14px; }
+/* 열매 상점: 할인, 꾸미기, 팔기, 선물 */
+.shop-sale { margin: 0 0 10px; text-align: center; background: #FFF1CC; border: 2px dashed #E8A93C; border-radius: 14px; padding: 6px 10px; font-family: var(--display); color: #9A6414; }
+.shop-item s.was { opacity: .6; margin-right: 6px; font-size: 13px; }
+.shop-item .fw-ic.wear img { background: #E9F4FB; }
+.shop-item.with-me { border-color: var(--leaf); background: #F2FAEA; }
+.shop-item .fw-ic.fish, .shop-item .fw-ic.bug { width: 60px; height: 60px; display: grid; place-items: center; background: #DDF1F8; border-radius: 14px; overflow: hidden; }
+.shop-item .fw-ic.bug { background: #EAF5DE; }
+.shop-item .fw-ic.fish canvas { width: 58px; height: auto; }
+.shop-item .fw-ic.bug svg { width: 54px; height: 54px; background: none; }
+.sell-head { background: #fff; border: 2px solid var(--line); border-radius: 16px; padding: 8px 12px; }
+.sell-head b { font-family: var(--display); font-weight: 400; font-size: 17px; }
+.sell-head p { margin: 2px 0 0; font-size: 14px; color: var(--ink-soft); }
+.gift-people { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+.gift-person { display: grid; justify-items: center; gap: 2px; padding: 8px 4px; border: 2px solid var(--line); border-radius: 16px; background: #fff; cursor: pointer; font: inherit; color: var(--ink); }
+.gift-person b { font-family: var(--display); font-weight: 400; font-size: 16px; }
+.gift-person small { font-size: 12px; color: var(--leaf-deep); }
+.gift-person:disabled { opacity: .5; cursor: default; }
+.gift-person .fl-face { grid-row: auto; }
+.talk.gift h4 { margin: 12px 0 6px; font-family: var(--display); font-weight: 400; font-size: 17px; }
+.gift-to { display: flex; align-items: center; gap: 12px; }
+.gift-to b { font-family: var(--display); font-weight: 400; font-size: 20px; }
+.fl-face.big { width: 72px; height: 72px; }
+.gift-nums, .gift-msgs { display: flex; flex-wrap: wrap; gap: 6px; }
+.gift-nums .chip, .gift-msgs .chip { min-height: 40px; padding: 0 12px; font-size: 16px; box-shadow: 0 3px 0 var(--line); }
+.gift-nums .chip[aria-pressed="true"], .gift-msgs .chip[aria-pressed="true"] { border-color: var(--leaf); background: #EEF8E6; color: var(--leaf-deep); }
+.gift-nums .chip:disabled { opacity: .4; }
+.gift-sum { margin: 12px 0 4px; font-size: 15px; }
 .bag-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .bag-chip { display: inline-flex; align-items: center; gap: 6px; background: #fff; border: 2px solid var(--line); border-radius: 999px; padding: 2px 10px 2px 2px; font-size: 14px; }
 .bag-chip .fw-ic.home img { width: 32px; height: 32px; border-radius: 50%; }
@@ -865,6 +905,7 @@ body.home-editing .pad, body.home-editing .jump-btn, body.home-editing #hud .hud
   <span class="pad-b right" data-d="r"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 5 16 12l-7.5 7z" fill="currentColor"/></svg></span>
   <span class="pad-b down" data-d="d"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8.5 12 16l7-7.5z" fill="currentColor"/></svg></span>
 </div>
+<button id="btnRun" class="run-btn" type="button" aria-pressed="false" data-quiet title="달리기 (컴퓨터는 Shift 키를 누르고 있어도 달려요)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="14.5" cy="4.5" r="2.2" fill="currentColor"/><path d="M9 21l2.6-6.2 2.9 2.6V21M6.5 12.5l2.8-3.6 4 .6 2.4 3.3 3 .8M11.6 14.8 13.2 9.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>달리기</span></button>
 <button id="btnJump" class="jump-btn" type="button" data-quiet><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 6 10h3.5v4h5v-4H18z" fill="currentColor"/><path d="M7 18.5h10" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg><span>점프</span></button>
 
 <section id="login" class="screen" hidden>

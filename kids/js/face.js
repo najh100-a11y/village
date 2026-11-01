@@ -25,20 +25,28 @@ export const PARTS = {
   hair: [['short', '짧은 머리'], ['side', '옆가르마'], ['buzz', '까까머리'], ['spiky', '삐죽 머리'], ['curly', '곱슬 머리'],
     ['bob', '단발'], ['long', '긴 머리'], ['pigtails', '양갈래'], ['ponytail', '포니테일'], ['bun', '똥머리'], ['braids', '땋은 머리']],
   outfit: [['tee', '새싹 티'], ['stripe', '줄무늬 티'], ['star', '별무늬 티'], ['check', '체크 셔츠'], ['hoodie', '후드티'],
-    ['sweater', '니트'], ['sporty', '운동복'], ['overall', '멜빵바지'], ['dress', '원피스'], ['robe', '성경 옷']],
+    ['sweater', '니트'], ['sporty', '운동복'], ['overall', '멜빵바지'], ['dress', '원피스'], ['robe', '성경 옷'], ['pajama', '잠옷'],
+    ['sailor', '세일러복'], ['raincoat', '비옷'], ['hero', '영웅 옷']],
   hat: [['none', '없음'], ['cap', '야구 모자'], ['beanie', '털모자'], ['straw', '밀짚모자'], ['bucket', '벙거지'], ['ribbon', '리본'],
-    ['flower', '꽃핀'], ['bear', '곰돌이 머리띠'], ['sprout', '새싹'], ['party', '고깔모자'], ['crown', '왕관']],
+    ['flower', '꽃핀'], ['bear', '곰돌이 머리띠'], ['sprout', '새싹'], ['party', '고깔모자'], ['crown', '왕관'],
+    ['halo', '천사 고리'], ['bunny', '토끼 머리띠'], ['catband', '고양이 머리띠'], ['chef', '요리사 모자']],
+  // 열매 상점 꾸미기 물건 (js/wardrobe.js): 안경과 등에 메는 것
+  face: [['none', '없음'], ['glasses', '동그란 안경'], ['sunglasses', '선글라스'], ['heart', '하트 안경']],
+  back: [['none', '없음'], ['angel', '천사 날개'], ['butterfly', '나비 날개'], ['cape', '망토'], ['backpack', '책가방']],
 };
 
 const KEYS = {
-  eyes: 'eyes', brows: 'brows', nose: 'nose', mouth: 'mouth', cheek: 'cheek', hair: 'hair', outfit: 'outfit', hat: 'hat',
+  eyes: 'eyes', brows: 'brows', nose: 'nose', mouth: 'mouth', cheek: 'cheek', hair: 'hair', outfit: 'outfit', hat: 'hat', face: 'face', back: 'back',
 };
-const COLOR_KEYS = { skin: 'skin', hairColor: 'hair', eyeColor: 'eye', outfitColor: 'cloth', bottomColor: 'bottom', shoeColor: 'shoe', hatColor: 'cloth' };
+const COLOR_KEYS = { skin: 'skin', hairColor: 'hair', eyeColor: 'eye', outfitColor: 'cloth', bottomColor: 'bottom', shoeColor: 'shoe', hatColor: 'cloth', backColor: 'cloth' };
+// 상점에서 사야 하는 값 (무작위 꾸미기와 처음 모습에서는 고르지 않는다)
+const SHOP_VALUES = { outfit: ['sailor', 'raincoat', 'hero'], hat: ['halo', 'bunny', 'catband', 'chef'], face: ['glasses', 'sunglasses', 'heart'], back: ['angel', 'butterfly', 'cape', 'backpack'] };
 
 export function defaultAvatar() {
   return {
     v: 1, skin: 1, eyes: 'round', eyeColor: 0, brows: 'soft', nose: 'dot', mouth: 'smile', cheek: 'pink',
     hair: 'short', hairColor: 1, outfit: 'tee', outfitColor: 4, bottomColor: 0, shoeColor: 0, hat: 'none', hatColor: 0,
+    face: 'none', back: 'none', backColor: 0,
   };
 }
 
@@ -60,9 +68,10 @@ export function normalizeAvatar(a) {
 export function randomAvatar(rand = Math.random) {
   const pick = (arr) => arr[Math.floor(rand() * arr.length)];
   const a = {};
-  for (const [k, part] of Object.entries(KEYS)) a[k] = pick(PARTS[part])[0];
+  for (const [k, part] of Object.entries(KEYS)) a[k] = pick(PARTS[part].filter(([id]) => !(SHOP_VALUES[k] || []).includes(id)))[0];
   for (const [k, pal] of Object.entries(COLOR_KEYS)) a[k] = Math.floor(rand() * PALETTE[pal].length);
   if (rand() < 0.45) a.hat = 'none';
+  a.face = 'none'; a.back = 'none';
   if (rand() < 0.6) a.hairColor = Math.floor(rand() * 5);
   return normalizeAvatar(a);
 }
@@ -401,6 +410,65 @@ export function drawCheeks(ctx, xl, xr, y, u, style) {
 }
 
 // 3D 얼굴 텍스처 한 장 (머리 구 앞쪽에 감싸지는 부분)
+// 안경 (얼굴 그림 위에 그린다). cx: 얼굴 가운데, ey: 눈 높이, ex: 가운데에서 눈까지, u: 크기
+export function drawGlasses(ctx, cx, ey, ex, u, style) {
+  if (!style || style === 'none') return;
+  const r = u * 1.02;
+  ctx.save();
+  if (style === 'heart') {
+    const heart = (x, y) => {
+      ctx.beginPath();
+      ctx.moveTo(x, y + r * 0.95);
+      ctx.bezierCurveTo(x - r * 1.5, y - r * 0.05, x - r * 0.75, y - r * 1.2, x, y - r * 0.45);
+      ctx.bezierCurveTo(x + r * 0.75, y - r * 1.2, x + r * 1.5, y - r * 0.05, x, y + r * 0.95);
+      ctx.closePath();
+    };
+    for (const s of [-1, 1]) {
+      heart(cx + s * ex, ey);
+      ctx.fillStyle = 'rgba(246,140,180,.38)';
+      ctx.fill();
+      strokeStyle(ctx, '#E8467F', u * 0.15);
+      ctx.stroke();
+    }
+    strokeStyle(ctx, '#E8467F', u * 0.13);
+  } else if (style === 'sunglasses') {
+    for (const s of [-1, 1]) {
+      ctx.beginPath();
+      ctx.roundRect(cx + s * ex - r * 1.12, ey - r * 0.78, r * 2.24, r * 1.6, r * 0.62);
+      ctx.fillStyle = '#26262E';
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.55)';
+      ctx.beginPath();
+      ctx.ellipse(cx + s * ex - r * 0.4, ey - r * 0.3, r * 0.34, r * 0.16, -0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    strokeStyle(ctx, '#26262E', u * 0.16);
+  } else {
+    for (const s of [-1, 1]) {
+      ctx.beginPath();
+      ctx.arc(cx + s * ex, ey, r, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(214,236,250,.22)';
+      ctx.fill();
+      strokeStyle(ctx, '#6B4428', u * 0.14);
+      ctx.stroke();
+    }
+    strokeStyle(ctx, '#6B4428', u * 0.13);
+  }
+  // 코걸이와 다리
+  const gap = style === 'sunglasses' ? r * 1.12 : r;
+  ctx.beginPath();
+  ctx.moveTo(cx - ex + gap, ey - r * 0.2);
+  ctx.quadraticCurveTo(cx, ey - r * 0.6, cx + ex - gap, ey - r * 0.2);
+  ctx.stroke();
+  for (const s of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(cx + s * (ex + gap), ey - r * 0.25);
+    ctx.lineTo(cx + s * (ex + gap + u * 0.9), ey - r * 0.45);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 export const FACE_TEX = { w: 640, h: 404, phiWidth: 2.3, thetaStart: 0.95, thetaLength: 1.45 };
 
 export function drawFace(ctx, av, { blink = false, w = FACE_TEX.w, h = FACE_TEX.h } = {}) {
@@ -419,6 +487,7 @@ export function drawFace(ctx, av, { blink = false, w = FACE_TEX.w, h = FACE_TEX.
   drawEye(ctx, cx + ex, ey, u, av.eyes, eyeC, 1, blink);
   drawNose(ctx, cx, 236 * k, u, av.nose, skin);
   drawMouth(ctx, cx, 280 * k, u, av.mouth);
+  drawGlasses(ctx, cx, ey, ex, u, av.face);
 }
 
 // 2D 얼굴 아이콘 (선생님 화면 목록, 마을 HUD 등)
@@ -457,6 +526,7 @@ export function drawFaceIcon(canvas, av) {
   drawEye(ctx, s / 2 - ex, ey, u, av.eyes, eyeC, -1, false);
   drawEye(ctx, s / 2 + ex, ey, u, av.eyes, eyeC, 1, false);
   drawMouth(ctx, s / 2, s * 0.73, u, av.mouth);
+  drawGlasses(ctx, s / 2, ey, ex, u * 0.82, av.face);
 }
 
 // 꾸미기 화면의 부품 미리보기 타일

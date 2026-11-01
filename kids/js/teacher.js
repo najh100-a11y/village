@@ -3,6 +3,9 @@ import { rpc, message, DEMO, store } from './api.js';
 import { h, showImage } from './ui.js';
 import { drawFaceIcon, normalizeAvatar } from './face.js';
 import { HOME_ITEMS } from './homeitems.js';
+import { WARDROBE } from './wardrobe.js';
+import { SALES, SELL_DAY_CHOICES, salePrice, GIFT_MSGS, BUG_NAMES } from './economy.js';
+import { FISH } from './play-data.js';
 
 const $ = (s) => document.querySelector(s);
 let token = store.get('teacher.token');
@@ -284,6 +287,7 @@ function renderVillage() {
       h('div', {}, h('h3', { style: 'margin:0' }, '오늘은 누구나 놀이 마당'),
         h('p', { class: 'note' }, v.play_free ? `오늘(${v.today})은 말씀 활동을 안 해도 누구나 낚시, 오목, 그림, 요리를 할 수 있어요. 내일부터는 저절로 평소대로 돌아가요.` : '평소에는 그날 암송 연습, 묵상, 필사 가운데 하나를 마쳐야 놀이 마당이 열려요. 첫날이나 행사 날처럼 오늘만 누구나 놀게 하려면 켜 주세요.')),
       sw(v.play_free, '오늘은 누구나 놀이 마당', (on) => call('kids_t_set_village', { p_chat_open: null, p_free_today: on }))),
+    ...(v.sale != null ? shopRows(v) : []),
     ...(v.muted.length ? [h('p', { class: 'note warn' }, '글 대화를 막아 둔 아이: ', v.muted.map((c) => `${c.name}(${c.village_name || '-'})`).join(', '))] : []));
   const dl = $('#dishList');
   const dishes = v.dishes || [];
@@ -300,13 +304,26 @@ function renderVillage() {
     } }, d.hidden ? '다시 보이기' : '숨기기'))) : [h('div', { class: 'card empty' }, '아직 올린 요리가 없어요.')]));
   const sl = $('#shopList');
   const ITEM = { fw_spark: '반짝 불꽃', fw_flower: '꽃 불꽃', fw_heart: '하트 불꽃', pet_dog: '애완동물 강아지', pet_cat: '애완동물 고양이', pet_rabbit: '애완동물 토끼', pet_chick: '애완동물 병아리',
-    ...Object.fromEntries(Object.entries(HOME_ITEMS).map(([k, it]) => [k, `내 집 ${it.name}`])) };
-  const shop = v.shop || [];
+    ...Object.fromEntries(Object.entries(HOME_ITEMS).map(([k, it]) => [k, `내 집 ${it.name}`])),
+    ...Object.fromEntries(Object.entries(WARDROBE).map(([k, it]) => [k, `꾸미기 ${it.name}`])) };
+  const FISH_NAME = Object.fromEntries(FISH.map((f) => [f.id, f.name]));
+  // 산 것과 판 것을 시간 차례로 함께 보인다
+  const shop = [...(v.shop || []).map((l) => ({ ...l, buy: true })), ...(v.sells || []).map((l) => ({ ...l, sell: true }))]
+    .sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 150);
   if (sl) sl.replaceChildren(...(shop.length ? shop.map((l) => h('div', { class: 'chat-row' },
     h('time', { datetime: l.at }, timeOf(l.at)),
     h('div', {}, h('span', { class: 'who' }, l.name || '-', h('small', {}, l.village_name || '')), ' ',
-      h('span', { class: 'pill' }, `열매 ${l.price}개`),
-      h('div', { class: 'body' }, `${ITEM[l.item] || l.item} ${l.n}개`, h('small', { class: 'muted' }, `  · 지금 남은 열매 ${l.fruits_left}개`))))) : [h('div', { class: 'card empty' }, '아직 산 것이 없어요.')]));
+      l.sell ? h('span', { class: 'pill green' }, `팔아서 열매 +${l.fruits}개`) : h('span', { class: 'pill' }, `열매 ${l.price}개`),
+      h('div', { class: 'body' }, l.sell ? `${(l.kind === 'fish' ? FISH_NAME : BUG_NAMES)[l.item] || l.item} ${l.n}마리를 팔았어요` : `${ITEM[l.item] || l.item} ${l.n}개`,
+        h('small', { class: 'muted' }, `  · 지금 남은 열매 ${l.fruits_left}개`))))) : [h('div', { class: 'card empty' }, '아직 사거나 판 것이 없어요.')]));
+  const gl = $('#giftList');
+  const gifts = v.gifts || [];
+  if (gl) gl.replaceChildren(...(gifts.length ? gifts.map((g) => h('div', { class: 'chat-row' },
+    h('time', { datetime: g.at }, timeOf(g.at)),
+    h('div', {}, h('span', { class: 'who' }, g.name || '-', h('small', {}, g.village_name || '')), ' ',
+      h('span', { class: 'pill' }, `→ ${g.to_name || '-'}(${g.to_village_name || '-'})에게`), ' ',
+      h('span', { class: 'pill green' }, `열매 ${g.n}개`),
+      h('div', { class: 'body' }, `"${GIFT_MSGS[g.msg] || ''}"`)))) : [h('div', { class: 'card empty' }, '아직 주고받은 선물이 없어요.')]));
   const cl = $('#commentList');
   const cms = v.comments || [];
   if (cl) cl.replaceChildren(...(cms.length ? cms.map((c) => h('div', { class: 'chat-row' },
@@ -332,6 +349,30 @@ function renderVillage() {
       toast(m.muted ? `${m.name}의 글 대화를 다시 열었어요.` : `${m.name}의 글 대화를 막았어요.`);
       renderVillage();
     } }, m.muted ? '막기 풀기' : '글 대화 막기'))));
+}
+
+// 열매 상점 할인과 하루에 팔아서 받는 열매
+function shopRows(v) {
+  const pick = (values, cur, label, fmt, onPick) => {
+    const sel = h('select', { 'aria-label': label }, values.map((x) => h('option', { value: String(x), selected: x === cur }, fmt(x))));
+    sel.addEventListener('change', async () => {
+      sel.disabled = true;
+      try { villageConf = await onPick(Number(sel.value)); toast(`${label}: ${fmt(Number(sel.value))}`); } catch (e) { sel.disabled = false; sel.value = String(cur); return; }
+      renderVillage();
+    });
+    return sel;
+  };
+  const ex = v.sale ? `예를 들어 강아지 30개는 ${salePrice(30, v.sale)}개, 침대 8개는 ${salePrice(8, v.sale)}개가 되고, 반짝 불꽃은 그대로 1개예요.` : '';
+  return [
+    h('div', { class: 'village-row' },
+      h('div', {}, h('h3', { style: 'margin:0' }, '열매 상점 할인'),
+        h('p', { class: 'note' }, v.sale ? `지금 열매 상점의 모든 물건을 ${v.sale}% 싸게 팔아요. 깎은 값의 소수점은 버리고, 가장 싸도 열매 1개예요. ${ex} 끝내려면 '할인 없음'을 골라 주세요.` : '행사 날이나 생일 주간처럼 열매 상점 물건 값을 10%에서 50%까지 깎아 줄 수 있어요. 고르면 아이들 상점에 바로 할인 값과 안내가 보여요.')),
+      pick(SALES, v.sale, '열매 상점 할인', (x) => (x ? `${x}% 할인` : '할인 없음'), (x) => call('kids_t_set_shop', { p_sale: x, p_sell_day: null }))),
+    h('div', { class: 'village-row' },
+      h('div', {}, h('h3', { style: 'margin:0' }, '하루에 팔아서 받는 열매'),
+        h('p', { class: 'note' }, v.sell_day ? `아이들이 잡은 물고기와 곤충을 열매 상점에서 팔면 하루에 열매 ${v.sell_day}개까지 받아요 (흔한 것 1개, 가끔 2개, 드문 것 3개, 황금잉어 5개). 놀이로 버는 열매가 말씀 활동보다 많아지지 않게 정해 주세요.` : '지금은 팔기를 쉬고 있어요. 아이들은 물고기와 곤충을 팔 수 없어요.')),
+      pick(SELL_DAY_CHOICES.includes(v.sell_day) ? SELL_DAY_CHOICES : [...SELL_DAY_CHOICES, v.sell_day].sort((a, b) => a - b), v.sell_day, '하루에 팔아서 받는 열매', (x) => (x ? `하루 ${x}개` : '팔기 쉬기'), (x) => call('kids_t_set_shop', { p_sale: null, p_sell_day: x }))),
+  ];
 }
 
 let signup = null;

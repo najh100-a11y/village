@@ -51,7 +51,7 @@ export function drawFish(ctx, kind, cx, cy, len, { silhouette = false } = {}) {
   ctx.restore();
 }
 
-function fishCanvas(kind, w = 120, hgt = 70, opts) {
+export function fishCanvas(kind, w = 120, hgt = 70, opts) {
   const c = h('canvas', { width: w * 2, height: hgt * 2, class: 'fish-cv', 'aria-hidden': 'true' });
   const ctx = c.getContext('2d');
   ctx.scale(2, 2);

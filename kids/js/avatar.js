@@ -297,6 +297,57 @@ function buildHat(style, color) {
       g.add(mesh(sph(0.08), toon('#F6D55C'), 0.14, 1.18, 0));
       break;
     }
+    case 'halo': {
+      // 천사 고리: 머리 위에 떠서 살짝 오르내린다 (update에서 bob)
+      const gold = toon('#FFE68A', { emissive: '#F2B93B' });
+      const ring = mesh(new THREE.TorusGeometry(0.3, 0.045, 10, 36), gold, 0, 0.98, -0.03);
+      ring.rotation.x = Math.PI / 2 - 0.18;
+      ring.userData.bob = 0.98;
+      g.add(ring);
+      break;
+    }
+    case 'bunny': {
+      const band = mesh(new THREE.TorusGeometry(0.64, 0.035, 8, 40, Math.PI), m, 0, 0.02, 0.02);
+      band.rotation.x = -0.25;
+      g.add(band);
+      const pink = toon('#FBD3D8');
+      for (const s of [-1, 1]) {
+        const ear = new THREE.Group();
+        ear.position.set(s * 0.2, 0.56, -0.06);
+        ear.rotation.z = -s * 0.18;
+        const outer = mesh(sph(1, 16, 12), m, 0, 0.3, 0);
+        outer.scale.set(0.11, 0.33, 0.07);
+        const inner = mesh(sph(1, 12, 10), pink, 0, 0.3, 0.04);
+        inner.scale.set(0.06, 0.25, 0.04);
+        ear.add(outer, inner);
+        if (s > 0) ear.rotation.x = -0.35; // 한쪽 귀는 살짝 접힌다
+        g.add(ear);
+      }
+      break;
+    }
+    case 'catband': {
+      const band = mesh(new THREE.TorusGeometry(0.64, 0.035, 8, 40, Math.PI), dark, 0, 0.02, 0.02);
+      band.rotation.x = -0.25;
+      g.add(band);
+      const pink = toon('#FBD3D8');
+      for (const s of [-1, 1]) {
+        const ear = mesh(new THREE.ConeGeometry(0.16, 0.3, 4), m, s * 0.33, 0.66, -0.02);
+        ear.rotation.set(0, Math.PI / 4, -s * 0.38);
+        ear.scale.set(1, 1, 0.45);
+        const inner = mesh(new THREE.ConeGeometry(0.09, 0.18, 4), pink, s * 0.325, 0.645, 0.03);
+        inner.rotation.set(0, Math.PI / 4, -s * 0.38);
+        inner.scale.set(1, 1, 0.3);
+        g.add(ear, inner);
+      }
+      break;
+    }
+    case 'chef': {
+      covers = true;
+      g.add(mesh(new THREE.CylinderGeometry(0.5, 0.56, 0.3, 32), white, 0, 0.5, 0));
+      const puff = sph(0.26, 18, 14);
+      for (const [x, y, z] of [[0, 0.9, 0], [-0.24, 0.8, 0.05], [0.24, 0.8, 0.05], [0, 0.8, -0.24], [0, 0.82, 0.22]]) g.add(mesh(puff, white, x, y, z));
+      break;
+    }
     case 'crown': {
       const gold = toon('#F4C542');
       const ring = mesh(new THREE.CylinderGeometry(0.4, 0.36, 0.2, 24, 1, true), toon('#F4C542', { side: THREE.DoubleSide }), 0, 0.62, 0);
@@ -314,8 +365,88 @@ function buildHat(style, color) {
   return { group: g, covers };
 }
 
+// ---------- 등에 메는 것 (날개, 망토, 가방) ----------
+// 몸통 뒤에 붙인다. anim: { wings: [왼쪽, 오른쪽] 날개(파닥), cape: 망토(펄럭) }
+function buildBack(style, color) {
+  const g = new THREE.Group();
+  const anim = {};
+  const m = toon(color, { side: THREE.DoubleSide });
+  const dark = toon(shade(color, 0.22));
+  const wingPair = (parts, mat2) => {
+    const pair = [];
+    for (const s of [-1, 1]) {
+      const pivot = new THREE.Group();
+      pivot.position.set(s * 0.1, 0.8, -0.3);
+      for (const [rx, ry, x, y, rot, mat] of parts) {
+        const f = mesh(sph(1, 18, 12), mat || mat2, s * x, y, -0.04);
+        f.scale.set(rx, ry, 0.035);
+        f.rotation.z = -s * rot;
+        pivot.add(f);
+      }
+      pivot.userData.side = s;
+      g.add(pivot);
+      pair.push(pivot);
+    }
+    anim.wings = pair;
+  };
+  switch (style) {
+    case 'angel': {
+      const w = toon('#FFFFFF', { emissive: '#5A5A66' });
+      const w2 = toon('#EAF2FF', { emissive: '#3A3F4A' });
+      wingPair([[0.46, 0.2, 0.36, 0.2, -0.55, w], [0.39, 0.16, 0.44, 0.0, -0.25, w2], [0.3, 0.13, 0.42, -0.17, 0.05, w]]);
+      break;
+    }
+    case 'butterfly': {
+      const light = toon(shade(color, -0.45), { side: THREE.DoubleSide });
+      wingPair([[0.44, 0.33, 0.36, 0.18, -0.45, m], [0.28, 0.24, 0.26, -0.22, 0.35, light]]);
+      const dot = toon('#FFFDF7');
+      for (const p of anim.wings) {
+        const s = p.userData.side;
+        for (const [x, y] of [[0.46, 0.24], [0.3, 0.08], [0.28, -0.24]]) {
+          const d = mesh(sph(0.055, 10, 8), dot, s * x, y, -0.07);
+          d.scale.z = 0.4;
+          p.add(d);
+        }
+      }
+      break;
+    }
+    case 'cape': {
+      // 어깨에서 늘어지는 망토 (윗부분을 축으로 펄럭인다)
+      const pivot = new THREE.Group();
+      pivot.position.set(0, 0.9, 0);
+      const cloth = mesh(new THREE.CylinderGeometry(0.33, 0.56, 0.78, 28, 1, true, Math.PI / 2 + 0.25, Math.PI - 0.5), m, 0, -0.38, -0.02);
+      pivot.add(cloth);
+      const collar = mesh(new THREE.TorusGeometry(0.2, 0.045, 8, 24), dark, 0, 0.01, 0);
+      collar.rotation.x = Math.PI / 2;
+      pivot.add(collar);
+      g.add(pivot);
+      anim.cape = pivot;
+      break;
+    }
+    case 'backpack': {
+      const bag = new THREE.Group();
+      bag.position.set(0, 0.6, -0.47);
+      const body = mesh(new THREE.BoxGeometry(0.46, 0.5, 0.22), toon(color), 0, 0, 0);
+      const lid = mesh(sph(1, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2), toon(color), 0, 0.25, 0);
+      lid.scale.set(0.23, 0.08, 0.11);
+      const pocket = mesh(new THREE.BoxGeometry(0.32, 0.18, 0.06), dark, 0, -0.1, -0.13);
+      const clasp = mesh(sph(0.03, 8, 6), toon('#F6D55C'), 0, 0.02, -0.165);
+      bag.add(body, lid, pocket, clasp);
+      g.add(bag);
+      for (const s of [-1, 1]) {
+        const strap = mesh(new THREE.TorusGeometry(0.2, 0.028, 6, 16, Math.PI), dark, s * 0.17, 0.66, -0.13);
+        strap.rotation.set(0, Math.PI / 2, Math.PI / 2 + 0.15);
+        g.add(strap);
+      }
+      break;
+    }
+    default:
+  }
+  return { group: g, anim };
+}
+
 // ---------- 옷 ----------
-const SHORT_SLEEVE = new Set(['tee', 'stripe', 'star', 'overall', 'dress']);
+const SHORT_SLEEVE = new Set(['tee', 'stripe', 'star', 'overall', 'dress', 'sailor']);
 
 function clothTexture(av) {
   const c = document.createElement('canvas');
@@ -434,6 +565,76 @@ function clothTexture(av) {
       ctx.fillRect(frontX - 70, 0, 4, 256);
       ctx.fillRect(frontX + 66, 0, 4, 256);
       break;
+    case 'pajama': { // 잠옷: 달과 별 무늬, 흰 테두리 깃과 단추
+      const dot = light ? shade(base, 0.3) : '#FFF6D8';
+      for (let i = 0; i < 22; i++) {
+        const x = (i * 83 + 17) % 256, y = (i * 47 + 21) % 236 + 8;
+        ctx.fillStyle = dot;
+        if (i % 2) {
+          ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = base;
+          ctx.beginPath(); ctx.arc(x + 3.5, y - 2.5, 6, 0, Math.PI * 2); ctx.fill();
+        } else {
+          ctx.beginPath();
+          for (let j = 0; j < 10; j++) { const a = -Math.PI / 2 + (j * Math.PI) / 5, r = j % 2 ? 2.4 : 5.5; ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); }
+          ctx.fill();
+        }
+      }
+      ctx.strokeStyle = '#FFFDF7';
+      ctx.lineWidth = 5;
+      ctx.lineJoin = 'round';
+      ctx.beginPath(); ctx.moveTo(frontX - 34, 0); ctx.lineTo(frontX, 52); ctx.lineTo(frontX + 34, 0); ctx.stroke();
+      ctx.fillStyle = '#FFFDF7';
+      for (const y of [82, 130, 178, 222]) { ctx.beginPath(); ctx.arc(frontX + 4, y, 5, 0, Math.PI * 2); ctx.fill(); }
+      ctx.fillStyle = 'rgba(255,253,247,.9)';
+      ctx.fillRect(0, 244, 256, 6);
+      break;
+    }
+    case 'sailor': { // 세일러복: 흰 옷에 옷 색 깃과 빨간 리본
+      ctx.fillStyle = '#FFFDF7';
+      ctx.fillRect(0, 0, 256, 256);
+      ctx.fillStyle = base;
+      ctx.beginPath(); ctx.moveTo(frontX - 56, 0); ctx.lineTo(frontX, 116); ctx.lineTo(frontX + 56, 0); ctx.fill();
+      ctx.fillRect(0, 0, 60, 92); ctx.fillRect(196, 0, 60, 92); // 등에 넓은 깃
+      ctx.strokeStyle = '#FFFDF7';
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(frontX - 45, 0); ctx.lineTo(frontX, 100); ctx.lineTo(frontX + 45, 0); ctx.stroke();
+      ctx.strokeRect(-4, -4, 56, 88); ctx.strokeRect(204, -4, 56, 88);
+      ctx.fillStyle = '#FFFDF7';
+      ctx.beginPath(); ctx.moveTo(frontX - 26, 2); ctx.lineTo(frontX, 64); ctx.lineTo(frontX + 26, 2); ctx.fill();
+      ctx.fillStyle = '#E5484D';
+      for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(frontX, 112); ctx.lineTo(frontX + s * 26, 98); ctx.lineTo(frontX + s * 26, 128); ctx.fill(); }
+      for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(frontX + s * 4, 116); ctx.lineTo(frontX + s * 16, 160); ctx.lineTo(frontX + s * 4, 154); ctx.fill(); }
+      ctx.beginPath(); ctx.arc(frontX, 112, 8, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = base;
+      ctx.fillRect(0, 238, 256, 18);
+      break;
+    }
+    case 'raincoat': { // 비옷: 반짝이는 줄, 큰 단추, 주머니 덮개
+      ctx.fillStyle = 'rgba(255,255,255,.35)';
+      for (const x of [frontX - 58, frontX + 40, 30, 214]) ctx.fillRect(x, 10, 7, 236);
+      ctx.fillStyle = shade(base, 0.2);
+      ctx.fillRect(frontX - 3, 0, 6, 256);
+      for (const s of [-1, 1]) { ctx.beginPath(); ctx.roundRect(frontX + s * 30 - 22, 168, 44, 16, 6); ctx.fill(); }
+      ctx.fillStyle = light ? '#5A4A3A' : '#FFFDF7';
+      for (const y of [56, 104, 152, 200]) { ctx.beginPath(); ctx.ellipse(frontX + 12, y, 6, 9, 0, 0, Math.PI * 2); ctx.fill(); }
+      break;
+    }
+    case 'hero': { // 영웅 옷: 가슴에 노란 별, 허리띠
+      ctx.fillStyle = shade(base, 0.18);
+      ctx.fillRect(frontX - 2, 150, 4, 70);
+      ctx.fillStyle = '#FFFDF7';
+      ctx.beginPath(); ctx.arc(frontX, 92, 34, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#F6C445';
+      ctx.beginPath();
+      for (let j = 0; j < 10; j++) { const a = -Math.PI / 2 + (j * Math.PI) / 5, r = j % 2 ? 12 : 28; ctx.lineTo(frontX + Math.cos(a) * r, 94 + Math.sin(a) * r); }
+      ctx.fill();
+      ctx.fillStyle = '#F6C445';
+      ctx.fillRect(0, 222, 256, 18);
+      ctx.fillStyle = '#E39B2D';
+      ctx.fillRect(frontX - 14, 218, 28, 26);
+      break;
+    }
     default:
   }
   const tex = new THREE.CanvasTexture(c);
@@ -500,9 +701,10 @@ export class Avatar {
     this.ownTextures.push(clothTex);
     this.ownMaterials.push(clothMat);
     const plain = toon(clothC);
-    const sleeveMat = av.outfit === 'overall' ? toon('#FFF6E6') : plain;
-    const bottomC = av.outfit === 'overall' ? clothC : colorOf(av, 'bottomColor');
-    const legMat = ['dress', 'robe'].includes(av.outfit) ? skin : toon(bottomC);
+    // 소매와 바지: 멜빵바지는 흰 소매, 세일러복은 흰 반소매, 잠옷은 위아래 같은 무늬, 영웅 옷은 옷 색 바지
+    const sleeveMat = av.outfit === 'overall' ? toon('#FFF6E6') : av.outfit === 'sailor' ? toon('#FFFDF7') : av.outfit === 'pajama' ? clothMat : plain;
+    const bottomC = ['overall', 'hero'].includes(av.outfit) ? clothC : colorOf(av, 'bottomColor');
+    const legMat = ['dress', 'robe'].includes(av.outfit) ? skin : av.outfit === 'pajama' ? clothMat : toon(bottomC);
     const shoeMat = toon(av.outfit === 'robe' ? '#9A6A43' : colorOf(av, 'shoeColor'));
 
     // 다리
@@ -542,7 +744,14 @@ export class Avatar {
         this.body.add(tail);
       }
     }
-    if (av.outfit === 'hoodie') {
+    if (av.outfit === 'raincoat') {
+      // 비옷 자락 (엉덩이까지 내려온다)
+      const pts = [[0.335, 0.62], [0.37, 0.46], [0.405, 0.3], [0.415, 0.2]].map(([x, y]) => new THREE.Vector2(x, y));
+      const coat = mesh(new THREE.LatheGeometry(pts, 36, Math.PI, Math.PI * 2), new THREE.MeshToonMaterial({ map: clothTex, gradientMap: toonGradient(), side: THREE.DoubleSide }));
+      this.ownMaterials.push(coat.material);
+      this.body.add(coat);
+    }
+    if (av.outfit === 'hoodie' || av.outfit === 'raincoat') {
       const hood = mesh(new THREE.TorusGeometry(0.2, 0.09, 10, 24), plain, 0, 0.9, -0.2);
       hood.rotation.x = 1.15;
       this.body.add(hood);
@@ -610,7 +819,18 @@ export class Avatar {
     head.add(hat.group);
     hat.group.traverse((o) => { if (o.userData.ownMaterial) { this.ownMaterials.push(o.material); this.ownTextures.push(o.material.map); } });
     if (hat.covers) for (const o of hair.top) o.visible = false;
+    this.halo = null;
+    hat.group.traverse((o) => { if (o.userData.bob) { o.userData.noMerge = true; this.halo = o; } });
     this.body.add(head);
+    // 등에 메는 것 (날개, 망토, 가방): 움직이는 부분마다 따로 합친다
+    const back = buildBack(av.back, colorOf(av, 'backColor'));
+    this.backAnim = back.anim;
+    if (back.group.children.length) {
+      this.body.add(back.group);
+      const movers = [...(back.anim.wings || []), ...(back.anim.cape ? [back.anim.cape] : [])];
+      for (const g of movers) mergeStatic(g);
+      if (!movers.length) mergeStatic(back.group);
+    }
     // 움직이지 않는 부분끼리 합쳐 그리기 횟수를 줄인다 (팔·다리·머리는 따로 움직이므로 묶음별로)
     for (const g of [...this.legs, ...this.arms, head]) mergeStatic(g);
     mergeStatic(this.body, { shallow: true });
@@ -638,10 +858,11 @@ export class Avatar {
     if (moving) this.walk += dt * 9 * speed;
     const sw = moving ? Math.sin(this.walk) : 0;
     const k = moving ? 1 : 0;
-    this.legs[0].rotation.x = sw * 0.7 * k;
-    this.legs[1].rotation.x = -sw * 0.7 * k;
-    this.arms[0].rotation.x = -sw * 0.6 * k;
-    this.arms[1].rotation.x = sw * 0.6 * k;
+    const runK = moving && speed > 1.6 ? 1.35 : 1; // 달리면 팔다리를 크게 흔든다
+    this.legs[0].rotation.x = sw * 0.7 * k * runK;
+    this.legs[1].rotation.x = -sw * 0.7 * k * runK;
+    this.arms[0].rotation.x = -sw * 0.6 * k * runK;
+    this.arms[1].rotation.x = sw * 0.6 * k * runK;
     const idle = Math.sin(t * 2.2) * 0.012;
     let y = moving ? Math.abs(Math.sin(this.walk)) * 0.07 : idle;
     if (this.hop > 0) {
@@ -657,7 +878,7 @@ export class Avatar {
       this.legs[1].rotation.x = 0.35 * jmp;
     }
     this.body.position.y = y;
-    this.body.rotation.x = moving ? 0.06 : 0;
+    this.body.rotation.x = moving ? (runK > 1 ? 0.17 : 0.06) : 0;
     this.head.rotation.z = moving ? 0 : Math.sin(t * 0.9) * 0.03;
     // 눈 깜빡임
     this.nextBlink -= dt;
@@ -675,6 +896,17 @@ export class Avatar {
       this.arms[0].rotation.x = this.arms[1].rotation.x = -2.7 * jmp;
       this.arms[0].rotation.z = -0.2 - 0.25 * jmp;
       this.arms[1].rotation.z = 0.2 + 0.25 * jmp;
+    }
+    // 천사 고리는 둥실, 날개는 파닥, 망토는 달리면 펄럭
+    if (this.halo) this.halo.position.y = this.halo.userData.bob + Math.sin(t * 2.2) * 0.035;
+    const ba = this.backAnim;
+    if (ba && ba.wings) {
+      const flap = 0.28 + Math.sin(t * (moving ? 9 : 3.2)) * (moving ? 0.28 : 0.12);
+      for (const w of ba.wings) w.rotation.y = w.userData.side * flap;
+    }
+    if (ba && ba.cape) {
+      const want = moving ? Math.min(1.1, 0.35 + 0.3 * speed) + Math.sin(t * 11) * 0.06 : 0.1 + Math.sin(t * 1.5) * 0.03;
+      ba.cape.rotation.x += (want - ba.cape.rotation.x) * Math.min(1, dt * 6);
     }
     if (this.pose) this.pose(this, dt, t);
   }

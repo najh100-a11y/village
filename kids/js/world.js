@@ -32,6 +32,8 @@ const benchPose = (av) => {
   av.legs[0].rotation.x = av.legs[1].rotation.x = -1.45;
   av.arms[0].rotation.x = av.arms[1].rotation.x = -0.4;
 };
+// 걷기와 달리기 빠르기 (초당)
+const WALK_SPEED = 5.2, RUN_SPEED = 8.6;
 // 선베드에 누운 자세: 낮은 등받이에 기대 다리를 뻗고 두 손은 배 위에 모은다.
 // 뿌리(root)를 엉덩이 자리에 두고, 몸(발이 원점)을 lean만큼 뒤로 눕힌 뒤 엉덩이가 뿌리에 오도록 당긴다
 const LIE = { lean: Math.PI / 2 - LOUNGER.back, legs: 0.36, y: 0.73, z: 0.08 };
@@ -47,6 +49,13 @@ const liePose = (av) => {
   if (av.head) { av.head.rotation.x = 0.25; av.head.rotation.y = -0.7; } // 얼굴을 왼쪽(남쪽, 카메라 쪽)으로 돌린다
 };
 liePose.lie = true;
+// 내 집 침대에 누운 자세: 베개를 베고 얼굴은 위를 본다
+const bedPose = (av) => {
+  liePose(av);
+  if (av.head) { av.head.rotation.x = 0.3; av.head.rotation.y = 0; }
+  av.arms[0].rotation.x = av.arms[1].rotation.x = -0.5;
+};
+bedPose.lie = true;
 // 손에 든 열매 (모양은 같이 쓴다)
 let handFruitGeo = null;
 function handFruit(c) {
@@ -274,6 +283,8 @@ export class Village {
     this.noFade = null;
     this.sitting = null;
     this.stroke = 'free';
+    this.running = false; // 달리기 단추 (켜 두면 계속 달린다)
+    this.shiftRun = false; // Shift를 누르는 동안
     this.eating = null;
     this.netting = null;
     this.treeSpots = [];
@@ -1169,9 +1180,21 @@ export class Village {
     if (this.on.onLocalStop) this.on.onLocalStop({ x: +st.x.toFixed(2), z: +st.z.toFixed(2) });
     if (this.on.onSit) this.on.onSit(this.sitting.seat, st.lie);
   }
+  // 내 집 가구에 앉거나 눕기 (spot: { x, y, z, rot, lie }). 친구들에게 알리지 않는다 (내 집은 나만 본다)
+  restAt(spot, out) {
+    if (this.mode !== 'play' || !this.player || !this.atHome) return;
+    this.cancelEat();
+    const pl = this.player;
+    pl.root.position.set(spot.x, spot.y, spot.z);
+    pl.root.rotation.y = spot.rot;
+    pl.pose = spot.lie ? bedPose : benchPose;
+    this.sitting = { home: true, lie: spot.lie, out: out || pl.root.position.clone().setY(0) };
+    this.target = null;
+  }
   standUp(quiet = false) {
     if (!this.sitting || !this.player) return;
     const out = this.sitting.out;
+    if (this.sitting.home) quiet = true; // 내 집에서는 하는 일(🏠)을 그대로 둔다
     this.sitting = null;
     const pl = this.player;
     pl.pose = null;
@@ -1721,6 +1744,7 @@ export class Village {
     const d = Math.hypot(pos.x - p.x, pos.z - p.z);
     if (d > 2.5 || !r.seen) { pos.set(p.x, 0, p.z); r.seen = true; }
     r.target = (p.tx != null && Math.hypot(p.tx - pos.x, p.tz - pos.z) > 0.15) ? new THREE.Vector3(p.tx, 0, p.tz) : null;
+    r.run = p.r === 1;
     if (!r.target && !r.pin) this.resolve(pos);
     r.stuck = 0;
   }
@@ -1785,9 +1809,14 @@ export class Village {
   reportMove(tx, tz) {
     if (!this.on.onLocalMove || !this.player || this.atHome) return;
     const p = this.player.root.position;
-    this.on.onLocalMove({ x: +p.x.toFixed(2), z: +p.z.toFixed(2), tx: +tx.toFixed(2), tz: +tz.toFixed(2) });
-    this.net = { moving: true, sent: this.time, tx, tz };
+    const run = this.isRunning();
+    const msg = { x: +p.x.toFixed(2), z: +p.z.toFixed(2), tx: +tx.toFixed(2), tz: +tz.toFixed(2) };
+    if (run) msg.r = 1;
+    this.on.onLocalMove(msg);
+    this.net = { moving: true, sent: this.time, tx, tz, run };
   }
+  isRunning() { return !!(this.running || this.shiftRun); }
+  setRunning(on) { this.running = !!on; }
   reportStop() {
     if (!this.on.onLocalStop || !this.player) return;
     const p = this.atHome && this.homeDoor ? this.homeDoor : this.player.root.position;
@@ -1829,7 +1858,8 @@ export class Village {
         const d = Math.hypot(dx, dz);
         if (d < 0.2 && !r.via.length) r.target = null; else {
           const before = pos.clone();
-          const step = Math.min(d, 5.2 * dt);
+          const sp = inPool(pos.x, pos.z) ? (r.run ? 4.6 : 3.2) : (r.run ? RUN_SPEED : WALK_SPEED);
+          const step = Math.min(d, sp * dt);
           pos.x += (dx / d) * step;
           pos.z += (dz / d) * step;
           this.resolve(pos);
@@ -1840,7 +1870,7 @@ export class Village {
         }
       }
       if (!r.pin) this.swimTick(r.av, pos, moving, dt, r);
-      r.av.update(dt, moving, 1.2);
+      r.av.update(dt, moving, r.run && moving ? 2.0 : 1.2);
       this.placeLabel(r.tag, pos, 2.45);
       if (r.bubble) this.tickBubble(r, pos, 3.05, dt);
     }
@@ -1960,8 +1990,10 @@ export class Village {
       if ((e.code === 'Enter' || e.code === 'Space') && this.nearDoor) { e.preventDefault(); this.enter(this.nearDoor.id); }
       else if (e.code === 'Space' && this.mode === 'play' && !e.repeat) { e.preventDefault(); this.jump(); }
     });
-    window.addEventListener('keyup', (e) => { if (map[e.code]) this.keys.delete(map[e.code]); });
-    window.addEventListener('blur', () => this.keys.clear());
+    window.addEventListener('keyup', (e) => { if (map[e.code]) this.keys.delete(map[e.code]); if (e.key === 'Shift') this.shiftRun = false; });
+    window.addEventListener('blur', () => { this.keys.clear(); this.shiftRun = false; });
+    // Shift를 누르고 있으면 달린다
+    window.addEventListener('keydown', (e) => { if (e.key === 'Shift') this.shiftRun = true; });
   }
 
   // ---------- 시점 ----------
@@ -2121,6 +2153,15 @@ export class Village {
       const p = o.userData.pick;
       if (p.type === 'building') { this.walkTo(p.id); return true; }
       if (p.type === 'mypet') { this.petFollower(p.owner); return true; }
+      if (p.type === 'homeitem' && H.restSpot) {
+        const rest = H.restSpot(p.id, this.player && this.player.root.position);
+        if (rest) {
+          const out = rest.out.clone();
+          this.target = { pos: out, action: () => { this.restAt(rest, out); if (this.on.onHomeItem) this.on.onHomeItem(p.id); } };
+          this.showTapMark(out);
+          return true;
+        }
+      }
       if (p.type === 'plant' || p.type === 'homeitem') {
         const st = p.type === 'plant' ? H.plantStand(p.id) : H.standBy(p.id);
         if (!st) return true;
@@ -2162,6 +2203,7 @@ export class Village {
   }
   exitHome() {
     if (!this.atHome) return;
+    if (this.sitting) this.standUp(true);
     const H = this.homeSpace;
     if (this.mode === 'game') this.exitGame();
     H.clearGhost();
@@ -2760,7 +2802,8 @@ export class Village {
     const len = Math.hypot(dx, dz);
     let moving = false;
     if (len > 0.001) {
-      const speed = inPool(p.x, p.z) ? 3.2 : 5.2; // 물속에서는 천천히
+      const run = this.isRunning();
+      const speed = inPool(p.x, p.z) ? (run ? 4.6 : 3.2) : (run ? RUN_SPEED : WALK_SPEED); // 물속에서는 천천히
       const before = p.clone();
       p.x += (dx / len) * speed * dt;
       p.z += (dz / len) * speed * dt;
@@ -2780,11 +2823,17 @@ export class Village {
       }
       if (moving && this.on.onMove) this.on.onMove();
     }
+    // 도착해서 앉거나 누웠으면 그 자리 높이를 그대로 둔다 (물 높이 맞추기를 건너뛴다)
+    if (this.sitting) { pl.update(dt, false); return; }
     this.swimTick(pl, p, moving, dt, this);
-    pl.update(dt, moving, 1.2);
+    const run = this.isRunning();
+    pl.update(dt, moving, run && moving ? 2.0 : 1.2);
+    // 달리기를 켜고 끄면 친구들에게 다시 알린다 (친구 화면에서도 같은 빠르기로)
+    if (this.net.moving && !!this.net.run !== run) this.reportMove(this.net.tx, this.net.tz);
     // 친구들에게 알리기: 자판으로 걸을 때는 조금 앞을 목표로 자주, 멈추면 한 번
     if (this.keys.size && len > 0.001) {
-      if (!this.net.moving || this.time - this.net.sent > 0.4) this.reportMove(p.x + (dx / len) * 2.4, p.z + (dz / len) * 2.4);
+      const ahead = run ? 3.8 : 2.4;
+      if (!this.net.moving || this.time - this.net.sent > 0.4) this.reportMove(p.x + (dx / len) * ahead, p.z + (dz / len) * ahead);
     } else if (this.net.moving && !this.target) {
       this.reportStop();
     }

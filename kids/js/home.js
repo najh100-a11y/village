@@ -2,7 +2,7 @@
 // 내 집은 마을과 떨어진 따로 된 장면(scene)이다. 마을 섬과 겹치지 않게 멀리(HOME_O) 둔다.
 // 들어가면 내 주민과 애완동물, 해와 하늘빛이 이 장면으로 옮겨 오고, 나가면 마을로 돌아간다.
 import * as THREE from './three.module.min.js';
-import { toon, toonGradient } from './avatar.js';
+import { toon, toonGradient, Avatar } from './avatar.js';
 import { mergeStatic, mergeColored } from './merge.js';
 import { makeTree } from './isles.js';
 import {
@@ -10,6 +10,13 @@ import {
 } from './homeitems.js';
 
 export const HOME_O = { x: 1000, z: 1000 };
+// 앉거나 누울 수 있는 가구: seats(물건 안 자리 x, z), y(뿌리 높이: 앉으면 발, 누우면 엉덩이), front(앞에 서는 곳 z), side(침대 옆)
+const REST = {
+  h_bed: { lie: true, seats: [[0, -0.05]], y: 0.86, side: 1.45, front: 1.95 },
+  h_sofa: { seats: [[-0.38, 0.06], [0.38, 0.06]], y: 0.3, front: 0.95 },
+  h_chair: { seats: [[0, 0.02]], y: 0.29, front: 0.8 },
+  y_bench: { seats: [[-0.45, 0.02], [0.45, 0.02]], y: 0.24, front: 0.85 },
+};
 const VC = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient() });
 const DOOR_IN = { x: -2.7, z: -6.5 }, DOOR_OUT = { x: -1.0, z: -6.5 };
 const GATE = { x: 0, z: 9.2 }, CLOSET = { x: -9.45, z: -8.55 };
@@ -306,22 +313,49 @@ export function buildPlant(id, stage, seed = '') {
 // ---------- 작은 그림 (상점과 꾸미기 판) ----------
 const thumbs = new Map();
 let thumbR = null, thumbScene = null, thumbCam = null;
+function ensureThumbR() {
+  if (thumbR) return;
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  thumbR = new THREE.WebGLRenderer({ canvas: c, antialias: true, alpha: true, preserveDrawingBuffer: true });
+  thumbR.setPixelRatio(1);
+  thumbR.setSize(128, 128, false);
+  thumbScene = new THREE.Scene();
+  thumbScene.add(new THREE.HemisphereLight('#ffffff', '#9CD07A', 1.9));
+  const sun = new THREE.DirectionalLight('#FFF4E0', 1.6);
+  sun.position.set(3, 6, 5);
+  thumbScene.add(sun);
+  thumbCam = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
+}
+// 내 주민이 꾸미기 물건을 입은 작은 그림 (상점 목록). view: 'head' 머리, 'body' 앞모습, 'back' 뒷모습
+export function avatarThumb(data, view = 'body') {
+  const key = view + JSON.stringify(data);
+  if (thumbs.has(key)) return thumbs.get(key);
+  try {
+    ensureThumbR();
+    const av = new Avatar(data);
+    av.update(0, false);
+    av.body.position.y = 0;
+    av.root.rotation.y = view === 'back' ? Math.PI - 0.6 : 0.3;
+    thumbScene.add(av.root);
+    if (view === 'head') { thumbCam.position.set(0, 1.85, 3.7); thumbCam.lookAt(0, 1.5, 0); }
+    else { thumbCam.position.set(0, 1.45, 5.4); thumbCam.lookAt(0, 0.95, 0); }
+    thumbR.setClearColor(0x000000, 0);
+    thumbR.render(thumbScene, thumbCam);
+    const url = thumbR.domElement.toDataURL('image/png');
+    thumbScene.remove(av.root);
+    av.dispose();
+    thumbs.set(key, url);
+    return url;
+  } catch (e) {
+    return '';
+  }
+}
+
 export function itemThumb(id) {
   if (thumbs.has(id)) return thumbs.get(id);
   try {
-    if (!thumbR) {
-      const c = document.createElement('canvas');
-      c.width = c.height = 128;
-      thumbR = new THREE.WebGLRenderer({ canvas: c, antialias: true, alpha: true, preserveDrawingBuffer: true });
-      thumbR.setPixelRatio(1);
-      thumbR.setSize(128, 128, false);
-      thumbScene = new THREE.Scene();
-      thumbScene.add(new THREE.HemisphereLight('#ffffff', '#9CD07A', 1.9));
-      const sun = new THREE.DirectionalLight('#FFF4E0', 1.6);
-      sun.position.set(3, 6, 5);
-      thumbScene.add(sun);
-      thumbCam = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
-    }
+    ensureThumbR();
     const glowM = new THREE.MeshToonMaterial({ color: '#FFF2B3', gradientMap: toonGradient(), emissive: new THREE.Color('#FFD27A'), emissiveIntensity: 0.6 });
     const { g } = isSeed(id) ? buildPlant(id, 3, 'thumb') : buildItem(id, () => glowM);
     thumbScene.add(g);
@@ -740,6 +774,27 @@ export class HomeSpace {
     const reach = (r % 2 ? f.w : f.d) / 2 + 0.55;
     const p = this.toWorld(c.x + dir[0] * reach, c.z + dir[1] * reach);
     return { pos: p, face: this.toWorld(c.x, c.z) };
+  }
+  // 앉거나 눕는 가구: 침대(눕기), 소파·의자·마당 벤치(앉기). 물건 안 좌표(lx, y, lz)와 일어서는 자리들
+  restSpot(id, from) {
+    const e = this.entry(id);
+    const R = REST[e && e.k];
+    if (!R) return null;
+    const c = centerOf(e), rotY = -(e.r || 0) * Math.PI / 2;
+    const co = Math.cos(rotY), sn = Math.sin(rotY);
+    const at = (lx, lz) => this.toWorld(c.x + lx * co + lz * sn, c.z - lx * sn + lz * co);
+    const near = (list) => {
+      // 벽이나 다른 물건에 막히지 않은 곳 가운데 가까운 곳
+      const ok = list.filter((p) => { const q = p.clone(); this.resolve(q); return q.distanceTo(p) < 0.05; });
+      const pool = ok.length ? ok : list;
+      if (from) pool.sort((a, q) => Math.hypot(a.x - from.x, a.z - from.z) - Math.hypot(q.x - from.x, q.z - from.z));
+      return pool[0];
+    };
+    const seats = R.seats.map(([lx, lz]) => ({ pos: at(lx, lz), lx, lz }));
+    if (from) seats.sort((a, q) => Math.hypot(a.pos.x - from.x, a.pos.z - from.z) - Math.hypot(q.pos.x - from.x, q.pos.z - from.z));
+    const seat = seats[0];
+    const outs = R.lie ? [at(R.side, seat.lz), at(-R.side, seat.lz), at(seat.lx, R.front)] : [at(seat.lx, R.front)];
+    return { x: seat.pos.x, y: R.y, z: seat.pos.z, rot: rotY, lie: !!R.lie, out: near(outs) };
   }
   plantStand(id) {
     const e = this.entry(id);
