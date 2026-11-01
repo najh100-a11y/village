@@ -86,6 +86,7 @@ async function boot() {
       if (net && now - jumpSent > 800) { jumpSent = now; net.send('jp', {}); }
     },
     onLocalStop: (p) => net && net.send('st', p),
+    onHouseMove: (p) => net && net.send('hm', p), // 집 안 움직임 (같은 집에 있는 친구만 본다)
     // 벤치에 앉기 (seat: 자리 번호, 일어나면 null)
     onSit: (seat, lie) => {
       setActivity(seat == null ? '' : 'bench', seat == null ? -1 : seat);
@@ -122,7 +123,7 @@ async function boot() {
   }
   $('#loading').hidden = true;
   window.kvInfo = () => ({ ...village.renderer.info.render, programs: village.renderer.info.programs.length });
-  if (DEMO) { window.kvEnter = (id) => village.enter(id); window.kvVillage = village; window.kvGames = () => ({ play3d }); }
+  if (DEMO) { window.kvEnter = (id) => village.enter(id); window.kvVillage = village; window.kvGames = () => ({ play3d, homeUI }); }
   maker = new Maker();
   const common = {
     rpc, getToken: token,
@@ -164,6 +165,7 @@ async function boot() {
   homeUI = createHomeUI({
     village, rpc, getToken: token, getMe: () => state.me, features: () => state.features || {}, sfx, setActivity, message,
     openShop: (t) => openShop(t), openMaker: (first) => openMaker(first), openSheet, modal, onSessionLost: sessionLost, setFruits,
+    onlineFriends, sendHouseInvite: (id) => net && net.send('hinv', { to: id }),
   });
   bindUi();
   if (state.token) {
@@ -599,7 +601,7 @@ async function startNet() {
     onMsg: async (type, id, raw) => {
       const p = clean(type, raw);
       if (!p) return;
-      if ((type === 'inv' || type === 'invr') && p.to !== (state.me && state.me.id)) return;
+      if ((type === 'inv' || type === 'invr' || type === 'hinv') && p.to !== (state.me && state.me.id)) return;
       const person = await ensurePerson(id);
       if (!person || net !== n) return;
       if (!online.has(id)) { online.add(id); showCount(); village.addRemote(id, person.avatar, person.name); village.setPet(id, person.pet || null); }
@@ -650,6 +652,17 @@ async function startNet() {
         if (village.bugs) village.bugs.markCaught(p.s, p.w);
         const b = bugById(p.b);
         if (b && b.rarity >= 1) { toast(`${josa(person.name, '이가', '가')} ${josa(b.name, '을', '를')} 잡았어요!`, 3000); logLine(person.name, `🦋 ${b.name}`, false); }
+      } else if (type === 'hm') {
+        // 친구가 어느 집에 들어가고 나갔는지, 집 안 어디에 있는지
+        const res = village.remoteHouse(id, p);
+        const me = state.me && state.me.id;
+        if (res && p.a && p.h && p.h === me && res.was !== p.h) {
+          sfx.pop(true);
+          toast(village.atHome && village.house === me ? `${josa(person.name, '이가', '가')} 우리 집에 놀러 왔어요!` : `${josa(person.name, '이가', '가')} 우리 집에 놀러 갔어요. '내 집'에 들어가면 만날 수 있어요!`, 3600);
+        }
+        if (p.u && homeUI.guest && homeUI.guest.id === id) homeUI.refreshGuest();
+      } else if (type === 'hinv') {
+        if (state.features.visit) showHomeInvite(id, person.name);
       } else if (type === 'gift') {
         // 친구가 선물을 보냈다는 신호: 실제 선물은 서버에서 확인해 받는다
         if (p.to === (state.me && state.me.id)) checkGifts(true);
@@ -964,6 +977,7 @@ function showNews() {
   if (state.features.wardrobe) news.push(['wardrobe', "새 소식! 열매 상점에 천사 날개, 망토, 안경 같은 꾸미기 물건이 왔어요. '꾸미기'(옷장)에는 잠옷도 생겼어요."]);
   if (state.features.gift) news.push(['gift', '새 소식! 친구에게 열매를 선물할 수 있어요. 열매 상점의 선물 칸이나 친구 목록에서 보내요.']);
   if (state.features.sell) news.push(['sell2', '새 소식! 잡은 물고기와 곤충을 열매 상점에서 팔 수 있어요. 흔한 것은 10마리에 열매 1개예요.']);
+  if (state.features.visit) news.push(['visit', "새 소식! 친구 집에 놀러 갈 수 있어요. 친구 목록에서 '집에 놀러 가기'를 누르거나, 내 집에서 '친구 부르기'로 친구를 불러요."]);
   if (state.features.sea) news.push(['sea', '새 소식! 마을 남동쪽 바닷가에 바다 낚시 나루터가 생겼어요. 배를 타고 나가 바다 물고기를 낚아 봐요.']);
   const fresh = news.filter(([k]) => { try { return !localStorage.getItem(`kv.news.${k}`); } catch (e) { return false; } });
   fresh.forEach(([k, text]) => notice(text, 5200, () => { try { localStorage.setItem(`kv.news.${k}`, '1'); } catch (e) { /* 다음에 또 */ } }));
@@ -1352,8 +1366,19 @@ function friendsBadge() {
   el.dataset.unread = state.unread ? String(state.unread) : '';
 }
 
+// 친구가 어느 집에 있는지 (친구 목록에 보인다)
+function houseText(r) {
+  if (!r || !r.house) return '';
+  const me = state.me && state.me.id;
+  if (r.house === r.id) return '🏠 자기 집에 있어요';
+  if (r.house === me) return '🏡 우리 집에 놀러 와 있어요';
+  const owner = state.people.get(r.house);
+  return `🏡 ${owner ? `${owner.name}네` : '친구'} 집에 놀러 갔어요`;
+}
+
 function openFriends() {
   const list = [...online].map((id) => state.people.get(id)).filter(Boolean);
+  const visitOk = !!(state.features.visit && state.features.home);
   const games = new Set(watchableGames().map((g) => g.id));
   const dmOk = !!(state.features.dm && state.chatOpen);
   const rows = list.map((p) => {
@@ -1364,12 +1389,17 @@ function openFriends() {
     const swimAs = act === 'swim' && STROKE_LIST[r.actSeat] ? `${STROKE_LIST[r.actSeat][2]}으로 ` : ''; // 배영으로 수영하는 중
     const unread = (state.dms.get(p.id) || []).filter((m) => !m.mine && !m.read).length;
     return h('div', { class: 'fl-row' }, face,
-      h('div', { class: 'fl-main' }, h('b', {}, p.name), h('span', {}, act ? `${ACT_ICON[act] || ''} ${swimAs}${ACT_TEXT[act] || ''}` : '마을을 걷고 있어요')),
+      h('div', { class: 'fl-main' }, h('b', {}, p.name), h('span', {}, houseText(r) || (act ? `${ACT_ICON[act] || ''} ${swimAs}${ACT_TEXT[act] || ''}` : '마을을 걷고 있어요'))),
       h('div', { class: 'fl-acts' },
         dmOk ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => openDm(p.id) }, unread ? `💌 이야기 (${unread})` : '💌 둘이 이야기') : null,
         state.features.gift ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: async () => { if (!shopData) await loadShop(); openGift(p.id); } }, '🎁 선물') : null,
         games.has(p.id) ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => { modal.close(); play3d.omokWatch(p.id); } }, '👀 구경하기') : null,
-        h('button', { class: 'btn btn-plain btn-small', type: 'button', onclick: async () => { modal.close(); if (play3d.active) play3d.stop(); if (village.atHome) await homeUI.exit(); village.walkToFriend(p.id); } }, '찾아가기')));
+        visitOk ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => goVisit(p.id) }, '🏠 집에 놀러 가기') : null,
+        h('button', { class: 'btn btn-plain btn-small', type: 'button', onclick: async () => {
+          // 친구가 어느 집 안에 있으면 그 집으로, 아니면 마을에서 친구 옆으로
+          if (visitOk && r && r.house) { goVisit(r.house); return; }
+          modal.close(); if (play3d.active) play3d.stop(); if (village.atHome) await homeUI.exit(); village.walkToFriend(p.id);
+        } }, '찾아가기')));
   });
   openSheet(`지금 마을에 있는 친구 ${list.length}명`, h('div', { class: 'talk friends' },
     rows.length ? h('div', { class: 'fl-list' }, rows) : h('p', { class: 'fb-empty' }, '지금은 혼자 있어요. 친구가 들어오면 여기에 보여요.'),
@@ -1389,6 +1419,32 @@ function addDm(id, text, mine) {
     const p = state.people.get(id) || { name: '친구' };
     showDmCard(id, p.name, text);
   }
+}
+
+// 친구가 자기 집에 놀러 오라고 불렀다
+let homeCard = null;
+function showHomeInvite(id, name) {
+  if (homeCard) homeCard.remove();
+  const close = () => { if (homeCard === card) { card.remove(); homeCard = null; } };
+  const card = h('div', { class: 'invite-card dm-card', role: 'status' },
+    h('div', { class: 'dm-ic', 'aria-hidden': 'true' }, '🏠'),
+    h('div', { class: 'inv-main' },
+      h('p', {}, h('b', {}, name), `${josa(name, '이가', '가').slice(name.length)} 자기 집에 놀러 오래요!`),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn btn-plain btn-small', type: 'button', onclick: close }, '다음에'),
+        h('button', { class: 'btn btn-go btn-small', type: 'button', onclick: () => { close(); goVisit(id); } }, '놀러 가기'))));
+  homeCard = card;
+  sfx.invite();
+  document.body.append(card);
+  setTimeout(close, 12000);
+}
+// 친구 집에 놀러 가기 (하던 놀이는 그만둔다)
+async function goVisit(id) {
+  if (!state.features.visit) return;
+  modal.close();
+  if (play3d.active) play3d.stop();
+  if (homeUI.editing) homeUI.stopEdit();
+  await homeUI.visit(id);
 }
 
 let dmCard = null;

@@ -10,9 +10,9 @@ export const PHRASES = {
 export const EMOTES = { heart: '❤️', clap: '👏', smile: '😊', wave: '👋', pray: '🙏', star: '⭐' };
 // 놀이기구를 타며 외치는 말 (말하기 판에는 나오지 않는다)
 export const SHOUTS = { yay: '야호!', beep: '빵빵!', yum: '냠냠!' };
-const EVENTS = ['mv', 'st', 'say', 'chat', 'dm', 'done', 'av', 'inv', 'invr', 'act', 'fish', 'art', 'dish', 'ob', 'fw', 'ate', 'bug', 'jp', 'gift'];
+const EVENTS = ['mv', 'st', 'say', 'chat', 'dm', 'done', 'av', 'inv', 'invr', 'act', 'fish', 'art', 'dish', 'ob', 'fw', 'ate', 'bug', 'jp', 'gift', 'hm', 'hinv'];
 export const GAME_KINDS = ['omok', 'cook'];
-export const ACTS = ['', 'fish', 'omok', 'cook', 'art', 'memory', 'qt', 'copy', 'watch', 'ferris', 'viking', 'carousel', 'bumper', 'bench', 'eat', 'bug', 'home', 'coaster', 'swim', 'sea'];
+export const ACTS = ['', 'fish', 'omok', 'cook', 'art', 'memory', 'qt', 'copy', 'watch', 'ferris', 'viking', 'carousel', 'bumper', 'bench', 'eat', 'bug', 'home', 'coaster', 'swim', 'sea', 'visit'];
 const ID_RE = /^[A-Za-z0-9-]{1,64}$/;
 const GID_RE = /^[a-z0-9]{8,12}$/;
 const WORD_RE = /^[a-z]{2,12}$/;
@@ -46,6 +46,20 @@ export function clean(type, p) {
   if (type === 'bug') return Number.isInteger(p.s) && p.s >= 0 && p.s < 32 && Number.isInteger(p.w) && p.w >= 0 && p.w < 1e9 && /^[a-z_]{3,20}$/.test(p.b) ? { s: p.s, w: p.w, b: p.b } : null;
   // 열매 선물을 보냈다 (받는 아이가 서버에서 확인한다)
   if (type === 'gift') return typeof p.to === 'string' && ID_RE.test(p.to) && Number.isInteger(p.n) && p.n >= 1 && p.n <= 10 && WORD_RE.test(p.m) ? { to: p.to, n: p.n, m: p.m } : null;
+  // 집 안에서 움직이기: h 집 주인(빈 글자면 집에서 나감), x·z 집 안 자리, tx·tz 가는 곳,
+  // 앉거나 누웠으면 y 높이·ro 방향·l(1 누움), a: 1 막 들어옴(먼저 있던 친구가 자기 자리를 알려 준다), u: 1 집을 새로 꾸몄음
+  if (type === 'hm') {
+    if (p.h === '') return { h: '' };
+    if (typeof p.h !== 'string' || !ID_RE.test(p.h) || !num(p.x) || !num(p.z)) return null;
+    const out = { h: p.h, x: p.x, z: p.z };
+    if (num(p.tx) && num(p.tz)) { out.tx = p.tx; out.tz = p.tz; }
+    if (num(p.y) && p.y >= 0 && p.y < 3 && num(p.ro)) { out.y = p.y; out.ro = p.ro; if (p.l === 1) out.l = 1; }
+    if (p.a === 1) out.a = 1;
+    if (p.u === 1) out.u = 1;
+    return out;
+  }
+  // 우리 집에 놀러 오라고 부르기 (받는 아이만 본다)
+  if (type === 'hinv') return typeof p.to === 'string' && ID_RE.test(p.to) ? { to: p.to } : null;
   // 둘이 대화: 받는 아이만 화면에 띄운다
   if (type === 'dm') { const t = typeof p.m === 'string' ? cleanChat(p.m) : ''; return t && typeof p.to === 'string' && ID_RE.test(p.to) ? { to: p.to, m: t } : null; }
   // 오목 구경: 판(13×13 = 169칸, 0 빈칸 1 검은 돌 2 흰 돌), 검은 돌·흰 돌 주인(g는 숲지기 솔), 이긴 쪽, 판 번호, 마지막 수
@@ -78,7 +92,16 @@ export class Outbox {
     return Math.min(MAX_RATE, REALTIME_BUDGET / (n * n));
   }
   push(ev, payload) {
-    if (ev === 'inv' || ev === 'invr' || ev === 'dm' || ev === 'gift') { if (this.peerCount() > 0) this.post(ev, payload); return; } // 초대·대답·둘이 대화·선물은 바로
+    if (ev === 'inv' || ev === 'invr' || ev === 'dm' || ev === 'gift' || ev === 'hinv') { if (this.peerCount() > 0) this.post(ev, payload); return; } // 초대·대답·둘이 대화·선물·집에 부르기는 바로
+    if (ev === 'hm') {
+      // 집 안 움직임은 가장 새 것 하나만. 들어오고 나가는 것(a, 빈 h)과 새로 꾸민 것(u)은 잃지 않게 차례에 넣는다
+      if (payload.h !== '') this.lastHouse = { h: payload.h, x: payload.x, z: payload.z };
+      else this.lastHouse = null;
+      if (payload.a || payload.u || payload.h === '') { this.hmove = null; this.queue = this.queue.filter((m) => m[0] !== 'hm'); this.queue.push([ev, payload]); while (this.queue.length > 4) this.queue.shift(); }
+      else this.hmove = [ev, payload];
+      this.flush();
+      return;
+    }
     if (ev === 'ob') this.queue = this.queue.filter((m) => m[0] !== 'ob'); // 오목 판은 가장 새 것만
     if (ev === 'jp') this.queue = this.queue.filter((m) => m[0] !== 'jp'); // 점프는 하나만
     if (ev === 'mv' || ev === 'st') this.move = [ev, payload];
@@ -93,6 +116,7 @@ export class Outbox {
   announce() {
     if (!this.move) this.move = ['st', null];
     if (this.lastAct && this.lastAct.a && !this.queue.some((m) => m[0] === 'act')) this.queue.push(['act', this.lastAct]);
+    if (this.lastHouse && !this.queue.some((m) => m[0] === 'hm')) this.queue.push(['hm', { ...this.lastHouse, a: 1 }]); // 어느 집에 있는지도
     this.flush();
   }
   freshMove() {
@@ -111,15 +135,17 @@ export class Outbox {
     const t = performance.now();
     this.tokens = Math.min(1, this.tokens + ((t - this.last) / 1000) * this.rate());
     this.last = t;
-    if (this.peerCount() === 0) { this.move = null; this.queue.length = 0; return; } // 아무도 없으면 보내지 않는다
+    if (this.peerCount() === 0) { this.move = null; this.hmove = null; this.queue.length = 0; return; } // 아무도 없으면 보내지 않는다
     while (this.tokens >= 1) {
-      const m = this.queue.length ? this.queue.shift() : (this.move ? this.freshMove() : null);
+      let m = this.queue.length ? this.queue.shift() : null;
+      if (!m && this.hmove) { m = this.hmove; this.hmove = null; }
+      if (!m && this.move) m = this.freshMove();
       if (!m) break;
       this.tokens -= 1;
       this.post(m[0], m[1]);
     }
   }
-  stop() { clearInterval(this.timer); this.move = null; this.queue.length = 0; }
+  stop() { clearInterval(this.timer); this.move = null; this.hmove = null; this.lastHouse = null; this.queue.length = 0; }
 }
 
 class SupabaseNet {

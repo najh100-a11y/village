@@ -18,6 +18,20 @@ function sellBundle(kind, id) {
   return null;
 }
 // 낚시터(pond 연못, sea 바다)에서 무게대로 물고기 하나 뽑기 (서버 kids_fish_hook, kids_sea_hook과 같다)
+// 체험판 예시 친구 '바다'의 꾸민 집 (친구 집 놀러 가기를 시험해 볼 수 있게)
+function sampleHome() {
+  const h = 3600000, now = Date.now();
+  const layout = [
+    { id: 'd1', k: 'h_bed', x: -9, z: -10, r: 0 }, { id: 'd2', k: 'h_rug', x: -6, z: -8, r: 0 }, { id: 'd3', k: 'h_sofa', x: -6, z: -6, r: 0 },
+    { id: 'd4', k: 'h_lamp', x: -4, z: -10, r: 0 }, { id: 'd5', k: 'h_piano', x: -6, z: -10, r: 0 },
+    { id: 'd6', k: 'y_fountain', x: 3, z: 2, r: 0 }, { id: 'd7', k: 'y_bench', x: 3, z: 5, r: 0 }, { id: 'd8', k: 'y_tree', x: -6, z: 3, r: 0 },
+    { id: 'd9', k: 'y_swing', x: 6, z: -5, r: 0 }, { id: 'd10', k: 's_sunflower', x: 2, z: -10, r: 0, t: now - 13 * h },
+    { id: 'd11', k: 's_carrot', x: 3, z: -10, r: 0, t: now - 5 * h }, { id: 'd12', k: 's_tulip', x: 4, z: -10, r: 0, t: now - 20 * h },
+  ];
+  const items = {};
+  for (const e of layout) items[e.k] = (items[e.k] || 0) + 1;
+  return { layout, items };
+}
 function pickFish(place) {
   const list = FISH.filter((f) => f.place === place);
   let r = Math.floor(Math.random() * list.reduce((a, f) => a + f.weight, 0));
@@ -116,8 +130,23 @@ function seedPets(db) {
   }
   return db;
 }
+// 체험판 예시 친구 바다의 꾸민 집 (한 번만. 바다로 들어가서 바꾼 집은 그대로 둔다)
+function seedHome(db) {
+  if (!db || db.homeSeeded) return db;
+  db.homeSeeded = true;
+  db.homes = db.homes || {};
+  if (!(db.homes.c3 || []).length) {
+    const s = sampleHome();
+    db.homes.c3 = s.layout;
+    db.items = db.items || {};
+    db.items.c3 = { ...(db.items.c3 || {}) };
+    for (const [k, n] of Object.entries(s.items)) db.items.c3[k] = Math.max(db.items.c3[k] || 0, n);
+  }
+  return db;
+}
 function syncPlan(db) {
   seedPets(db);
+  seedHome(db);
   if (!db || db.planVersion === PLAN.version) return db; // 한 번만 (선생님이 고친 내용은 남긴다)
   db.planVersion = PLAN.version;
   try {
@@ -143,7 +172,7 @@ export class DemoBackend {
       const s = localStorage.getItem(this.key);
       if (s) return syncPlan(JSON.parse(s));
     } catch (e) { /* 무시 */ }
-    const db = seedPets(this.seed());
+    const db = seedHome(seedPets(this.seed()));
     try {
       seedDrawings().forEach((d, i) => {
         const id = `seed${i + 1}`;
@@ -195,6 +224,7 @@ export class DemoBackend {
         { child: 'c2', fish: 'medaka', size: 3.1, at: nowIso(45) },
       ],
       cook: { c2: { manna: { stars: 3, times: 1, with_friend: 0 } } },
+
       imgs: [],
       teachers: [{ id: 't1', login_id: '선생님', pw: 'demo1234', name: '체험 선생님' }],
       sessions: {},
@@ -253,7 +283,7 @@ export class DemoBackend {
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true }; }
   kids_dm_send({ p_token, p_to, p_text }) {
     const me = this.session(p_token, 'child');
     if (!this.villageConf().chat_open) fail('CHAT_OFF');
@@ -477,6 +507,13 @@ export class DemoBackend {
     const me = this.session(p_token, 'child');
     this.db.homes = this.db.homes || {};
     return { layout: JSON.parse(JSON.stringify(this.db.homes[me] || [])), items: this.homeItems(me), fruits: this.child(me).fruits };
+  }
+  // 친구 집 구경 (구경만 한다)
+  kids_home_visit({ p_token, p_child }) {
+    this.session(p_token, 'child');
+    const c = this.db.children.find((x) => x.id === p_child && x.village_name && x.avatar);
+    if (!c) fail('NOT_FOUND');
+    return { name: c.village_name, layout: JSON.parse(JSON.stringify((this.db.homes || {})[p_child] || [])) };
   }
   kids_home_save({ p_token, p_layout, p_harvest }) {
     const me = this.session(p_token, 'child');

@@ -293,6 +293,8 @@ export class Village {
     this.grassSpots = [];
     this.atHome = false;
     this.homeSpace = null;
+    this.house = null; // 지금 있는 집의 주인 id (친구 집에 놀러 가기)
+    this.visiting = false;
   }
 
   async init() {
@@ -1192,6 +1194,7 @@ export class Village {
     pl.pose = spot.lie ? bedPose : benchPose;
     this.sitting = { home: true, lie: spot.lie, out: out || pl.root.position.clone().setY(0) };
     this.target = null;
+    this.sendHouse(); // 같은 집 친구에게도 앉은 모습이 보이게
   }
   standUp(quiet = false) {
     if (!this.sitting || !this.player) return;
@@ -1204,6 +1207,7 @@ export class Village {
     pl.root.position.set(out.x, 0, out.z);
     this.resolve(pl.root.position);
     if (!quiet && this.on.onSit) this.on.onSit(null);
+    if (this.atHome) this.sendHouse();
   }
   pinBench(r, seat) {
     if (!Number.isInteger(seat) || seat < 0 || seat >= this.benches.length * 2) return;
@@ -1733,7 +1737,8 @@ export class Village {
     if (!r) return;
     this.setPet(id, null);
     if (r.pin && r.pin.car && r.pin.kind === 'sea') r.pin.car.removeFromParent(); // 친구 배
-    this.scene.remove(r.av.root);
+    r.av.root.removeFromParent(); // 마을이나 집 안
+    
     r.av.dispose();
     r.tag.remove();
     if (r.bubble) r.bubble.el.remove();
@@ -1743,6 +1748,8 @@ export class Village {
   remoteMove(id, p) {
     const r = this.remotes.get(id);
     if (!r) return;
+    r.villageP = { x: p.tx != null ? p.tx : p.x, z: p.tz != null ? p.tz : p.z };
+    if (r.inHouse) return; // 내가 있는 집 안에 있는 친구 (마을 자리는 기억만 해 둔다)
     const pos = r.av.root.position;
     const d = Math.hypot(pos.x - p.x, pos.z - p.z);
     if (d > 2.5 || !r.seen) { pos.set(p.x, 0, p.z); r.seen = true; }
@@ -1754,6 +1761,8 @@ export class Village {
   remoteStop(id, p) {
     const r = this.remotes.get(id);
     if (!r) return;
+    r.villageP = { x: p.x, z: p.z };
+    if (r.inHouse) return;
     const pos = r.av.root.position;
     if (Math.hypot(pos.x - p.x, pos.z - p.z) > 0.6) r.target = new THREE.Vector3(p.x, 0, p.z);
     else r.target = null;
@@ -1790,7 +1799,8 @@ export class Village {
     const av = id === 'me' ? this.player : holder.av;
     if (holder.bubble) holder.bubble.el.remove();
     const el = document.createElement('div');
-    el.className = 'kv-bubble' + ([...text].length <= 2 ? ' emoji' : '') + (id === 'me' ? ' home-ok' : '');
+    const inHouse = id !== 'me' && this.remotes.get(id) && this.remotes.get(id).inHouse;
+    el.className = 'kv-bubble' + ([...text].length <= 2 ? ' emoji' : '') + (id === 'me' || inHouse ? ' home-ok' : '');
     el.textContent = text;
     el.style.display = 'none';
     this.labels.appendChild(el);
@@ -1810,7 +1820,8 @@ export class Village {
 
   // 내 움직임을 친구들에게 알리기
   reportMove(tx, tz) {
-    if (!this.on.onLocalMove || !this.player || this.atHome) return;
+    if (!this.on.onLocalMove || !this.player) return;
+    if (this.atHome) { this.houseMove(tx, tz); return; }
     const p = this.player.root.position;
     const run = this.isRunning();
     const msg = { x: +p.x.toFixed(2), z: +p.z.toFixed(2), tx: +tx.toFixed(2), tz: +tz.toFixed(2) };
@@ -1825,7 +1836,84 @@ export class Village {
     const p = this.atHome && this.homeDoor ? this.homeDoor : this.player.root.position;
     this.on.onLocalStop({ x: +p.x.toFixed(2), z: +p.z.toFixed(2) });
     this.net = { moving: false, sent: this.time };
+    if (this.atHome) this.sendHouse();
   }
+
+  // ---------- 친구 집에 놀러 가기 ----------
+  // house: 지금 있는 집의 주인 id (내 집이면 내 id). 같은 집에 있는 친구만 집 안에 보이고,
+  // 다른 친구들에게는 마을 '내 집' 문 앞에 있는 것으로 보인다. 집 안 자리는 집 기준 좌표로 주고받는다.
+  houseCompany() {
+    if (!this.atHome || !this.house) return false;
+    for (const r of this.remotes.values()) if (r.house === this.house) return true;
+    return false;
+  }
+  houseMove(tx, tz) {
+    this.net = { moving: true, sent: this.time, tx, tz };
+    if (!this.on.onHouseMove || !this.houseCompany()) return;
+    const H = this.homeSpace, p = H.toLocal(this.player.root.position), t = H.toLocal({ x: tx, z: tz });
+    this.on.onHouseMove({ h: this.house, x: +p.x.toFixed(2), z: +p.z.toFixed(2), tx: +t.x.toFixed(2), tz: +t.z.toFixed(2) });
+  }
+  // 지금 자리(서 있거나 앉은 곳)를 같은 집 친구들에게. extra.a: 막 들어옴, extra.u: 집을 새로 꾸몄음
+  sendHouse(extra = {}) {
+    if (!this.atHome || !this.house || !this.on.onHouseMove || !this.player) return;
+    if (!extra.a && !extra.u && !this.houseCompany()) return;
+    const H = this.homeSpace, pr = this.player.root, p = H.toLocal(pr.position);
+    const m = { h: this.house, x: +p.x.toFixed(2), z: +p.z.toFixed(2), ...extra };
+    if (this.sitting && this.sitting.home) { m.y = +pr.position.y.toFixed(2); m.ro = +pr.rotation.y.toFixed(2); if (this.sitting.lie) m.l = 1; }
+    this.on.onHouseMove(m);
+  }
+  inMyHouse(r) { return !!(this.atHome && this.house && r.house === this.house && this.homeSpace); }
+  // 친구가 어느 집에 들어가고 나갔는지, 집 안 어디에 있는지 (p: 'hm' 메시지)
+  remoteHouse(id, p) {
+    const r = this.remotes.get(id);
+    if (!r) return null;
+    const was = r.house || null;
+    r.house = p.h || null;
+    r.houseP = r.house ? p : null;
+    this.syncHouse(r);
+    // 내가 있는 집에 친구가 막 들어오면 내 자리를 알려 준다
+    if (p.a && r.house && this.inMyHouse(r) && was !== r.house) this.sendHouse();
+    return { was, now: r.house };
+  }
+  // 친구를 알맞은 장면(내가 있는 집 안, 또는 마을)에 둔다
+  syncHouse(r) {
+    const H = this.homeSpace, av = r.av;
+    const pet = this.followers && this.followers.get(r.id);
+    if (this.inMyHouse(r)) {
+      const q = r.houseP;
+      const at = H.toWorld(q.x, q.z);
+      if (!r.inHouse) {
+        r.inHouse = true;
+        if (r.pin && r.pin.auto) this.unpinRemote(r.id);
+        H.scene.add(av.root);
+        av.root.position.copy(at);
+        r.target = null;
+        r.via = [];
+        r.tag.classList.add('home-ok');
+        if (pet) { H.scene.add(pet.root); pet.placed = false; }
+      }
+      if (q.y != null) {
+        this.pinRemote(r.id, { kind: 'hrest', x: at.x, y: q.y, z: at.z, rot: q.ro, pose: q.l ? bedPose : benchPose, auto: false });
+        return;
+      }
+      if (r.pin && r.pin.kind === 'hrest') this.unpinRemote(r.id);
+      if (av.root.position.distanceTo(at) > 2.5) av.root.position.copy(at);
+      r.target = q.tx != null ? H.toWorld(q.tx, q.tz) : av.root.position.distanceTo(at) > 0.3 ? at : null;
+      r.stuck = 0;
+      return;
+    }
+    if (!r.inHouse) return;
+    r.inHouse = false;
+    if (r.pin && r.pin.kind === 'hrest') this.unpinRemote(r.id);
+    this.scene.add(av.root);
+    const v0 = r.villageP || this.homeDoor || { x: 0, z: -17.8 };
+    av.root.position.set(v0.x, 0, v0.z);
+    r.target = null;
+    r.via = [];
+    r.tag.classList.remove('home-ok');
+    if (pet) { this.scene.add(pet.root); pet.placed = false; }
+  }
+  syncAllHouses() { for (const r of this.remotes.values()) this.syncHouse(r); }
 
   updateRemotes(dt) {
     for (const r of this.remotes.values()) {
@@ -2186,7 +2274,8 @@ export class Village {
   // 내 집은 따로 된 장면이다. 들어가면 내 주민, 애완동물, 해와 하늘빛을 그 장면으로 옮긴다.
   activeScene() { return this.atHome && this.homeSpace ? this.homeSpace.scene : this.scene; }
   sceneFor(x, z) { return this.homeSpace && nearHome({ x, z }) ? this.homeSpace.scene : this.scene; }
-  enterHome(layout, ownerName) {
+  // house: 집 주인 id, visiting: 친구 집에 놀러 왔으면 true (꾸미기와 밭 돌보기는 주인만)
+  enterHome(layout, ownerName, house = null, visiting = false) {
     if (!this.homeSpace) this.homeSpace = new HomeSpace(this);
     const H = this.homeSpace;
     if (this.mode === 'game') this.exitGame();
@@ -2197,12 +2286,17 @@ export class Village {
     H.setLayout(layout || []);
     const door = this.doors.find((d) => d.id === 'home');
     this.homeDoor = door ? door.pos.clone() : new THREE.Vector3(0, 0, -17.8);
-    this.reportStop();
     this.atHome = true;
+    this.reportStop(); // 마을 친구들에게는 '내 집' 문 앞에 있는 것으로 (친구 목록에서 바로 놀러 가도)
     this.moveInto(H.scene);
     const sp = H.spawn();
+    if (visiting) sp.x += Math.random() < 0.5 ? -0.9 : 0.9; // 놀러 온 친구는 문 옆에 (먼저 온 친구와 겹치지 않게)
     if (this.player) { this.player.root.position.copy(sp); this.player.root.rotation.y = Math.PI; }
     this.afterSwitch();
+    this.house = house;
+    this.visiting = !!visiting;
+    this.syncAllHouses();
+    this.sendHouse({ a: 1 });
   }
   exitHome() {
     if (!this.atHome) return;
@@ -2211,7 +2305,12 @@ export class Village {
     if (this.mode === 'game') this.exitGame();
     H.clearGhost();
     H.clearSel();
+    const was = this.house;
+    this.house = null;
+    this.visiting = false;
     this.atHome = false;
+    this.syncAllHouses();
+    if (was && this.on.onHouseMove) this.on.onHouseMove({ h: '' });
     this.moveInto(this.scene);
     const d = this.homeDoor || new THREE.Vector3(0, 0, -17.8);
     if (this.player) { this.player.root.position.set(d.x, 0, d.z + 0.4); this.player.root.rotation.y = 0; }
