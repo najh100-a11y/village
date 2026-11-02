@@ -180,9 +180,7 @@ function faceTexture(a) {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = 4;
-  // 카드를 뒤집으면 아래 면이 거꾸로 올라오므로 그림을 반 바퀴 돌려 둔다
-  t.center.set(0.5, 0.5);
-  t.rotation = Math.PI;
+  // 카메라는 방주 쪽(북쪽) 위에서 아이들 쪽을 내려다본다. 뒤집혀 올라온 아래 면이 그쪽에서 바로 보이게 그대로 둔다
   return t;
 }
 // 카드 뒷면: 나무 무늬와 무지개 아래 방주
@@ -200,6 +198,9 @@ function backTexture() {
   g.fillStyle = '#EF6461'; g.beginPath(); g.moveTo(40, 88); g.lineTo(64, 74); g.lineTo(88, 88); g.fill();
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
+  // 북쪽에서 내려다볼 때 바로 서 보이게 반 바퀴 돌린다
+  t.center.set(0.5, 0.5);
+  t.rotation = Math.PI;
   return t;
 }
 
@@ -372,10 +373,11 @@ export function createArkGame({ v, ui, begin, stopAll, portrait, live, hub, onli
     // 카드가 많으면 더 높이 올라간다. 탁자 가운데보다 조금 아이들 쪽을 보아서 카드가 화면 아래 단추에 가리지 않게 한다
     // 가로로 납작한 휴대폰 화면(높이 520px 아래)은 위아래 단추 사이 좁은 띠에 카드가 다 들어오게 더 높이 올라간다
     const tall = portrait(), short = !tall && innerHeight < 520;
-    const far = tall ? 1.5 * Math.max(1, COLS / 4) : Math.max(1, Math.max(COLS / 4, ROWS / 3) * 0.95) * (short ? 1.75 : 1.08);
+    const far = tall ? 1.7 * Math.max(1, COLS / 4) : Math.max(1, Math.max(COLS / 4, ROWS / 3) * 0.95) * (short ? 1.75 : 1.08);
     // 거의 바로 위에서 내려다본다(마을 카메라는 84도까지 기운다). 의자에 앉은 아이들 머리는 화면 아래 바깥으로 빠진다
-    const look = V(TABLE.x, TABLE.y, TABLE.z + (tall ? -0.24 : short ? 0.3 : 0.05));
-    const cam = { pos: V(TABLE.x, TABLE.y + 2.25 * far, look.z + 0.22 * far), look };
+    // 방주 쪽(북쪽) 위에서 아이들 쪽을 내려다본다. 아이들은 카드 너머(화면 위쪽)에 앉아 있어서 머리나 팔이 카드를 가리지 않는다
+    const look = V(TABLE.x, TABLE.y, TABLE.z + (tall ? -0.08 : short ? -0.3 : -0.05));
+    const cam = { pos: V(TABLE.x, TABLE.y + 2.25 * far, look.z - 0.22 * far), look };
     const game = { cam, camSpeed: 2.4 };
     const oppName = session ? session.peerName : '';
 

@@ -713,9 +713,10 @@ export class Village {
       sign.position.set(0, 5.75, 4.46);
       g.add(sign);
       // 문과 창 (1층 둘, 2층 넷)
-      g.add(box(2.0, 2.6, 0.16, toon('#7C5235'), 0, 1.7, 2.85));
-      g.add(box(0.05, 2.5, 0.2, toon('#5E3D27'), 0, 1.7, 2.88));
-      const fan = cyl(1.0, 1.0, 0.16, this.glow('#BFE6F2'), 0, 3.0, 2.85, 24);
+      // 문 위 반달 창은 문보다 뒤에 두어 두 앞면이 겹쳐 깜빡이지 않게 한다 (문 앞면 2.98, 창 앞면 2.86, 가운데 줄 3.04)
+      g.add(box(2.0, 2.6, 0.16, toon('#7C5235'), 0, 1.7, 2.9));
+      g.add(box(0.05, 2.5, 0.1, toon('#5E3D27'), 0, 1.7, 2.99));
+      const fan = cyl(1.0, 1.0, 0.1, this.glow('#BFE6F2'), 0, 3.0, 2.81, 24);
       fan.rotation.x = Math.PI / 2;
       g.add(fan);
       for (const sx of [-1, 1]) g.add(this.windowMesh(1.0, 1.5, sx * 2.9, 1.6, 2.84));
@@ -728,8 +729,9 @@ export class Village {
       // 연필 탑
       const pencil = new THREE.Group();
       pencil.add(cyl(0.75, 0.75, 7.0, toon('#F6D55C'), 0, 3.5, 0, 6));
-      pencil.add(cyl(0.77, 0.77, 0.5, toon('#C9C9CF'), 0, 0.6, 0, 6));
-      pencil.add(cyl(0.77, 0.77, 0.6, toon('#F6A2C4'), 0, 0.25, 0, 6));
+      // 쇠 띠와 지우개는 높이가 겹치지 않게 (겹치면 같은 자리 두 면이 번갈아 보여 깜빡인다)
+      pencil.add(cyl(0.78, 0.78, 0.45, toon('#C9C9CF'), 0, 0.725, 0, 6));
+      pencil.add(cyl(0.76, 0.76, 0.5, toon('#F6A2C4'), 0, 0.25, 0, 6));
       pencil.add(cyl(0.22, 0.75, 1.35, toon('#F3D2A2'), 0, 7.68, 0, 6));
       pencil.add(cyl(0.0, 0.22, 0.42, toon('#3B3B42'), 0, 8.56, 0, 6));
       pencil.position.set(4.9, 0, -1.4);
