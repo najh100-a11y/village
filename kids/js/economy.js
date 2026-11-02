@@ -7,6 +7,9 @@ export const SELL_BUNDLE = { fish: [10, 5, 2, 1], bug: [10, 5, 2] };
 // 하루에 팔아서 받을 수 있는 열매 (선생님이 바꿀 수 있다. 0이면 팔기를 닫는다)
 export const SELL_DAY_DEFAULT = 5;
 export const SELL_DAY_CHOICES = [0, 3, 5, 10, 15, 20];
+// 말씀 활동으로 받는 열매 (서버 kids_practice, kids_qt_save, kids_copy_save, kids_copy_photo, kids_t_set_pass와 같다)
+// 암송 연습은 구절마다 하루 1개, 묵상은 하루 2개, 필사는 한 주 3개(공책 사진을 올리면 그 주 모두 10개), 선생님 도장 10개
+export const REWARD = { memory: 1, qt: 2, copy: 3, photo: 10, stamp: 10 };
 // 선물: 한 번에 1~10개, 하루에 보내는 열매는 모두 10개까지
 export const GIFT = { max: 10, day: 10, choices: [1, 2, 3, 5, 10] };
 // 선물과 함께 보내는 한마디 (정해진 말만 보낸다)

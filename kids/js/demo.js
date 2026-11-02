@@ -259,14 +259,35 @@ export class DemoBackend {
     rs.forEach((r) => { counts[r.r] = (counts[r.r] || 0) + 1; });
     return { counts, mine: rs.filter((r) => r.from === viewer).map((r) => r.r) };
   }
-  // 그날 암송 연습·묵상·필사 가운데 하나라도 했는지 (놀이 마당 열기)
+  // 놀이 마당 열기 (서버 kids__cleared_today와 같다): 오늘 묵상, 또는 이번 주 암송·필사를 오늘 처음 함.
+  // 오늘 묵상할 것이 없는 날에는 예전처럼 암송 연습이나 필사를 오늘 하면 열린다
+  qtToday() { return this.publishedDays().includes(today()); }
   cleared(me) {
     if (this.playFree()) return true;
     const c = this.child(me);
-    const s = startOfToday();
-    return Object.values(c.memory).some((m) => m.last === today())
-      || this.db.qtEntries.some((e) => e.child === me && (e.updatedAt || e.at) >= s)
-      || this.db.copyEntries.some((e) => e.child === me && (e.updatedAt || e.at) >= s);
+    const s = startOfToday(), t = today(), wk = weekOf(t), vId = this.currentVerse();
+    const m = vId && c.memory[vId];
+    if (this.db.qtEntries.some((e) => e.child === me && e.day === t)) return true;
+    if (m && m.first && m.first >= s) return true;
+    if (this.db.copyEntries.some((e) => e.child === me && e.week === wk && e.at >= s)) return true;
+    if (this.qtToday()) return false;
+    return Object.values(c.memory).some((x) => x.last === t) || this.db.copyEntries.some((e) => e.child === me && (e.updatedAt || e.at) >= s);
+  }
+  // 묵상을 며칠째 이어서 했는지 (오늘 아직 안 했으면 어제까지, 묵상할 것이 없던 날은 건너뛴다)
+  qtStreak(me) {
+    const days = new Set(this.publishedDays());
+    const mine = new Set(this.db.qtEntries.filter((e) => e.child === me).map((e) => e.day));
+    const d = new Date(today() + 'T12:00:00');
+    const iso = (x) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+    if (!mine.has(iso(d))) d.setDate(d.getDate() - 1);
+    let n = 0;
+    for (let i = 0; i < 120; i++) {
+      const k = iso(d);
+      if (mine.has(k)) n++;
+      else if (days.has(k)) break;
+      d.setDate(d.getDate() - 1);
+    }
+    return n;
   }
   gate(me) { if (!this.cleared(me)) fail('PLAY_LOCKED'); }
   publishedDays() {
@@ -283,7 +304,31 @@ export class DemoBackend {
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true }; }
+  // 쪽지함: 친구별 마지막 쪽지와 안 읽은 수 (최근 30일)
+  kids_dm_box({ p_token }) {
+    const me = this.session(p_token, 'child');
+    const since = Date.now() - 30 * 86400000;
+    const dms = (this.db.chat || []).filter((m) => m.to && (m.child === me || m.to === me) && new Date(m.at).getTime() > since);
+    const by = new Map();
+    for (const m of dms) {
+      const other = m.child === me ? m.to : m.child;
+      const cur = by.get(other) || { last: null, unread: 0 };
+      if (!cur.last || m.at > cur.last.at) cur.last = m;
+      if (m.to === me && !m.read) cur.unread++;
+      by.set(other, cur);
+    }
+    return [...by.entries()].map(([id, v]) => {
+      const c = this.db.children.find((x) => x.id === id);
+      return c && c.village_name ? { id, name: c.village_name, avatar: c.avatar, text: v.last.body, at: v.last.at, mine: v.last.child === me, unread: v.unread } : null;
+    }).filter(Boolean).sort((a, b) => b.at.localeCompare(a.at));
+  }
+  kids_dm_thread({ p_token, p_with }) {
+    const me = this.session(p_token, 'child');
+    const list = (this.db.chat || []).filter((m) => m.to && ((m.child === me && m.to === p_with) || (m.child === p_with && m.to === me)));
+    for (const m of list) if (m.to === me) m.read = true;
+    return list.slice(-60).map((m) => ({ text: m.body, at: m.at, mine: m.child === me }));
+  }
   kids_dm_send({ p_token, p_to, p_text }) {
     const me = this.session(p_token, 'child');
     if (!this.villageConf().chat_open) fail('CHAT_OFF');
@@ -673,8 +718,17 @@ export class DemoBackend {
     const vId = this.currentVerse();
     const v = this.db.verses.find((x) => x.id === vId);
     const c = this.child(me);
+    const opens = [];
+    if (this.qtToday()) {
+      if (!this.db.qtEntries.some((e) => e.child === me && e.day === t)) opens.push('qt');
+      if (v && !(c.memory[v.id] && c.memory[v.id].first)) opens.push('memory');
+      if (w && w.copy_ref && !this.db.copyEntries.some((e) => e.child === me && e.week === w.week_start)) opens.push('copy');
+    } else {
+      if (v) opens.push('memory');
+      if (w && w.copy_ref) opens.push('copy');
+    }
     return {
-      today: t, theme: w ? w.theme : null, cleared: this.cleared(me),
+      today: t, theme: w ? w.theme : null, cleared: this.cleared(me), opens, qt_streak: this.qtStreak(me),
       verse: v ? { id: v.id, ref: v.ref, practiced: !!(c.memory[v.id] && c.memory[v.id].practice_count) } : null,
       qt: q ? { day: q.day, title: q.title, ref: q.ref, done: this.db.qtEntries.some((e) => e.child === me && e.day === q.day) } : null,
       copy: w && w.copy_ref ? { week: w.week_start, ref: w.copy_ref, done: this.db.copyEntries.some((e) => e.child === me && e.week === w.week_start) } : null,
@@ -732,10 +786,10 @@ export class DemoBackend {
     const c = this.child(me);
     let e = this.db.qtEntries.find((x) => x.child === me && x.day === p_day);
     let gained = 0;
-    if (!e) { e = { child: me, day: p_day, hidden: false, at: nowIso() }; this.db.qtEntries.push(e); gained = 1; c.fruits += 1; }
+    if (!e) { e = { child: me, day: p_day, hidden: false, at: nowIso() }; this.db.qtEntries.push(e); gained = 2; c.fruits += 2; }
     Object.assign(e, { answer, prayer, shared: p_shared !== false, updatedAt: nowIso() });
     if (word) e.word = word;
-    return { gained, fruits: c.fruits };
+    return { gained, fruits: c.fruits, streak: this.qtStreak(me) };
   }
   kids_copy_week({ p_token, p_week }) {
     const me = this.session(p_token, 'child');
@@ -751,7 +805,7 @@ export class DemoBackend {
       week: { week_start: ws, theme: w.theme, ref: w.copy_ref, intro: w.copy_intro, passage: w.copy_passage, is_current: ws === weekOf(t) },
       prev: i > 0 ? weeks[i - 1] : null,
       next: i < weeks.length - 1 ? weeks[i + 1] : null,
-      mine: mine ? { note: mine.note, shared: mine.shared, hidden: mine.hidden, has_photo: !!mine.photo, photo_ok: !!mine.photo_ok, photo_paid: !!mine.photo_paid, thumb: imgGet(mine.thumb) } : null,
+      mine: mine ? { note: mine.note, shared: mine.shared, hidden: mine.hidden, has_photo: !!mine.photo, photo_ok: !!mine.photo_ok, photo_paid: !!mine.photo_paid, paid: mine.paid || 2, thumb: imgGet(mine.thumb) } : null,
       friends: this.entriesFor(this.db.copyEntries, ws, 'week', 'copy', me, 'note').map((f) => {
         const e = this.db.copyEntries.find((x) => x.child === f.id && x.week === ws);
         const visible = e.photo && (f.me || (e.photo_ok && e.shared && !e.hidden));
@@ -767,10 +821,11 @@ export class DemoBackend {
     const c = this.child(me);
     let e = this.db.copyEntries.find((x) => x.child === me && x.week === p_week);
     let gained = 0;
-    // 공책 사진: 처음이면 열매 10개, 따라 쓰기로 2개를 이미 받았으면 8개 더 (한 주에 한 번)
+    // 공책 사진: 그 주 필사 열매가 모두 10개가 되게 (처음이면 10개, 따라 쓰기로 3개를 이미 받았으면 7개 더. 한 주에 한 번)
     if (!e) { e = { child: me, week: p_week, note: '', shared: true, hidden: false, at: nowIso() }; this.db.copyEntries.push(e); gained = 10; }
-    else if (!e.photo_paid) gained = 8;
+    else if (!e.photo_paid) gained = Math.max(0, 10 - (e.paid || 2));
     c.fruits += gained;
+    if (!e.photo_paid) e.paid = 10;
     e.photo_paid = true;
     const id = `p${me}${p_week}`;
     imgPut(this.db, id, p_photo);
@@ -959,7 +1014,7 @@ export class DemoBackend {
     const c = this.child(me);
     let e = this.db.copyEntries.find((x) => x.child === me && x.week === p_week);
     let gained = 0;
-    if (!e) { e = { child: me, week: p_week, hidden: false, at: nowIso() }; this.db.copyEntries.push(e); gained = 2; c.fruits += 2; }
+    if (!e) { e = { child: me, week: p_week, hidden: false, at: nowIso(), paid: 3 }; this.db.copyEntries.push(e); gained = 3; c.fruits += 3; }
     Object.assign(e, { note, shared: p_shared !== false, updatedAt: nowIso() });
     return { gained, fruits: c.fruits };
   }

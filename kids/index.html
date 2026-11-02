@@ -403,6 +403,14 @@ button.online[data-unread]:not([data-unread=""])::after { content: ' 💌' attr(
 .fl-main b { font-family: var(--display); font-weight: 400; font-size: 19px; }
 .fl-main span { font-size: 14px; color: var(--ink-soft); }
 .fl-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+/* 쪽지함 */
+.mail-row { grid-template-columns: 52px minmax(0, 1fr) auto; width: 100%; border: 0; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.mail-row .fl-face { grid-row: auto; }
+.mail-row .fl-main span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mail-row.unread { box-shadow: 0 3px 0 var(--apple), inset 0 0 0 2px #FFD2CF; }
+.mail-new { margin-left: 8px; font-family: var(--body); font-size: 13px; color: #fff; background: var(--apple); border-radius: 999px; padding: 1px 8px; vertical-align: middle; }
+.mail-at { font-size: 12px; color: var(--ink-soft); white-space: nowrap; }
+.talk.mail .sub-head { margin-top: 6px; }
 .fl-acts .btn { min-height: 40px; font-size: 15px; padding: 0 12px; }
 .dm-list { display: flex; flex-direction: column; gap: 6px; max-height: min(46vh, 360px); min-height: 120px; overflow-y: auto; background: var(--paper-2); border-radius: 18px; padding: 12px; }
 .dm-msg { margin: 0; max-width: 78%; align-self: flex-start; background: #fff; border-radius: 16px 16px 16px 4px; padding: 8px 12px; font-size: 17px; box-shadow: 0 2px 0 var(--line); word-break: keep-all; overflow-wrap: anywhere; }

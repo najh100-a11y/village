@@ -159,7 +159,7 @@ export function waitInvite(hub, friend, kind, extra, { setBody, onBack }) {
   return inv.promise.then((r) => {
     if (r.ok) return r.session;
     if (r.reason === 'cancel') return null;
-    const why = { locked: `${josa(friend.name, '은', '는')} 오늘 말씀 활동을 아직 안 했대요. 하나 마치면 같이 놀 수 있어요!`, busy: `${josa(friend.name, '은', '는')} 지금 다른 놀이를 하고 있어요.`, no: `${josa(friend.name, '이', '가')} 다음에 하재요.`, timeout: `${josa(friend.name, '이', '가')} 대답이 없어요.`, off: '지금은 친구와 연결되지 않아요.' }[r.reason] || '지금은 함께할 수 없어요.';
+    const why = { locked: `${josa(friend.name, '은', '는')} 아직 놀이 마당이 안 열렸대요. 오늘 묵상을 마치면 같이 놀 수 있어요!`, busy: `${josa(friend.name, '은', '는')} 지금 다른 놀이를 하고 있어요.`, no: `${josa(friend.name, '이', '가')} 다음에 하재요.`, timeout: `${josa(friend.name, '이', '가')} 대답이 없어요.`, off: '지금은 친구와 연결되지 않아요.' }[r.reason] || '지금은 함께할 수 없어요.';
     setBody(h('div', { class: 'mem wait-inv' },
       h('p', { class: 'result-big' }, why),
       h('div', { class: 'row' }, h('button', { class: 'btn btn-go', type: 'button', onclick: onBack }, '돌아가기'))));

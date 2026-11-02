@@ -20,6 +20,7 @@ import { WARDROBE, WARDROBE_IDS } from './wardrobe.js';
 import { GIFT, GIFT_MSGS } from './economy.js';
 import { fishCanvas } from './fishing.js';
 import { createHomeUI } from './homeui.js';
+import { REWARD } from './economy.js';
 import { initSound, startMusic, stopMusic, setScene, sfx, cycleSound, soundMode } from './sound.js';
 import { h, modal, toast, confetti, josa } from './ui.js';
 import { drawFaceIcon, normalizeAvatar, defaultAvatar } from './face.js';
@@ -147,7 +148,7 @@ async function boot() {
     isBusy: () => (!$('#maker').hidden || $('#hud').hidden ? true : !playOpen() ? 'locked' : false),
     onLockedInvite: (from, kind) => {
       const p = state.people.get(from);
-      if (p) toast(`${josa(p.name, '이가', '가')} ${kind === 'omok' ? '오목' : '요리'}를 같이 하재요. 오늘 말씀 활동을 하나 마치면 놀 수 있어요!`, 3800);
+      if (p) toast(`${josa(p.name, '이가', '가')} ${kind === 'omok' ? '오목' : '요리'}를 같이 하재요. ${unlockHint()} 놀 수 있어요!`, 3800);
     },
     onAccept: (kind, session) => openGameWith(kind, session),
   });
@@ -170,6 +171,7 @@ async function boot() {
     village, rpc, getToken: token, getMe: () => state.me, features: () => state.features || {}, sfx, setActivity, message,
     openShop: (t) => openShop(t), openMaker: (first) => openMaker(first), openSheet, modal, onSessionLost: sessionLost, setFruits,
     onlineFriends, sendHouseInvite: (id) => net && net.send('hinv', { to: id }),
+    openMail: () => (mailOk() ? openMail() : null),
   });
   bindUi();
   if (state.token) {
@@ -403,6 +405,7 @@ async function refreshToday() {
     toast('놀이 마당이 열렸어요! 남쪽 놀이 마당에서 친구들과 놀아요', 3800);
     setTimeout(() => sfx.fruit(), 600);
   }
+  if (!state.todayChecked) setTimeout(showQtNudge, 4500);
   state.todayChecked = true;
 }
 
@@ -535,19 +538,72 @@ async function openGame(id) {
   $('#sayPanel').hidden = true;
   GAMES[id]();
 }
+// 놀이 마당을 여는 활동 (서버 kids_today의 opens). 묵상은 날마다, 암송과 필사는 한 주에 한 번이라
+// 이번 주 암송·필사를 이미 했으면 그날 묵상을 해야 열린다. 옛 서버에는 opens가 없다.
+function opensNow() {
+  const t = state.today || {};
+  return Array.isArray(t.opens) ? t.opens : null;
+}
+// '오늘 묵상을 마치면' 처럼 짧게 (알림 글에 붙인다)
+function unlockHint() {
+  const o = opensNow();
+  if (!o) return '오늘 말씀 활동을 하나 마치면';
+  if (o.includes('qt')) return '오늘 묵상을 마치면';
+  return '오늘 암송 연습이나 필사를 하면';
+}
 function showLocked() {
   const go = (where) => { modal.close(); village.walkTo(where); };
+  const o = opensNow();
+  const btn = (label, where, primary) => h('button', { class: `btn ${primary ? 'btn-go' : 'btn-soft'}`, type: 'button', onclick: () => go(where) }, label);
+  let big, lines, buttons;
+  if (!o) {
+    big = '말씀 활동을 하나 마치면 열려요!';
+    lines = ['오늘 암송 연습, 오늘 묵상, 이번 주 필사 가운데 하나만 해도 돼요. 마치고 오면 낚시, 오목, 그림, 요리를 하고 놀이동산 놀이기구도 탈 수 있어요.'];
+    buttons = [btn('암송의 집', 'memory'), btn('묵상의 숲', 'qt'), btn('필사 도서관', 'library')];
+  } else if (o.includes('qt')) {
+    big = '오늘 묵상을 하면 열려요!';
+    lines = [`묵상은 날마다 하는 거예요. 오늘 묵상을 마치면 열매 ${REWARD.qt}개를 받고, 낚시, 오목, 그림, 요리와 놀이동산 놀이기구가 열려요.`];
+    if (o.includes('memory') || o.includes('copy')) lines.push(`이번 주 ${o.includes('memory') && o.includes('copy') ? '암송이나 필사' : o.includes('memory') ? '암송' : '필사'}를 아직 안 했다면, 그걸 처음 하는 날에도 열려요.`);
+    buttons = [btn('묵상의 숲으로', 'qt', true), o.includes('memory') ? btn('암송의 집', 'memory') : null, o.includes('copy') ? btn('필사 도서관', 'library') : null];
+  } else {
+    big = '오늘 말씀 활동을 하면 열려요!';
+    lines = ['오늘은 묵상이 없는 날이에요. 암송 연습이나 필사를 하면 놀이 마당이 열려요.'];
+    buttons = [o.includes('memory') ? btn('암송의 집', 'memory', true) : null, o.includes('copy') ? btn('필사 도서관', 'library') : null];
+  }
   openSheet('놀이 마당', h('div', { class: 'talk' },
-    h('p', { class: 'result-big' }, '말씀 활동을 하나 마치면 열려요!'),
-    h('p', {}, '오늘 암송 연습, 오늘 묵상, 이번 주 필사 가운데 하나만 해도 돼요. 마치고 오면 낚시, 오목, 그림, 요리를 하고 놀이동산 놀이기구도 탈 수 있어요.'),
-    h('div', { class: 'row' },
-      h('button', { class: 'btn btn-soft', type: 'button', onclick: () => go('memory') }, '암송의 집'),
-      h('button', { class: 'btn btn-soft', type: 'button', onclick: () => go('qt') }, '묵상의 숲'),
-      h('button', { class: 'btn btn-soft', type: 'button', onclick: () => go('library') }, '필사 도서관'))), 'talk-sheet');
+    h('p', { class: 'result-big' }, big),
+    ...lines.map((l) => h('p', {}, l)),
+    h('div', { class: 'row' }, ...buttons.filter(Boolean))), 'talk-sheet');
+}
+
+// 마을에 들어오면 오늘 묵상을 하자고 알려 준다 (오늘 묵상을 마칠 때까지, 들어올 때마다 한 번)
+let qtCard = null;
+function showQtNudge() {
+  const t = state.today;
+  if (!t || !t.qt || t.qt.done || qtCard) return;
+  const streak = t.qt_streak || 0;
+  const close = () => { if (qtCard === card) { card.remove(); qtCard = null; } };
+  const lead = streak >= 2 ? `묵상 ${streak}일째 이어 가고 있어요! 오늘도 이어 가요.` : '오늘의 묵상이 기다리고 있어요.';
+  const gate = opensNow() && !playOpen() ? ' 묵상을 마치면 놀이 마당이 열려요.' : '';
+  const card = h('div', { class: 'invite-card dm-card qt-nudge', role: 'status' },
+    h('div', { class: 'dm-ic', 'aria-hidden': 'true' }, '🌿'),
+    h('div', { class: 'inv-main' },
+      h('p', {}, h('b', {}, lead), ` '${t.qt.title}' 묵상을 하면 열매 ${REWARD.qt}개를 받아요.${gate}`),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn btn-plain btn-small', type: 'button', onclick: close }, '나중에'),
+        h('button', { class: 'btn btn-go btn-small', type: 'button', onclick: () => { close(); modal.close(); village.walkTo('qt'); } }, '묵상하러 가기'))));
+  qtCard = card;
+  document.body.append(card);
+  setTimeout(close, 12000);
 }
 
 async function enterVillage(greet) {
   const me = state.me;
+  // 이 아이의 쪽지와 오늘 할 일을 새로 (다른 아이로 다시 들어온 경우)
+  state.dms = new Map();
+  state.unread = 0;
+  state.mailBox = [];
+  state.todayChecked = false;
   village.setPlayer(me.avatar);
   village.setHome(me.village_name, normalizeAvatar(me.avatar));
   village.setMyName(me.village_name);
@@ -555,7 +611,7 @@ async function enterVillage(greet) {
   village.setMode('play');
   village.viewChanged();
   rpc('kids_chat_open').then(showChatInput).catch(() => showChatInput(false));
-  rpc('kids_features').then((f) => { state.features = f || {}; showNews(); checkFeedbackReply(); checkGifts(); }).catch(() => { state.features = {}; });
+  rpc('kids_features').then((f) => { state.features = f || {}; showNews(); checkFeedbackReply(); checkGifts(); loadMail(true); }).catch(() => { state.features = {}; });
   village.setPaused(false);
   updateHud();
   $('#hud').hidden = false;
@@ -797,7 +853,7 @@ async function loadBugBook() {
 }
 function onBug(i, kind) {
   if (!state.features.bugs) { toast('곤충 채집은 곧 열려요! 조금만 기다려 줘요.', 2600); return; }
-  if (!playOpen()) { toast('말씀 활동을 하나 마치면 곤충을 잡을 수 있어요!', 3000); return; }
+  if (!playOpen()) { toast(`${unlockHint()} 곤충을 잡을 수 있어요!`, 3000); return; }
   village.startNet(i, catchChance(kind), async (hit, k, w) => {
     sfx.whoosh();
     if (!hit) { toast(`앗, ${josa(k.name, '이', '가')} 날아갔어요! 다른 곤충을 찾아봐요.`, 2400); return; }
@@ -1012,6 +1068,8 @@ function showNews() {
   if (state.features.wardrobe) news.push(['wardrobe', "새 소식! 열매 상점에 천사 날개, 망토, 안경 같은 꾸미기 물건이 왔어요. '꾸미기'(옷장)에는 잠옷도 생겼어요."]);
   if (state.features.gift) news.push(['gift', '새 소식! 친구에게 열매를 선물할 수 있어요. 열매 상점의 선물 칸이나 친구 목록에서 보내요.']);
   if (state.features.sell) news.push(['sell2', '새 소식! 잡은 물고기와 곤충을 열매 상점에서 팔 수 있어요. 흔한 것은 10마리에 열매 1개예요.']);
+  if (state.features.mail) news.push(['mail', "새 소식! 마을에 없는 친구에게도 쪽지를 보낼 수 있어요. 위쪽 친구 단추를 눌러 '쪽지함'을 열어요."]);
+  if (state.features.qtgate) news.push(['qtgate', `새 소식! 묵상은 날마다 하는 거예요. 오늘 묵상을 마치면 열매 ${REWARD.qt}개를 받고 놀이 마당이 열려요(이번 주 암송·필사를 처음 하는 날에도 열려요). 필사는 열매 ${REWARD.copy}개, 공책 사진을 올리면 모두 ${REWARD.photo}개예요.`]);
   if (state.features.visit) news.push(['visit', "새 소식! 친구 집에 놀러 갈 수 있어요. 친구 목록에서 '집에 놀러 가기'를 누르거나, 내 집에서 '친구 부르기'로 친구를 불러요."]);
   if (state.features.sea) news.push(['sea', '새 소식! 마을 남동쪽 바닷가에 바다 낚시 나루터가 생겼어요. 배를 타고 나가 바다 물고기를 낚아 봐요.']);
   const fresh = news.filter(([k]) => { try { return !localStorage.getItem(`kv.news.${k}`); } catch (e) { return false; } });
@@ -1426,7 +1484,7 @@ function openFriends() {
     return h('div', { class: 'fl-row' }, face,
       h('div', { class: 'fl-main' }, h('b', {}, p.name), h('span', {}, houseText(r) || (act ? `${ACT_ICON[act] || ''} ${swimAs}${ACT_TEXT[act] || ''}` : '마을을 걷고 있어요'))),
       h('div', { class: 'fl-acts' },
-        dmOk ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => openDm(p.id) }, unread ? `💌 이야기 (${unread})` : '💌 둘이 이야기') : null,
+        dmOk ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => openDm(p.id) }, unread ? `💌 쪽지 (${unread})` : '💌 쪽지') : null,
         state.features.gift ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: async () => { if (!shopData) await loadShop(); openGift(p.id); } }, '🎁 선물') : null,
         games.has(p.id) ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => { modal.close(); play3d.omokWatch(p.id); } }, '👀 구경하기') : null,
         visitOk ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => goVisit(p.id) }, '🏠 집에 놀러 가기') : null,
@@ -1437,8 +1495,10 @@ function openFriends() {
         } }, '찾아가기')));
   });
   openSheet(`지금 마을에 있는 친구 ${list.length}명`, h('div', { class: 'talk friends' },
+    mailOk() ? h('div', { class: 'row' }, h('button', { class: 'btn btn-go btn-small', type: 'button', onclick: () => openMail() },
+      state.unread ? `💌 쪽지함 (새 쪽지 ${state.unread})` : '💌 쪽지함 · 마을에 없는 친구에게도')) : null,
     rows.length ? h('div', { class: 'fl-list' }, rows) : h('p', { class: 'fb-empty' }, '지금은 혼자 있어요. 친구가 들어오면 여기에 보여요.'),
-    dmOk ? h('p', { class: 'note' }, '둘이 이야기한 글은 둘만 보이지만, 안전을 위해 선생님은 볼 수 있어요.') : null), 'talk-sheet');
+    dmOk ? h('p', { class: 'note' }, '쪽지는 둘만 보이지만, 안전을 위해 선생님은 볼 수 있어요.') : null), 'talk-sheet');
 }
 
 function addDm(id, text, mine) {
@@ -1446,7 +1506,11 @@ function addDm(id, text, mine) {
   list.push({ mine, text, at: Date.now(), read: mine || dmOpenWith === id });
   while (list.length > 60) list.shift();
   state.dms.set(id, list);
-  if (dmOpenWith === id) { drawDm(); if (!mine) sfx.pop(true); return; }
+  if (dmOpenWith === id) {
+    drawDm();
+    if (!mine) { sfx.pop(true); if (mailOk()) rpc('kids_dm_thread', { p_token: token(), p_with: id }).catch(() => { /* 다음에 */ }); } // 보고 있으니 읽은 것으로
+    return;
+  }
   if (!mine) {
     state.unread += 1;
     friendsBadge();
@@ -1507,36 +1571,123 @@ function drawDm() {
   dmBody.replaceChildren(...(list.length ? list.map((m) => h('p', { class: 'dm-msg' + (m.mine ? ' me' : '') }, m.text)) : [h('p', { class: 'fb-empty' }, '먼저 인사해 볼까요?')]));
   dmBody.scrollTop = dmBody.scrollHeight;
 }
-function openDm(id) {
+// 둘이 쪽지: 서버에 남겨 두고, 받는 친구가 마을에 있으면 바로 보낸다 (없으면 다음에 들어와서 쪽지함에서 읽는다)
+const mailOk = () => !!(state.features.mail && state.features.dm);
+let dmOfflineTold = false;
+async function openDm(id) {
   const p = state.people.get(id);
   if (!p) return;
+  const canSend = !!(state.features.dm && state.chatOpen);
+  if (mailOk()) {
+    try {
+      const th = await rpc('kids_dm_thread', { p_token: token(), p_with: id });
+      state.dms.set(id, (Array.isArray(th) ? th : []).map((m) => ({ mine: !!m.mine, text: m.text, at: Date.parse(m.at) || Date.now(), read: true })));
+    } catch (e) { if (e.code === 'SESSION') { sessionLost(); return; } }
+    loadMail();
+  }
   dmOpenWith = id;
   dmBody = h('div', { class: 'dm-list', 'aria-live': 'polite' });
-  const input = h('input', { type: 'text', maxlength: CHAT_MAX, autocomplete: 'off', enterkeyhint: 'send', placeholder: `${p.name}에게 할 말`, 'aria-label': `${p.name}에게 할 말` });
+  const input = h('input', { type: 'text', maxlength: CHAT_MAX, autocomplete: 'off', enterkeyhint: 'send', placeholder: `${p.name}에게 할 말`, 'aria-label': `${p.name}에게 할 말`, disabled: !canSend });
   let sending = false;
-  const form = h('form', { class: 'say-write' }, input, h('button', { class: 'btn btn-go btn-small', type: 'submit', 'data-quiet': '' }, '보내기'));
+  const form = h('form', { class: 'say-write' }, input, h('button', { class: 'btn btn-go btn-small', type: 'submit', 'data-quiet': '', disabled: !canSend }, '보내기'));
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const t0 = cleanChat(input.value);
-    if (!t0 || sending) return;
-    if (!online.has(id)) { toast(`${josa(p.name, '이', '가')} 지금 마을에 없어요.`); return; }
+    if (!t0 || sending || !canSend) return;
+    if (!mailOk() && !online.has(id)) { toast(`${josa(p.name, '이', '가')} 지금 마을에 없어요.`); return; }
     sending = true;
     try {
       const r = await rpc('kids_dm_send', { p_token: token(), p_to: id, p_text: input.value });
       const t = cleanChat(r && r.text);
-      if (t) { input.value = ''; addDm(id, t, true); sfx.pop(); if (net) net.send('dm', { to: id, m: t }); }
+      if (t) {
+        input.value = '';
+        addDm(id, t, true);
+        sfx.pop();
+        if (online.has(id)) { if (net) net.send('dm', { to: id, m: t }); }
+        else if (!dmOfflineTold) { dmOfflineTold = true; toast(`쪽지를 남겼어요! ${josa(p.name, '이', '가')} 마을에 들어오면 읽을 수 있어요.`, 3200); }
+      }
     } catch (err) {
       if (err.code === 'SESSION') { sessionLost(); return; }
       toast(message(err));
     } finally { sending = false; }
   });
-  openSheet(`💌 ${josa(p.name, '과', '와')} 둘이 이야기`, h('div', { class: 'talk dm' },
-    dmBody, form, h('p', { class: 'note' }, '둘만 보이는 이야기예요. 안전을 위해 선생님은 볼 수 있어요.')), 'talk-sheet');
+  const here = online.has(id);
+  openSheet(`💌 ${josa(p.name, '과', '와')} 쪽지`, h('div', { class: 'talk dm' },
+    mailOk() && !here ? h('p', { class: 'note' }, `${josa(p.name, '은', '는')} 지금 마을에 없어요. 쪽지를 남기면 다음에 들어와서 읽어요.`) : null,
+    dmBody, form,
+    canSend ? null : h('p', { class: 'note' }, '지금은 선생님이 글 대화를 쉬게 해 두어서 쪽지를 보낼 수 없어요.'),
+    h('p', { class: 'note' }, '둘만 보이는 쪽지예요. 안전을 위해 선생님은 볼 수 있어요.'),
+    mailOk() ? h('div', { class: 'row' }, h('button', { class: 'btn btn-plain btn-small', type: 'button', onclick: () => openMail() }, '쪽지함으로')) : null), 'talk-sheet');
   const m = document.getElementById('modal');
   const obs = new MutationObserver(() => { if (m.hidden || !document.body.contains(dmBody)) { dmOpenWith = null; dmBody = null; obs.disconnect(); } });
   obs.observe(m, { attributes: true, attributeFilter: ['hidden'] });
   drawDm();
-  if (matchMedia('(pointer: fine)').matches) setTimeout(() => input.focus({ preventScroll: true }), 60);
+  if (canSend && matchMedia('(pointer: fine)').matches) setTimeout(() => input.focus({ preventScroll: true }), 60);
+}
+
+// ---------- 쪽지함 ----------
+async function loadMail(notify = false) {
+  if (!mailOk() || !state.me) return;
+  let box;
+  try { box = await rpc('kids_dm_box', { p_token: token() }); } catch (e) { if (e.code === 'SESSION') sessionLost(); return; }
+  state.mailBox = Array.isArray(box) ? box : [];
+  state.unread = state.mailBox.reduce((a, t) => a + (t.unread || 0), 0);
+  friendsBadge();
+  if (notify && state.unread) showMailCard();
+}
+// 마을에 들어왔을 때 안 읽은 쪽지가 있으면
+function showMailCard() {
+  const from = state.mailBox.filter((t) => t.unread).map((t) => t.name);
+  if (!from.length) return;
+  if (dmCard) dmCard.remove();
+  const close = () => { if (dmCard === card) { card.remove(); dmCard = null; } };
+  const who = from.length > 2 ? `${from.slice(0, 2).join(', ')} 외 ${from.length - 2}명` : from.join(', ');
+  const card = h('div', { class: 'invite-card dm-card', role: 'status' },
+    h('div', { class: 'dm-ic', 'aria-hidden': 'true' }, '💌'),
+    h('div', { class: 'inv-main' },
+      h('p', {}, h('b', {}, who), `에게서 쪽지가 ${state.unread}통 왔어요!`),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn btn-plain btn-small', type: 'button', onclick: close }, '나중에'),
+        h('button', { class: 'btn btn-go btn-small', type: 'button', onclick: () => { close(); openMail(); } }, '쪽지함 열기'))));
+  dmCard = card;
+  sfx.invite();
+  document.body.append(card);
+  setTimeout(close, 10000);
+}
+function mailAgo(iso) {
+  const t = Date.parse(iso);
+  if (!t) return '';
+  const m = Math.floor((Date.now() - t) / 60000);
+  if (m < 1) return '방금';
+  if (m < 60) return `${m}분 전`;
+  if (m < 1440) return `${Math.floor(m / 60)}시간 전`;
+  return `${Math.floor(m / 1440)}일 전`;
+}
+function openMail() {
+  if (!mailOk()) return;
+  const me = state.me && state.me.id;
+  const body = h('div', { class: 'talk friends mail' }, h('p', { class: 'fb-empty' }, '쪽지함을 여는 중…'));
+  openSheet('💌 쪽지함', body, 'talk-sheet');
+  loadMail().then(() => {
+    if (!document.body.contains(body)) return;
+    const canSend = !!(state.features.dm && state.chatOpen);
+    const face = (av) => { const cv = h('canvas', { width: 80, height: 80, class: 'fl-face', 'aria-hidden': 'true' }); drawFaceIcon(cv, normalizeAvatar(av)); return cv; };
+    const threads = state.mailBox.map((t) => h('button', { class: 'fl-row mail-row' + (t.unread ? ' unread' : ''), type: 'button', onclick: () => openDm(t.id) },
+      face(t.avatar),
+      h('div', { class: 'fl-main' },
+        h('b', {}, t.name, t.unread ? h('span', { class: 'mail-new' }, `새 쪽지 ${t.unread}`) : null),
+        h('span', {}, `${t.mine ? '나: ' : ''}${t.text}`)),
+      h('small', { class: 'mail-at' }, mailAgo(t.at))));
+    const people = [...state.people.values()].filter((p) => p.id !== me && p.name).sort((a, b) => (online.has(b.id) - online.has(a.id)) || a.name.localeCompare(b.name, 'ko'));
+    body.replaceChildren(
+      h('div', { class: 'sub-head' }, h('h3', {}, '주고받은 쪽지'), h('p', {}, '최근 30일')),
+      threads.length ? h('div', { class: 'fl-list' }, threads) : h('p', { class: 'fb-empty' }, '아직 주고받은 쪽지가 없어요.'),
+      canSend ? h('div', { class: 'sub-head' }, h('h3', {}, '쪽지 쓰기'), h('p', {}, '마을에 없는 친구에게도 보낼 수 있어요')) : null,
+      canSend ? (people.length ? h('div', { class: 'gift-people' }, people.map((p) => h('button', { class: 'gift-person', type: 'button', onclick: () => openDm(p.id) },
+        face(p.avatar), h('b', {}, p.name), online.has(p.id) ? h('small', {}, '지금 마을에 있어요') : null))) : h('p', { class: 'fb-empty' }, '아직 마을 친구가 없어요.'))
+        : h('p', { class: 'note' }, '지금은 선생님이 글 대화를 쉬게 해 두어서 쪽지를 보낼 수 없어요. 받은 쪽지는 읽을 수 있어요.'),
+      h('p', { class: 'note' }, '쪽지는 둘만 보이지만, 안전을 위해 선생님은 볼 수 있어요. 쪽지는 30일 동안 남아요.'));
+  });
 }
 
 // ---------- 화면 ----------
@@ -1628,7 +1779,11 @@ function onNpc() {
   if (me.is_birthday) lines.push(`${name}, 생일 축하해! 오늘은 마을이 더 반짝이는 것 같아.`);
   else lines.push(`안녕, ${name}!${t.theme ? ` 이번 주 이야기는 '${t.theme}'이야.` : ''}`);
   let go = null;
-  if (!playOpen()) lines.push('말씀 활동을 하나 마치면 놀이 마당과 놀이동산 섬이 열려. 낚시도 하고 바이킹도 탈 수 있어!');
+  if (!playOpen()) {
+    const o = opensNow();
+    if (o && o.includes('qt')) lines.push(`묵상은 날마다 하는 거야. 오늘 묵상을 마치면 놀이 마당과 놀이동산 섬이 열려.${o.includes('memory') || o.includes('copy') ? ' 이번 주 암송이나 필사를 처음 하는 날에도 열리고!' : ''}`);
+    else lines.push(`${unlockHint()} 놀이 마당과 놀이동산 섬이 열려. 낚시도 하고 바이킹도 탈 수 있어!`);
+  }
   if (t.qt && !t.qt.done) { lines.push(`오늘 묵상은 '${t.qt.title}'이야. 묵상의 숲에 가 볼래?`); go = ['묵상의 숲으로', 'qt']; }
   else if (cur && !cur.practiced_today && !cur.passed) { lines.push(`이번 주 말씀은 ${cur.ref}이야. 암송의 집에서 연습해 볼까?`); go = ['암송의 집으로', 'memory']; }
   else if (t.copy && !t.copy.done) { if (state.features.photo10) lines.push('이번 주 이야기를 공책에 손으로 써서 사진을 올리면 열매를 10개나 받을 수 있어!'); lines.push(t.theme ? `이번 주 필사는 '${t.theme}' 이야기야(${t.copy.ref}). 필사 도서관에서 읽고 따라 써 볼래?` : `이번 주 필사는 ${t.copy.ref}이야. 필사 도서관에서 따라 써 볼래?`); go = ['필사 도서관으로', 'library']; }
@@ -1715,7 +1870,7 @@ function openBoard() {
     cur ? memory.verseCard(cur) : h('div', { class: 'empty' }, h('p', { class: 'empty-big' }, '이번 주 말씀이 곧 올라와요.')),
     h('div', { class: 'board-todo' },
       t.qt ? h('button', { class: 'todo', type: 'button', onclick: () => { modal.close(); openHouse(() => qt.open()); } },
-        h('b', {}, '오늘 묵상'), h('span', {}, t.qt.title), h('em', {}, t.qt.done ? '마침' : '아직')) : null,
+        h('b', {}, '오늘 묵상'), h('span', {}, `${t.qt.title}${t.qt_streak >= 2 ? ` · ${t.qt_streak}일째` : ''}`), h('em', {}, t.qt.done ? '마침' : '아직')) : null,
       t.copy ? h('button', { class: 'todo', type: 'button', onclick: () => { modal.close(); openHouse(() => copy.open()); } },
         h('b', {}, '이번 주 필사'), h('span', {}, t.theme || t.copy.ref), h('em', {}, t.copy.done ? '마침' : '아직')) : null,
       cur ? h('button', { class: 'todo', type: 'button', onclick: () => { modal.close(); openHouse(() => memory.open('practice', cur.id)); } },

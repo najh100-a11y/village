@@ -1,6 +1,7 @@
 // 진숲 어린이 마을 — 묵상의 숲 (날마다 바뀌는 묵상)
 import { h, icon, modal, toast, confetti } from './ui.js';
 import { message } from './api.js';
+import { REWARD } from './economy.js';
 import { guideCard, firstVisit, friendBoard, dayLabel } from './social.js';
 
 export function createQt({ rpc, getToken, onFruits, onCelebrate, onDone, onSessionLost, features = () => ({}) }) {
@@ -152,7 +153,8 @@ export function createQt({ rpc, getToken, onFruits, onCelebrate, onDone, onSessi
         confetti();
         onCelebrate();
         onDone('qt');
-        toast(res.gained ? '오늘 묵상을 마쳤어요! 열매 1개를 받았어요' : '묵상을 저장했어요');
+        const streak = res.streak > 1 ? ` 묵상 ${res.streak}일째예요!` : '';
+        toast(res.gained ? `묵상을 마쳤어요! 열매 ${res.gained}개를 받았어요.${streak}` : '묵상을 저장했어요', 3600);
       } else toast('고쳐서 저장했어요');
       await load(q.day);
     });
@@ -198,7 +200,7 @@ export function createQt({ rpc, getToken, onFruits, onCelebrate, onDone, onSessi
       h('section', { class: 'write' },
         h('label', { class: 'check' }, share, h('span', {}, '친구들도 내 생각과 고른 말을 볼 수 있게 할래요')),
         err,
-        h('div', { class: 'row end' }, h('span', { class: 'hint-line' }, mine ? '' : '묵상을 마치면 열매 1개를 받아요.'), save)),
+        h('div', { class: 'row end' }, h('span', { class: 'hint-line' }, mine ? '' : `묵상을 마치면 열매 ${REWARD.qt}개를 받아요.`), save)),
       friendBoard({
         title: q.is_today ? '오늘 묵상한 친구들' : '이날 묵상한 친구들',
         empty: '아직 아무도 묵상하지 않았어요. 첫 번째 친구가 되어 볼까요?',

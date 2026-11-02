@@ -466,7 +466,10 @@ export function createHomeUI(o) {
     else if (e.k === 'y_swing' || e.k === 'y_slide') { o.sfx.jump(); v.jump(); v.say('me', '야호!'); }
     else if (e.k === 'h_bed') v.say('me', '포근해~');
     else if (e.k === 'y_birdhouse') o.sfx.tweet();
-    else if (e.k === 'y_mailbox') v.say('me', '편지 왔나?');
+    else if (e.k === 'y_mailbox') {
+      v.say('me', '편지 왔나?');
+      if (!guest && o.openMail) setTimeout(() => o.openMail(), 600); // 우리 집 우체통은 쪽지함
+    }
   }
 
   // 상점에서 산 뒤 (가진 수가 바뀌었다)
