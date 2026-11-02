@@ -308,4 +308,11 @@ export const sfx = {
   // 폴짝 뛰기: 통 올라가는 소리
   jump: play(() => { tone({ f: 330, f2: 760, type: 'triangle', dur: 0.14, vol: 0.1 }); tone({ f: 660, f2: 990, dur: 0.08, vol: 0.04, delay: 0.06 }); }),
   tweet: play(() => { [0, 0.13, 0.24].forEach((d, i) => tone({ f: 2600 + i * 300, f2: 3600 + i * 200, dur: 0.06, vol: 0.035, delay: d })); }),
+  // 앵무새: 꽥 하고 높은 소리 두 번
+  squawk: play((soft = false) => { const v = soft ? 0.05 : 0.09; tone({ f: 1200, f2: 1700, type: 'sawtooth', dur: 0.09, vol: v * 0.5 }); tone({ f: 1500, f2: 1100, type: 'triangle', dur: 0.12, vol: v, delay: 0.12 }); }),
+  // 바다 낚시: 릴 감는 드르륵, 줄 푸는 스르륵, 물고기가 당길 때 덜컥, 줄 끊김
+  reel: play((n = 5) => { for (let i = 0; i < n; i++) noise({ dur: 0.018, vol: 0.12, freq: 3200, q: 2.5, delay: i * 0.035 }); }),
+  unreel: play(() => { noise({ dur: 0.35, vol: 0.06, freq: 2600, freq2: 1500, q: 1.2 }); }),
+  tug: play(() => { tone({ f: 150, f2: 90, type: 'triangle', dur: 0.14, vol: 0.12 }); noise({ dur: 0.09, vol: 0.08, freq: 600, q: 0.8, kind: 'lowpass' }); }),
+  snap: play(() => { noise({ dur: 0.05, vol: 0.3, freq: 4200, q: 2, kind: 'highpass' }); tone({ f: 900, f2: 180, type: 'triangle', dur: 0.25, vol: 0.1, delay: 0.03 }); }),
 };

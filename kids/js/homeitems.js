@@ -27,12 +27,12 @@ export const HOME_ITEMS = {
   y_slide: { zone: 'yard', name: '미끄럼틀', desc: '계단으로 올라가서 쭉 미끄러져요.', price: 8, w: 1, d: 3 },
   y_mailbox: { zone: 'yard', name: '우체통', desc: '빨간 우체통이에요.', price: 2, w: 1, d: 1 },
   // 밭 (씨앗과 모종)
-  s_carrot: { zone: 'garden', name: '당근 씨앗', grown: '당근', kind: 'veg', desc: '밭에 심으면 주황색 당근이 자라요.', price: 1, w: 1, d: 1 },
-  s_tomato: { zone: 'garden', name: '토마토 씨앗', grown: '토마토', kind: 'veg', desc: '밭에 심으면 빨간 토마토가 열려요.', price: 1, w: 1, d: 1 },
-  s_cabbage: { zone: 'garden', name: '배추 씨앗', grown: '배추', kind: 'veg', desc: '밭에 심으면 커다란 배추가 자라요.', price: 1, w: 1, d: 1 },
-  s_strawberry: { zone: 'garden', name: '딸기 모종', grown: '딸기', kind: 'veg', desc: '밭에 심으면 빨간 딸기가 열려요.', price: 2, w: 1, d: 1 },
-  s_sunflower: { zone: 'garden', name: '해바라기 씨앗', grown: '해바라기', kind: 'flower', desc: '밭에 심으면 키 큰 해바라기가 피어요.', price: 1, w: 1, d: 1 },
-  s_tulip: { zone: 'garden', name: '튤립 알뿌리', grown: '튤립', kind: 'flower', desc: '밭에 심으면 예쁜 튤립이 피어요.', price: 2, w: 1, d: 1 },
+  s_carrot: { zone: 'garden', name: '당근 씨앗', grown: '당근', kind: 'veg', desc: '심고 이틀이 지나면 당근 3개를 거둬요.', price: 1, w: 1, d: 1 },
+  s_tomato: { zone: 'garden', name: '토마토 씨앗', grown: '토마토', kind: 'veg', desc: '사흘이 지나면 토마토가 열려요. 따고 나면 하루 반 뒤에 또 열려서 세 번 거둬요.', price: 1, w: 1, d: 1 },
+  s_cabbage: { zone: 'garden', name: '배추 씨앗', grown: '배추', kind: 'veg', desc: '나흘이 지나면 커다란 배추 2포기를 거둬요.', price: 1, w: 1, d: 1 },
+  s_strawberry: { zone: 'garden', name: '딸기 모종', grown: '딸기', kind: 'veg', desc: '닷새가 지나면 딸기가 열려요. 따고 나면 이틀 뒤에 또 열려서 세 번 거둬요.', price: 2, w: 1, d: 1 },
+  s_sunflower: { zone: 'garden', name: '해바라기 씨앗', grown: '해바라기', kind: 'flower', desc: '사흘이 지나면 키 큰 해바라기가 피어요.', price: 1, w: 1, d: 1 },
+  s_tulip: { zone: 'garden', name: '튤립 알뿌리', grown: '튤립', kind: 'flower', desc: '이틀이 지나면 예쁜 튤립이 피어요.', price: 2, w: 1, d: 1 },
 };
 export const HOME_IDS = Object.keys(HOME_ITEMS);
 export const ZONE_NAMES = { room: '방', yard: '마당', garden: '밭' };
@@ -95,16 +95,54 @@ export function centerOf(e) {
   return { x: e.x + w / 2, z: e.z + d / 2 };
 }
 
-// 식물이 자라는 정도: 심은 지 10분이면 싹, 4시간이면 자라는 중, 12시간이면 다 자란다. 물을 주면 2시간만큼 빨리 자란다(1시간에 한 번).
-export const GROW = { sprout: 1 / 6, mid: 4, full: 12, water: 2, waterEvery: 1 };
-export function growHours(e, now = Date.now()) {
+// 식물마다 자라는 시간 (서버 kids__crop과 같다)
+// need: 심고 나서 다 자라기까지(시간), again: 열매를 딴 뒤 다시 열리기까지, picks: 거둘 수 있는 횟수, yield: 한 번에 거두는 수
+export const CROPS = {
+  s_carrot: { crop: 'carrot', need: 48, again: 0, picks: 1, yield: 3 },
+  s_tomato: { crop: 'tomato', need: 72, again: 36, picks: 3, yield: 3 },
+  s_cabbage: { crop: 'cabbage', need: 96, again: 0, picks: 1, yield: 2 },
+  s_strawberry: { crop: 'strawberry', need: 120, again: 48, picks: 3, yield: 4 },
+  s_sunflower: { need: 72 },
+  s_tulip: { need: 48 },
+};
+// 수확 바구니에 모이는 것. sell: 열매 1개를 받으려면 몇 개를 팔아야 하는지 (서버 kids__sell_bundle과 같다)
+export const HARVEST = {
+  carrot: { name: '당근', unit: '개', sell: 2, icon: '🥕', color: '#F49A4C' },
+  tomato: { name: '토마토', unit: '개', sell: 3, icon: '🍅', color: '#EF4A3E' },
+  cabbage: { name: '배추', unit: '포기', sell: 1, icon: '🥬', color: '#9BD971' },
+  strawberry: { name: '딸기', unit: '개', sell: 4, icon: '🍓', color: '#E8394B' },
+};
+export const CROP_IDS = Object.keys(HARVEST);
+// 물: 12시간에 한 번, 줄 때마다 6시간만큼 빨리 자란다. 심은 지 10분이면 싹이 난다
+export const GROW = { sprout: 1 / 6, water: 6, waterEvery: 12 };
+// 자람은 서버 시각으로 잰다 (기기 시계가 틀려도 같게)
+let skew = 0;
+export function setServerNow(ms) { if (Number.isFinite(ms)) skew = ms - Date.now(); }
+export const serverNow = () => Date.now() + skew;
+export function needHours(e) {
+  const c = e && CROPS[e.k];
+  if (!c) return 48;
+  return (e.n || 0) > 0 ? c.again : c.need;
+}
+export function growHours(e, now = serverNow()) {
   if (!e || !e.t) return 0;
   return Math.max(0, (now - e.t) / 3600000) + (e.g || 0);
 }
-export function growStage(e, now = Date.now()) {
-  const hrs = growHours(e, now);
-  return hrs >= GROW.full ? 3 : hrs >= GROW.mid ? 2 : hrs >= GROW.sprout ? 1 : 0;
+// 0: 씨앗 심은 흙, 1: 싹, 2: 자라는 중(열매를 딴 뒤 다시 맺는 중), 3: 다 자람
+export function growStage(e, now = serverNow()) {
+  const hrs = growHours(e, now), need = needHours(e);
+  if (hrs >= need) return 3;
+  if ((e.n || 0) > 0) return 2;
+  return hrs >= need * 0.5 ? 2 : hrs >= GROW.sprout ? 1 : 0;
 }
-export function canWater(e, now = Date.now()) {
+export function canWater(e, now = serverNow()) {
   return growStage(e, now) < 3 && (!e.w || now - e.w >= GROW.waterEvery * 3600000);
+}
+// 남은 시간을 아이가 읽기 쉽게: '1일 5시간', '3시간', '40분'
+export function leftText(hours) {
+  const hrs = Math.max(0, hours);
+  if (hrs < 1) return `${Math.max(1, Math.ceil(hrs * 60))}분`;
+  const d = Math.floor(hrs / 24), hh = Math.ceil(hrs - d * 24);
+  if (hh === 24) return `${d + 1}일`;
+  return d ? (hh ? `${d}일 ${hh}시간` : `${d}일`) : `${hh}시간`;
 }

@@ -240,7 +240,8 @@ export function buildItem(id, glow) {
 }
 
 // 밭의 식물 (stage 0: 씨앗 심은 흙, 1: 싹, 2: 자라는 중, 3: 다 자람)
-export function buildPlant(id, stage, seed = '') {
+// n: 열매를 딴 횟수 (토마토·딸기는 딴 뒤에도 잎이 다 자란 채로 남는다)
+export function buildPlant(id, stage, seed = '', n = 0) {
   const g = new THREE.Group();
   const anim = {};
   const kind = id.slice(2);
@@ -257,7 +258,7 @@ export function buildPlant(id, stage, seed = '') {
     return { g, anim };
   }
   const grown = stage === 3;
-  const s = grown ? 1 : 0.65;
+  const s = grown || n > 0 ? 1 : 0.65;
   switch (kind) {
     case 'carrot':
       for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2; const st = cyl(g, 0.012, 0.018, 0.45 * s, L, Math.cos(a) * 0.05, 0.25 * s + 0.05, Math.sin(a) * 0.05, 5); st.rotation.set(Math.sin(a) * 0.35, 0, -Math.cos(a) * 0.35); ball(g, 0.07 * s, L2, Math.cos(a) * 0.14 * s, 0.5 * s + 0.04, Math.sin(a) * 0.14 * s, 6); }
@@ -308,6 +309,29 @@ export function buildPlant(id, stage, seed = '') {
       leaf(0, 0.2, 0, 1.4, 0);
   }
   return { g, anim };
+}
+
+// 거둔 채소와 열매 하나 (나눔 수레, 먹을 때 손에 든 것). 바닥 가운데가 (0, 0, 0)
+export function buildCrop(crop) {
+  const g = new THREE.Group();
+  const L = '#5DB760';
+  if (crop === 'carrot') {
+    const c = cyl(g, 0.055, 0.008, 0.24, '#F49A4C', 0, 0.12, 0, 8);
+    c.rotation.z = Math.PI / 2;
+    c.position.set(0.02, 0.055, 0);
+    for (let i = 0; i < 3; i++) { const st = cyl(g, 0.008, 0.012, 0.13, L, -0.13, 0.08, (i - 1) * 0.025, 5); st.rotation.z = 1.2 + i * 0.12; }
+  } else if (crop === 'tomato') {
+    ball(g, 0.075, '#EF4A3E', 0, 0.07, 0, 12).scale.set(1, 0.85, 1);
+    for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2; const lf = ball(g, 0.025, L, Math.cos(a) * 0.025, 0.135, Math.sin(a) * 0.025, 6); lf.scale.set(1.4, 0.4, 0.6); lf.rotation.y = -a; }
+  } else if (crop === 'cabbage') {
+    ball(g, 0.11, '#C9EBA0', 0, 0.1, 0, 12).scale.set(1, 0.9, 1);
+    for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2; const lf = ball(g, 0.09, '#7CC456', Math.cos(a) * 0.06, 0.08, Math.sin(a) * 0.06, 8); lf.scale.set(1, 0.9, 0.5); lf.rotation.y = -a + Math.PI / 2; }
+  } else {
+    const b = ball(g, 0.05, '#E8394B', 0, 0.06, 0, 10);
+    b.scale.set(1, 1.25, 1);
+    ball(g, 0.026, L, 0, 0.12, 0, 6).scale.set(1.6, 0.45, 1.6);
+  }
+  return g;
 }
 
 // ---------- 작은 그림 (상점과 꾸미기 판) ----------
@@ -602,11 +626,11 @@ export class HomeSpace {
   refreshObj(it) {
     const e = it.e;
     const stage = isSeed(e.k) ? growStage(e) : -1;
-    if (it.obj && it.stage === stage) { this.placeObj(it); return; }
+    if (it.obj && it.stage === stage && it.n === (e.n || 0)) { this.placeObj(it); return; }
     if (it.obj) this.dropObj(it);
     // 밤에 켠 등은 지금 하늘빛에 맞춰 바로 빛나게
     const glow = (c) => { const mt = this.v.glow(c); mt.emissiveIntensity = (this.v.glowMats[0] || {}).emissiveIntensity || 0; return mt; };
-    const made = isSeed(e.k) ? buildPlant(e.k, stage, e.id) : buildItem(e.k, glow);
+    const made = isSeed(e.k) ? buildPlant(e.k, stage, e.id, e.n || 0) : buildItem(e.k, glow);
     const g = made.g;
     mergeColored(g, VC);
     mergeStatic(g);
@@ -614,6 +638,7 @@ export class HomeSpace {
     it.obj = g;
     it.anim = made.anim;
     it.stage = stage;
+    it.n = e.n || 0;
     this.itemRoot.add(g);
     this.pickRoots.push(g);
     this.placeObj(it);

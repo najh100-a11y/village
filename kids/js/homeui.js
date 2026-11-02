@@ -3,14 +3,17 @@ import * as THREE from './three.module.min.js';
 import { HOME_O, itemThumb } from './home.js';
 import {
   HOME_ITEMS, HOME_IDS, ZONE_NAMES, ROOM, GARDEN, YARD_RECTS, isSeed, footprint, canPlace,
-  growStage, growHours, canWater, GROW,
+  growStage, growHours, canWater, GROW, CROPS, HARVEST, needHours, leftText, setServerNow, serverNow,
 } from './homeitems.js';
 import { h, toast, josa } from './ui.js';
 
 const ZONES = ['room', 'yard', 'garden'];
 const ZONE_RECTS = { room: [ROOM], garden: [GARDEN], yard: YARD_RECTS };
 const STAGE_TEXT = ['씨앗을 심었어요. 곧 싹이 나요.', '싹이 났어요!', '쑥쑥 자라는 중이에요.'];
+const AGAIN_TEXT = '열매를 땄어요. 다시 열매가 맺히는 중이에요.';
 const newId = () => Math.random().toString(36).slice(2, 10);
+// 서버가 적은 자람 기록 (없는 칸은 지운다)
+const growOf = (pl) => ({ t: pl && pl.t, g: (pl && pl.g) || undefined, w: (pl && pl.w) || undefined, n: (pl && pl.n) || undefined });
 
 export function createHomeUI(o) {
   // o: { village, rpc, getToken, getMe, features, sfx, setActivity, openShop, openMaker, openSheet, modal, message, onSessionLost, setFruits,
@@ -21,7 +24,7 @@ export function createHomeUI(o) {
   const invited = new Map(); // 친구 id → 마지막으로 부른 때 (같은 친구를 너무 자주 부르지 않게)
   let busy = false, editing = false, tab = 'room';
   let mode = null; // { kind: 'place', e, from } | { kind: 'sel', id }
-  let saveTimer = null, saving = false, harvest = [], dirty = false;
+  let saveTimer = null, saving = false, dirty = false, farmBusy = false;
 
   // ---------- 화면 조각 ----------
   const bar = h('div', { class: 'home-bar', hidden: true });
@@ -30,6 +33,7 @@ export function createHomeUI(o) {
     const btn = (label, fn, cls = 'btn-soft') => h('button', { class: `btn ${cls}`, type: 'button', onclick: fn }, label);
     if (guest) bar.replaceChildren(btn('🏠 우리 집으로', () => enter()), btn('🏡 마을로', () => exit()));
     else bar.replaceChildren(btn('🛋️ 집 꾸미기', () => startEdit(), 'btn-go'),
+      o.features().farm && o.openBasket ? btn('🧺 바구니', () => o.openBasket()) : null,
       o.features().visit ? btn('👋 친구 부르기', () => openInvite()) : null,
       btn('🏡 마을로', () => exit()));
   }
@@ -58,6 +62,8 @@ export function createHomeUI(o) {
     try {
       st = await o.rpc('kids_home', { p_token: o.getToken() });
       if (Number.isFinite(st.fruits)) o.setFruits(st.fruits);
+      setServerNow(st.now);
+      if (o.onCrops) o.onCrops(st.crops);
     } catch (e) {
       busy = false;
       if (e.code === 'SESSION') { o.onSessionLost(); return; }
@@ -98,7 +104,7 @@ export function createHomeUI(o) {
     if (!o.features().visit) { toast('친구 집에 놀러 가기는 곧 열려요!', 2400); return; }
     busy = true;
     let r;
-    try { r = await o.rpc('kids_home_visit', { p_token: o.getToken(), p_child: id }); } catch (e) {
+    try { r = await o.rpc('kids_home_visit', { p_token: o.getToken(), p_child: id }); setServerNow(r.now); } catch (e) {
       busy = false;
       if (e.code === 'SESSION') { o.onSessionLost(); return; }
       toast(o.message(e), 2800);
@@ -162,19 +168,19 @@ export function createHomeUI(o) {
     if (!dirty || !v.homeSpace) return;
     saving = true;
     dirty = false;
-    const layout = v.homeSpace.layout.map(({ id, k, x, z, r, t, g, w }) => {
-      const e = { id, k, x, z, r: r || 0 };
-      if (t) e.t = t;
-      if (g) e.g = +g.toFixed(2);
-      if (w) e.w = w;
-      return e;
-    });
-    const hv = harvest;
-    harvest = [];
+    const layout = v.homeSpace.layout.map(({ id, k, x, z, r }) => ({ id, k, x, z, r: r || 0 }));
     try {
-      const r = await o.rpc('kids_home_save', { p_token: o.getToken(), p_layout: layout, p_harvest: hv });
+      const r = await o.rpc('kids_home_save', { p_token: o.getToken(), p_layout: layout });
       st.items = r.items || st.items;
       st.layout = layout;
+      setServerNow(r.now);
+      // 식물이 언제 심겼는지는 서버가 적은 대로 맞춘다
+      if (r.plants && v.homeSpace) {
+        for (const [id, pl] of Object.entries(r.plants)) {
+          const e = v.homeSpace.entry(id);
+          if (e && (e.t !== pl.t || (e.g || 0) !== (pl.g || 0) || (e.n || 0) !== (pl.n || 0) || (e.w || 0) !== (pl.w || 0))) v.homeSpace.put({ id, k: e.k, x: e.x, z: e.z, r: e.r || 0, ...growOf(pl) });
+        }
+      }
       if (editing) drawList();
       v.sendHouse({ u: 1 }); // 우리 집에 놀러 온 친구 화면도 새로 꾸민 대로
     } catch (e) {
@@ -183,6 +189,7 @@ export function createHomeUI(o) {
       // 서버에 있는 대로 되돌린다
       try {
         st = await o.rpc('kids_home', { p_token: o.getToken() });
+        setServerNow(st.now);
         if (v.homeSpace) v.homeSpace.setLayout(st.layout || []);
         if (editing) drawList();
       } catch (err) { /* 다음에 */ }
@@ -342,7 +349,7 @@ export function createHomeUI(o) {
       if (it && it.obj) it.obj.visible = true;
     } else {
       const n = { id: e.id, k: e.k, x: e.x, z: e.z, r: e.r || 0 };
-      if (isSeed(e.k)) n.t = Date.now();
+      if (isSeed(e.k)) n.t = serverNow();
       H.put(n);
     }
     o.sfx.pop();
@@ -352,7 +359,7 @@ export function createHomeUI(o) {
     scheduleSave();
     drawList();
     drawAct();
-    if (seed) hint.textContent = '심었어요! 싹이 나고 자라는 데 시간이 걸려요. 마당에서 밭을 누르면 물을 줄 수 있어요.';
+    if (seed) hint.textContent = CROPS[k] ? `심었어요! ${josa(HOME_ITEMS[k].grown, '은', '는')} ${leftText(CROPS[k].need)}쯤 지나면 ${CROPS[k].crop ? '거둘 수 있어요' : '꽃이 펴요'}. 꾸미기를 마치고 밭을 누르면 물을 줄 수 있어요.` : '심었어요!';
   }
   function rotateSel(e) {
     const H = v.homeSpace;
@@ -402,18 +409,28 @@ export function createHomeUI(o) {
   }
 
   // ---------- 밭 돌보기 (꾸미기 아닐 때 식물을 누르면) ----------
+  // 식물마다 며칠씩 걸려 자란다. 다 자란 채소와 열매는 수확 바구니에 모아서 마을 나눔 수레에 나누거나 열매 상점에서 판다
+  function plantLines(e) {
+    const it = HOME_ITEMS[e.k], c = CROPS[e.k] || {};
+    const stage = growStage(e);
+    const veg = !!c.crop;
+    const left = Math.max(0, needHours(e) - growHours(e));
+    const lines = [];
+    if (stage < 3) {
+      lines.push((e.n || 0) > 0 ? AGAIN_TEXT : STAGE_TEXT[stage]);
+      lines.push(left < 1 ? '이제 곧 다 자라요!' : `${veg ? '거두려면' : '꽃이 피려면'} ${leftText(left)}쯤 더 기다려요.`);
+    } else lines.push(veg ? `${josa(it.grown, '이', '가')} 다 자랐어요! 거둘 수 있어요.` : `${josa(it.grown, '이', '가')} 활짝 피었어요!`);
+    if (veg && c.picks > 1) lines.push(`${josa(it.grown, '은', '는')} 한 포기에서 ${c.picks}번까지 딸 수 있어요. 지금까지 ${Math.min(c.picks, e.n || 0)}번 땄어요.`);
+    return { stage, veg, lines, c };
+  }
   function onPlant(id) {
     const H = v.homeSpace;
     const e = H && H.entry(id);
     if (!e) return;
     const it = HOME_ITEMS[e.k];
-    const stage = growStage(e);
-    const veg = it.kind === 'veg';
-    const left = Math.max(0, GROW.full - growHours(e));
-    const lines = [];
+    const { stage, veg, lines, c } = plantLines(e);
     if (guest) {
       // 친구 밭: 구경만 한다
-      lines.push(stage < 3 ? STAGE_TEXT[stage] : veg ? `${josa(it.grown, '이', '가')} 다 자랐어요!` : `${josa(it.grown, '이', '가')} 활짝 피었어요!`);
       o.openSheet(`${guest.name}네 밭`, h('div', { class: 'talk' },
         h('p', { class: 'result-big' }, it.grown),
         ...lines.map((l) => h('p', {}, l)),
@@ -421,41 +438,63 @@ export function createHomeUI(o) {
         h('div', { class: 'row' }, h('button', { class: 'btn btn-go', type: 'button', onclick: () => o.modal.close() }, '알겠어요'))), 'talk-sheet');
       return;
     }
-    if (stage < 3) {
-      lines.push(STAGE_TEXT[stage]);
-      lines.push(left < 1 ? '이제 곧 다 자라요!' : `다 자라려면 ${Math.ceil(left)}시간쯤 더 있어야 해요.`);
-    } else lines.push(veg ? `${josa(it.grown, '이', '가')} 다 자랐어요! 거둘 수 있어요.` : `${josa(it.grown, '이', '가')} 활짝 피었어요!`);
     const water = stage < 3 && canWater(e);
+    const waited = e.w ? Math.max(0, GROW.waterEvery - (serverNow() - e.w) / 3600000) : 0;
     const body = h('div', { class: 'talk' },
       h('p', { class: 'result-big' }, it.grown),
       ...lines.map((l) => h('p', {}, l)),
-      stage < 3 && !water ? h('p', { class: 'note' }, '물은 한 시간에 한 번 줄 수 있어요. 물을 주면 2시간만큼 빨리 자라요.') : null,
-      stage < 3 && water ? h('p', { class: 'note' }, '물을 주면 2시간만큼 빨리 자라요.') : null,
+      stage < 3 && !water ? h('p', { class: 'note' }, `물을 주었어요. ${leftText(waited)} 뒤에 또 줄 수 있어요. 물을 주면 ${GROW.water}시간만큼 빨리 자라요.`) : null,
+      stage < 3 && water ? h('p', { class: 'note' }, `물을 주면 ${GROW.water}시간만큼 빨리 자라요. 물은 ${GROW.waterEvery}시간에 한 번 줄 수 있어요.`) : null,
+      stage === 3 && veg ? h('p', { class: 'note' }, `거두면 ${it.grown} ${c.yield}${HARVEST[c.crop].unit}가 수확 바구니에 담겨요. 친구들과 나눠 먹거나 열매 상점에서 팔 수 있어요.`) : null,
       h('div', { class: 'row' },
         h('button', { class: 'btn btn-plain', type: 'button', onclick: () => o.modal.close() }, '닫기'),
         water ? h('button', { class: 'btn btn-go', type: 'button', onclick: () => { o.modal.close(); waterPlant(e); } }, '💧 물 주기') : null,
         stage === 3 && veg ? h('button', { class: 'btn btn-go', type: 'button', onclick: () => { o.modal.close(); harvestPlant(e); } }, '🧺 거두기') : null));
     o.openSheet('우리 밭', body, 'talk-sheet');
   }
-  function waterPlant(e) {
+  async function waterPlant(e) {
     const H = v.homeSpace;
-    if (!canWater(e)) return;
-    H.put({ ...e, g: (e.g || 0) + GROW.water, w: Date.now() });
-    o.sfx.splash();
-    v.say('me', '💧');
-    toast(`${HOME_ITEMS[e.k].grown}에 물을 주었어요. 쑥쑥 자라라!`, 2400);
-    scheduleSave(true);
+    if (!canWater(e) || farmBusy) return;
+    farmBusy = true;
+    try {
+      await flush();
+      const r = await o.rpc('kids_garden_water', { p_token: o.getToken(), p_id: e.id });
+      setServerNow(r.now);
+      const cur = H && H.entry(e.id);
+      if (cur) H.put({ id: cur.id, k: cur.k, x: cur.x, z: cur.z, r: cur.r || 0, ...growOf(r.plant) });
+      o.sfx.splash();
+      v.say('me', '💧');
+      toast(`${HOME_ITEMS[e.k].grown}에 물을 주었어요. 쑥쑥 자라라!`, 2400);
+      v.sendHouse({ u: 1 });
+    } catch (err) {
+      if (err.code === 'SESSION') { o.onSessionLost(); return; }
+      toast(o.message(err), 2800);
+    } finally { farmBusy = false; }
   }
-  function harvestPlant(e) {
+  async function harvestPlant(e) {
     const H = v.homeSpace;
-    if (growStage(e) < 3) return;
-    H.take(e.id);
-    harvest.push(e.id);
-    o.sfx.munch();
-    v.celebrate();
-    v.say('me', '냠냠!');
-    toast(`${josa(HOME_ITEMS[e.k].grown, '을', '를')} 거뒀어요! 냠냠, 정말 맛있어요. 씨앗을 또 심어 봐요.`, 3200);
-    scheduleSave(true);
+    if (growStage(e) < 3 || farmBusy) return;
+    farmBusy = true;
+    try {
+      await flush();
+      const r = await o.rpc('kids_garden_harvest', { p_token: o.getToken(), p_id: e.id });
+      setServerNow(r.now);
+      const cur = H && H.entry(e.id);
+      if (r.done) H.take(e.id);
+      else if (cur) H.put({ id: cur.id, k: cur.k, x: cur.x, z: cur.z, r: cur.r || 0, ...growOf(r.plant) });
+      if (st && r.items) { st.items = r.items; st.layout = H.layout.map(({ id, k, x, z, r: rr }) => ({ id, k, x, z, r: rr || 0 })); }
+      if (o.onCrops) o.onCrops(r.crops);
+      const hv = HARVEST[r.crop];
+      o.sfx.success();
+      v.celebrate();
+      v.say('me', `${hv.icon} 와, ${hv.name}!`);
+      const more = !r.done ? ` 다시 열리면 ${CROPS[e.k].picks - r.picks}번 더 딸 수 있어요.` : (CROPS[e.k].picks > 1 ? ' 이 포기는 다 땄어요. 새로 심어 봐요.' : '');
+      toast(`${hv.name} ${r.got}${hv.unit}를 수확 바구니에 담았어요!${more}`, 3400);
+      v.sendHouse({ u: 1 });
+    } catch (err) {
+      if (err.code === 'SESSION') { o.onSessionLost(); return; }
+      toast(o.message(err), 2800);
+    } finally { farmBusy = false; }
   }
   // 꾸미기 아닐 때 물건을 누르면 (작은 재미)
   function onHomeItem(id) {
@@ -485,7 +524,6 @@ export function createHomeUI(o) {
   function reset() {
     clearTimeout(saveTimer);
     dirty = false;
-    harvest = [];
     if (editing) { editing = false; cancelMode(); if (v.mode === 'game') v.exitGame(); }
     if (v.atHome) v.exitHome();
     document.body.classList.remove('at-home', 'home-editing');

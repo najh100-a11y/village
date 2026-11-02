@@ -129,7 +129,8 @@ class GameUI {
     this.v = village;
     this.root = document.getElementById('gameUi');
   }
-  open({ name, onExit, side = [] }) {
+  // side: 왼쪽 동그란 단추들, right: '그만' 옆(오른쪽)에 둘 단추들
+  open({ name, onExit, side = [], right = [] }) {
     document.body.classList.add('in-game');
     this.root.hidden = false;
     this.nameEl = h('span', { class: 'g-name' }, name);
@@ -139,9 +140,9 @@ class GameUI {
     this.bannerEl = h('div', { class: 'g-banner', role: 'status' });
     this.panel = h('div', { class: 'g-panel' });
     const exit = h('button', { class: 'round', type: 'button', onclick: onExit }, icon('door'), '그만');
-    const sides = side.map(([ic, label, fn]) => h('button', { class: 'round', type: 'button', onclick: fn }, icon(ic), label));
+    const round = ([ic, label, fn]) => h('button', { class: 'round', type: 'button', onclick: fn }, icon(ic), label);
     this.root.replaceChildren(h('div', { class: 'g-top' }, this.nameEl, this.sayEl), this.bannerEl, this.panel,
-      h('div', { class: 'g-bottom' }, h('div', { class: 'g-side' }, ...sides), this.main, h('div', { class: 'g-side' }, exit)));
+      h('div', { class: 'g-bottom' }, h('div', { class: 'g-side' }, ...side.map(round)), this.main, h('div', { class: 'g-side' }, ...right.map(round), exit)));
   }
   say(t, name) { this.sayEl.textContent = t; if (name) this.nameEl.textContent = name; }
   setMain(label, { disabled = false, pulse = false, hidden = false, onClick } = {}) {
@@ -612,10 +613,10 @@ export function createPlay3D(ctx) {
   }
   const live = (game) => !!cur && cur.game === game;
 
-  function begin(id, name, game, side = [], seat = -1) {
+  function begin(id, name, game, side = [], seat = -1, right = []) {
     cur = { id, game };
     v.enterGame(game);
-    ui.open({ name, onExit: () => (game.onExit ? game.onExit() : stopAll()), side });
+    ui.open({ name, onExit: () => (game.onExit ? game.onExit() : stopAll()), side, right });
     setActivity(id, seat);
     setScene('game');
   }
@@ -745,12 +746,27 @@ export function createPlay3D(ctx) {
       cams: () => {
         const S = V(-F.z, 0, F.x);
         return {
-          normal: { pos: K.clone().addScaledVector(F, -6.2 * far).addScaledVector(S, 2.6 * far).setY(SEA_Y + 4.4 * far), look: K.clone().addScaledVector(F, 2.2).setY(SEA_Y + 1.0) },
+          normal: { pos: K.clone().addScaledVector(F, -3.4 * far).addScaledVector(S, 3.2 * far).setY(SEA_Y + 7.6 * far), look: K.clone().addScaledVector(F, 3.4).setY(SEA_Y - 0.8) },
           catch: { pos: K.clone().addScaledVector(F, 5.8 * far).addScaledVector(S, 1.6 * far).setY(K.y + 2.0), look: K.clone().setY(K.y + 1.35) },
         };
       },
     });
   }
+
+  // 바다 낚시 줄다리기: 물고기가 드물수록 초록 칸이 좁고 바늘이 빠르며 여러 번 감아야 한다
+  // hits: 초록 칸에서 감아야 하는 횟수, zone: 초록 칸 너비(막대 전체 1), speed: 바늘이 1초에 가는 거리(막대 전체 1), drift: 초록 칸이 스르르 움직이는 빠르기
+  const FIGHT = {
+    '-1': { hits: 2, zone: 0.36, speed: 0.5, drift: 0, name: '무언가 걸렸어요!' },
+    0: { hits: 3, zone: 0.3, speed: 0.6, drift: 0, name: '물고기가 물었어요!' },
+    1: { hits: 4, zone: 0.23, speed: 0.8, drift: 0, name: '힘센 물고기예요!' },
+    2: { hits: 5, zone: 0.17, speed: 0.95, drift: 0.12, name: '아주 힘센 물고기예요!' },
+    3: { hits: 6, zone: 0.13, speed: 1.15, drift: 0.2, name: '엄청나게 힘센 물고기예요!' },
+  };
+  const TENSION_MAX = 3; // 줄이 이만큼 팽팽해지면 끊어진다
+  // 손맛: 휴대폰 진동 (안드로이드 크롬·삼성 인터넷은 되고, 아이폰·아이패드 브라우저는 진동을 지원하지 않아 화면과 소리로만 알린다)
+  const buzz = (pattern) => { try { if (navigator.vibrate && !document.hidden) navigator.vibrate(pattern); } catch (e) { /* 진동 없이 */ } };
+  const seaFpPref = () => { try { return localStorage.getItem('kv.seaFp') !== '0'; } catch (e) { return true; } };
+  const setSeaFpPref = (on) => { try { localStorage.setItem('kv.seaFp', on ? '1' : '0'); } catch (e) { /* 이번만 */ } };
 
   // P: { id, title, hook(서버 함수), place, wy(물 높이), water(물 이름), sit(앉아서), kid(아이 자리), fwd(바라보는 쪽),
   //      inWater(x, z, 가장자리 여유), spawnPt(), canCast(누른 곳), cams(), boat와 sea(바다일 때) }
@@ -762,6 +778,69 @@ export function createPlay3D(ctx) {
     v.scene.add(grp);
     const rod = makeRod();
     pl.hold(rod, 1);
+    // 바다에서는 1인칭으로 낚시한다: 내 몸은 숨기고 화면 오른쪽 아래에 낚싯대가 보인다
+    const fpRod = boat ? makeRod() : null;
+    if (fpRod) { fpRod.visible = false; fpRod.scale.setScalar(0.72); grp.add(fpRod); }
+    let rodDip = 0, rodShake = 0;
+    const eyeQ = new THREE.Quaternion(), eyeP = V(), eyeF = V(), eyeU = V(), eyeS = V(), rodDir = V();
+    const UPV = V(0, 1, 0);
+    // 1인칭 눈 자리와 방향 (world.js의 1인칭 카메라와 같은 계산)
+    function eyeFrame() {
+      const root = pl.root;
+      root.getWorldQuaternion(eyeQ);
+      root.getWorldPosition(eyeP);
+      eyeP.add(V(0, 1.5, 0.18).applyQuaternion(eyeQ));
+      eyeF.set(0, 0, 1).applyQuaternion(eyeQ);
+      eyeU.set(0, 1, 0).applyQuaternion(eyeQ);
+      const vw = v.view.game;
+      eyeF.applyAxisAngle(eyeU, vw.yaw);
+      eyeS.crossVectors(eyeF, eyeU).normalize();
+      eyeF.applyAxisAngle(eyeS, -Math.max(-1.2, Math.min(1.2, vw.elev)) - 0.12);
+    }
+    // 1인칭: 던진 찌와 걸린 물고기 쪽으로 눈을 돌려 준다 (끌어서 둘러보는 동안에는 그대로)
+    let aimT = 0;
+    function aimEye(dt) {
+      if (!v.fp || !boat || v.rotating) return;
+      const vw = v.view.game;
+      let wantYaw = vw.yaw, wantElev = vw.elev;
+      if (st === 'show') { wantYaw = 0; wantElev = -0.02; } else if (aimT > 0 || st === 'fight' || st === 'landing') {
+        const K = P.kid, ry = pl.root.rotation.y;
+        const dx = target.x - K.x, dz = target.z - K.z, d = Math.hypot(dx, dz) || 1;
+        let a = Math.atan2(dx, dz) - ry;
+        while (a > Math.PI) a -= Math.PI * 2;
+        while (a < -Math.PI) a += Math.PI * 2;
+        wantYaw = Math.max(-1.0, Math.min(1.0, a));
+        eyeFrame();
+        // 찌가 화면 가운데보다 조금 위에 오게 (아래쪽은 단추와 막대가 가린다)
+        wantElev = Math.atan2(Math.max(0.5, eyeP.y - WY), d) - 0.12 - 0.09;
+      } else return;
+      const k = Math.min(1, dt * (st === 'show' ? 6 : 2.6));
+      vw.yaw += (wantYaw - vw.yaw) * k;
+      vw.elev += (wantElev - vw.elev) * k;
+    }
+    function placeFpRod(time) {
+      if (!fpRod) return false;
+      const on = !!v.fp && st !== 'row' && st !== 'sail' && st !== 'show' && st !== 'stopped';
+      fpRod.visible = on;
+      if (!on) return false;
+      eyeFrame();
+      // 화면 오른쪽 아래 구석에서 가운데 위쪽으로 뻗는다 (눈이 보는 쪽을 기준으로)
+      const camU = V().crossVectors(eyeS, eyeF).normalize();
+      fpRod.position.copy(eyeP).addScaledVector(eyeF, 0.5).addScaledVector(eyeS, 0.45).addScaledVector(camU, -0.5);
+      rodDir.copy(eyeF).multiplyScalar(0.7).addScaledVector(camU, 0.75 - rodDip * 0.55).addScaledVector(eyeS, -0.38 + Math.sin(time * 31) * 0.04 * rodShake).normalize();
+      fpRod.quaternion.setFromUnitVectors(UPV, rodDir);
+      return true;
+    }
+    // 잡은 물고기를 들어 보이는 자리 (1인칭이면 눈앞)
+    function showPt(out) {
+      if (v.fp && boat) {
+        eyeFrame();
+        const flat = V().copy(eyeF).setY(0).normalize();
+        return out.copy(eyeP).addScaledVector(flat, 1.25).addScaledVector(UPV, -0.22);
+      }
+      return out.copy(handFront(pl, 0.5, P.sit ? 0.85 : 1.0));
+    }
+    const showP = V();
     let armA = -1.05, armTarget = -1.05;
     const sitLegs = (av) => { if (P.sit) { av.legs[0].rotation.x = av.legs[1].rotation.x = -1.45; av.body.position.y = 0; } };
     const holdPose = (av, dt) => {
@@ -861,9 +940,28 @@ export function createPlay3D(ctx) {
     let leaving = false, school = false;
     const target = V(), from = V();
     const say = (txt) => ui.say(txt);
+    // 줄다리기 (바다): 바늘이 초록 칸에 올 때 '감기!'를 눌러 물고기를 끌어온다
+    let fight = null, downAt = 0;
+    const fightZone = h('span', { class: 'heat-zone' });
+    const fightNeedle = h('i', { class: 'needle' });
+    const fightBar = h('div', { class: 'heat-bar fight-bar' }, fightZone, fightNeedle);
+    const fightTitle = h('b', { class: 'fight-title' });
+    const fightHits = h('span', { class: 'fight-hits', 'aria-label': '감은 횟수' });
+    const fightLine = h('span', { class: 'fight-line', 'aria-label': '줄이 팽팽한 정도' });
+    const loosenBtn = h('button', { class: 'g-chip', type: 'button', onclick: () => loosen() }, '🎣 줄 풀기');
+    const fightBox = h('div', { class: 'fight-box' },
+      h('div', { class: 'fight-top' }, fightTitle, fightHits), fightBar,
+      h('div', { class: 'fight-bottom' }, h('span', { class: 'fight-lab' }, '줄'), fightLine, loosenBtn));
+    // 기다릴 때 릴: 감으면 찌가 배 쪽으로, 풀면 멀리 간다
+    const reelRow = h('div', { class: 'g-row' },
+      h('button', { class: 'g-chip', type: 'button', onclick: () => reelBob(-1) }, '🔄 릴 감기'),
+      h('button', { class: 'g-chip', type: 'button', onclick: () => reelBob(1) }, '🎣 줄 풀기'));
 
     function setIdle(msg = '물고기 그림자 가까이 물을 누르거나 ‘던지기’를 눌러요!') {
       st = 'idle';
+      fight = null;
+      ui.setPanel();
+      rodDip = 0; rodShake = 0;
       bob.visible = false; line.visible = false;
       armTarget = -1.05;
       rod.visible = true;
@@ -892,6 +990,8 @@ export function createPlay3D(ctx) {
       target.copy(pt).setY(WY + 0.05);
       st = 'cast'; t = 0;
       armTarget = -2.8;
+      rodDip = -0.45;
+      aimT = 2.0;
       ui.setMain('…', { disabled: true });
       say('휘익!');
       sfx.whoosh();
@@ -899,8 +999,153 @@ export function createPlay3D(ctx) {
 
     function startWait() {
       st = 'wait'; waitT = 0; active = null; pending = null; nibbles = 0;
-      say('찌를 잘 보세요. 쏙 들어가면 그때 당겨요!');
+      rodDip = 0.1;
+      say(boat ? '찌를 잘 보세요. 톡톡 건드리다가 쏙 들어가면 그때 당겨요! 릴을 감거나 풀어서 찌를 옮길 수도 있어요.' : '찌를 잘 보세요. 쏙 들어가면 그때 당겨요!');
+      if (boat) ui.setPanel(reelRow);
       ui.setMain('당기기', { onClick: () => pull() });
+    }
+    // 릴 감기(-1)·줄 풀기(+1): 찌를 0.6m씩 옮긴다. 다 감으면 줄을 거둔다
+    function reelBob(dir) {
+      if (st !== 'wait' && st !== 'approach' && st !== 'nibble') return;
+      const K = P.kid;
+      const dx = target.x - K.x, dz = target.z - K.z, d = Math.hypot(dx, dz) || 1;
+      const nd = d + dir * 0.6;
+      if (dir < 0 && nd < 1.7) { sfx.reel(6); reelIn('줄을 다 감았어요.'); return; }
+      const nx = K.x + (dx / d) * nd, nz = K.z + (dz / d) * nd;
+      if (dir > 0 && (nd > 5.6 || !inWater(nx, nz, 0.1))) { say('줄을 더 풀 수 없어요. 여기서 기다려 봐요.'); sfx.tick(); return; }
+      target.set(nx, WY + 0.05, nz);
+      ripple(nx, nz, 0.7);
+      if (dir < 0) { sfx.reel(5); rodDip = 0.3; } else { sfx.unreel(); rodDip = -0.1; }
+      if (st === 'wait') waitT = Math.max(0, waitT - 0.3);
+    }
+    // ---------- 줄다리기 ----------
+    function drawFight() {
+      if (!fight) return;
+      const L = fight.lv;
+      fightTitle.textContent = L.name;
+      fightZone.style.left = `${((fight.zone - L.zone / 2) * 100).toFixed(1)}%`;
+      fightZone.style.width = `${(L.zone * 100).toFixed(1)}%`;
+      fightHits.replaceChildren(...Array.from({ length: L.hits }, (_, i) => h('i', { class: i < fight.hits ? 'on' : '' })));
+      fightLine.replaceChildren(...Array.from({ length: TENSION_MAX }, (_, i) => h('i', { class: i < fight.tension ? 'on' : '' })));
+      fightLine.dataset.level = String(fight.tension);
+      loosenBtn.disabled = fight.tension <= 0;
+    }
+    function newZone() {
+      const L = fight.lv;
+      let z;
+      do { z = L.zone / 2 + 0.04 + Math.random() * (1 - L.zone - 0.08); } while (Math.abs(z - fight.needle) < 0.18 && Math.random() < 0.8);
+      fight.zone = z;
+      fight.zv = (Math.random() < 0.5 ? -1 : 1) * L.drift;
+    }
+    function startFight() {
+      const f = pending ? fishById(pending.fish) : null;
+      const r = f ? f.rarity : 0;
+      const lv = FIGHT[String(r)] || FIGHT['0'];
+      const K = P.kid;
+      fight = { lv, hits: 0, tension: 0, t: 0, idle: 0, needle: Math.random() * 0.2, dir: 1, zone: 0.5, zv: 0,
+        from: target.clone(), near: V(K.x + P.fwd.x * 1.7, WY + 0.05, K.z + P.fwd.z * 1.7), splashT: 0, buzzT: 0, k: 0 };
+      newZone();
+      st = 'fight';
+      if (active) active.state = 'bite';
+      ui.setPanel(fightBox);
+      drawFight();
+      ui.setMain('감기!', { pulse: true, onClick: () => { if (performance.now() - downAt > 500) hit(); } });
+      say(`${lv.name} 바늘이 초록 칸에 올 때 ‘감기!’를 눌러요.`);
+      sfx.tug();
+      buzz([90, 50, 160]);
+      splash(target.x, target.z, 12);
+    }
+    function hit() {
+      if (st !== 'fight' || !fight) return;
+      const L = fight.lv;
+      fight.idle = 0;
+      if (Math.abs(fight.needle - fight.zone) <= L.zone / 2 + 0.012) {
+        fight.hits++;
+        sfx.reel(5);
+        buzz(35);
+        rodDip = 0.15;
+        splash(bob.position.x, bob.position.z, 6);
+        drawFight();
+        if (fight.hits >= L.hits) { landFight(); return; }
+        newZone();
+        drawFight();
+        say(pick(['좋아요! 계속 감아요!', '영차! 가까이 왔어요!', '잘했어요! 한 번 더!', '물고기가 끌려와요!']));
+      } else {
+        fight.tension++;
+        sfx.tug();
+        buzz([70, 40, 70]);
+        rodShake = 1;
+        fightBar.classList.remove('shake'); void fightBar.offsetWidth; fightBar.classList.add('shake');
+        drawFight();
+        if (fight.tension >= TENSION_MAX) { snapLine(); return; }
+        say(fight.tension >= TENSION_MAX - 1 ? '줄이 끊어질 것 같아요! ‘줄 풀기’를 누르거나 초록 칸에서 감아요.' : '앗, 줄이 팽팽해요! 바늘이 초록 칸에 왔을 때 눌러요.');
+      }
+    }
+    // 줄을 조금 풀어 주면 팽팽함이 줄지만 물고기가 조금 멀어진다
+    function loosen() {
+      if (st !== 'fight' || !fight || fight.tension <= 0) return;
+      fight.tension--;
+      fight.hits = Math.max(0, fight.hits - 1);
+      fight.idle = 0;
+      rodShake = 0;
+      sfx.unreel();
+      drawFight();
+      say('줄을 풀어 주었어요. 물고기가 조금 멀어졌어요. 다시 감아요!');
+    }
+    function snapLine() {
+      sfx.snap();
+      buzz(350);
+      fight = null;
+      ui.setPanel();
+      if (active) flee(active);
+      splash(bob.position.x, bob.position.z, 10);
+      reelIn('줄이 끊어져서 물고기가 도망갔어요.');
+    }
+    function landFight() {
+      fight = null;
+      ui.setPanel();
+      buzz([40, 60, 40, 60, 180]);
+      catchIt();
+    }
+    // 물고기가 버티는 힘: 오래 안 감으면 줄을 끌고 가서 팽팽해진다
+    function fightUpdate(dt, time) {
+      const L = fight.lv;
+      fight.t += dt;
+      fight.needle += fight.dir * L.speed * dt;
+      if (fight.needle > 1) { fight.needle = 2 - fight.needle; fight.dir = -1; }
+      if (fight.needle < 0) { fight.needle = -fight.needle; fight.dir = 1; }
+      if (L.drift) {
+        fight.zone += fight.zv * dt;
+        const lo = L.zone / 2 + 0.02, hi = 1 - L.zone / 2 - 0.02;
+        if (fight.zone < lo || fight.zone > hi) { fight.zone = Math.max(lo, Math.min(hi, fight.zone)); fight.zv = -fight.zv; }
+        fightZone.style.left = `${((fight.zone - L.zone / 2) * 100).toFixed(1)}%`;
+      }
+      fightNeedle.style.left = `${(fight.needle * 100).toFixed(1)}%`;
+      fight.idle += dt;
+      if (fight.idle > 5) {
+        fight.idle = 0;
+        fight.tension++;
+        sfx.tug();
+        buzz([60, 40, 60]);
+        rodShake = 1;
+        drawFight();
+        if (fight.tension >= TENSION_MAX) { snapLine(); return; }
+        say('물고기가 줄을 끌고 가요! 바늘이 초록 칸에 오면 감아요!');
+      }
+      if (fight.t > 40) { fight = null; ui.setPanel(); sfx.fail(); if (active) flee(active); reelIn('물고기가 지쳐서 바늘을 빼고 도망갔어요.'); return; }
+      // 찌와 물고기: 감을수록 배 가까이 온다. 물고기가 버둥대며 물보라를 낸다
+      fight.k += ((fight.hits / L.hits) * 0.8 - fight.k) * Math.min(1, dt * 3);
+      const wob = 0.12 + fight.tension * 0.05;
+      target.lerpVectors(fight.from, fight.near, fight.k);
+      target.x += Math.sin(time * 5.3) * wob;
+      target.z += Math.cos(time * 4.1) * wob;
+      fight.splashT -= dt;
+      if (fight.splashT <= 0) { fight.splashT = 0.45 + Math.random() * 0.4; splash(target.x, target.z, 5); ripple(target.x, target.z, 0.8); }
+      fight.buzzT -= dt;
+      if (fight.buzzT <= 0) { fight.buzzT = 0.8 + Math.random() * 0.5; buzz(18 + fight.tension * 12); }
+      rodDip = 0.45 + fight.tension * 0.12 + Math.sin(time * 9) * 0.06;
+      rodShake = Math.max(0.25, rodShake - dt * 1.5);
+      bob.userData.dip = 0.12;
     }
 
     async function hook() {
@@ -927,6 +1172,9 @@ export function createPlay3D(ctx) {
 
     function reelIn(msg) {
       st = 'reel'; t = 0;
+      fight = null;
+      ui.setPanel();
+      rodDip = 0.2; rodShake = 0;
       from.copy(bob.position);
       armTarget = -1.6;
       ui.setMain('…', { disabled: true });
@@ -941,12 +1189,14 @@ export function createPlay3D(ctx) {
         reelIn(st === 'wait' ? '아직 아무것도 안 물었어요.' : '앗, 너무 일찍 당겼어요.');
         return;
       }
-      if (st === 'bite') catchIt();
+      if (st === 'bite') { if (boat) startFight(); else catchIt(); }
     }
 
     async function catchIt() {
       st = 'landing'; t = 0;
       armTarget = -2.6;
+      ui.setPanel();
+      rodDip = -0.3;
       ui.setMain('…', { disabled: true });
       say('영차!');
       splash(bob.position.x, bob.position.z, 12);
@@ -1018,7 +1268,10 @@ export function createPlay3D(ctx) {
     const keys = new Set();
     const KEYMAP = { ArrowUp: 'u', KeyW: 'u', ArrowDown: 'd', KeyS: 'd', ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r' };
     const kd = (e) => {
-      if (st !== 'row' || (e.target && ['INPUT', 'TEXTAREA'].includes(e.target.tagName))) return;
+      if (e.target && ['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      // 줄다리기: 스페이스나 엔터로도 감는다 (누르는 순간에 잰다)
+      if (st === 'fight' && (e.code === 'Space' || e.code === 'Enter')) { e.preventDefault(); if (!e.repeat) { downAt = performance.now(); hit(); } return; }
+      if (st !== 'row') return;
       if (KEYMAP[e.code]) { keys.add(KEYMAP[e.code]); e.preventDefault(); }
     };
     const ku = (e) => { if (KEYMAP[e.code]) keys.delete(KEYMAP[e.code]); };
@@ -1047,6 +1300,9 @@ export function createPlay3D(ctx) {
     function rowMode(msg) {
       clearLine();
       st = 'row';
+      fight = null;
+      ui.setPanel();
+      v.setFirstPerson(false);
       rod.visible = false;
       pl.pose = rowPose;
       school = false;
@@ -1080,6 +1336,7 @@ export function createPlay3D(ctx) {
       const ahead = P.kid.clone().addScaledVector(P.fwd, 3.0);
       school = nearSchool(ahead.x, ahead.z, 6.5) >= 0;
       shadows.forEach((s, i) => { s.off = i >= 4 && !school; spawnShadow(s); s.op = 0; });
+      if (seaFpPref()) { v.setFirstPerson(true); v.view.game.elev = 0.34; }
       setIdle(school ? '물고기 떼 한가운데예요! 물고기가 금방 모여들어요. 그림자 가까이 물을 누르거나 ‘던지기’를 눌러요.'
         : '여기서 던져 볼까요? 물고기 그림자 가까이 물을 누르거나 ‘던지기’를 눌러요.');
     }
@@ -1126,6 +1383,9 @@ export function createPlay3D(ctx) {
       if (!boat || leaving || st === 'stopped') { stopAll(); return; }
       leaving = true;
       clearLine();
+      fight = null;
+      ui.setPanel();
+      v.setFirstPerson(false);
       keys.clear();
       document.body.classList.remove('pad-game');
       st = 'sail';
@@ -1158,7 +1418,8 @@ export function createPlay3D(ctx) {
         const ok = ray.ray.intersectPlane(new THREE.Plane(V(0, 1, 0), -(WY + 0.05)), pt);
         if (ok && P.canCast(pt)) cast(pt);
         else if (ok && inWater(pt.x, pt.z, 0)) say('조금 더 가까운 물을 눌러 봐요.');
-      } else if (st === 'bite' || st === 'wait' || st === 'approach' || st === 'nibble') pull();
+      } else if (st === 'fight') hit();
+      else if (st === 'bite' || st === 'wait' || st === 'approach' || st === 'nibble') pull();
     };
 
     game.update = (dt, time) => {
@@ -1190,7 +1451,7 @@ export function createPlay3D(ctx) {
           const dx = target.x - s.x, dz = target.z - s.z;
           const d = Math.hypot(dx, dz);
           s.a = Math.atan2(dx, dz);
-          if (d > nose + 0.01) { const step = Math.min(d - nose, 0.45 * dt); s.x += (dx / d) * step; s.z += (dz / d) * step; } else if (s.state === 'approach') {
+          if (d > nose + 0.01) { const step = Math.min(d - nose, (st === 'fight' ? 2.4 : 0.45) * dt); s.x += (dx / d) * step; s.z += (dz / d) * step; } else if (s.state === 'approach') {
             s.state = 'nibble';
             nibbles = 1 + Math.floor(Math.random() * 3);
             nextNibble = 0.5 + Math.random() * 0.7;
@@ -1206,8 +1467,17 @@ export function createPlay3D(ctx) {
         s.mat.opacity = 0.32 * s.op;
       }
 
-      rod.updateWorldMatrix(true, true);
-      rod.userData.tip.getWorldPosition(tipPos);
+      if (st !== 'fight') rodDip += ((st === 'cast' && t < 0.3 ? -0.45 : st === 'cast' ? 0.25 : 0.1) - rodDip) * Math.min(1, dt * 5);
+      rodShake = Math.max(0, rodShake - dt * 2);
+      aimT = Math.max(0, aimT - dt);
+      aimEye(dt);
+      if (placeFpRod(time)) {
+        fpRod.updateWorldMatrix(true, true);
+        fpRod.userData.tip.getWorldPosition(tipPos);
+      } else {
+        rod.updateWorldMatrix(true, true);
+        rod.userData.tip.getWorldPosition(tipPos);
+      }
 
       if (st === 'cast') {
         t += dt;
@@ -1224,8 +1494,9 @@ export function createPlay3D(ctx) {
         const k = clamp01(t / 0.45);
         bob.position.lerpVectors(from, tipPos, ease(k));
         bob.position.y += Math.sin(k * Math.PI) * 0.4;
-      } else if (st === 'wait' || st === 'approach' || st === 'nibble' || st === 'bite') {
+      } else if (st === 'wait' || st === 'approach' || st === 'nibble' || st === 'bite' || st === 'fight') {
         waitT += dt;
+        if (st === 'fight' && fight) fightUpdate(dt, time);
         if (st === 'wait' && !active && waitT > 0.9) {
           let best = null, bd = 99;
           for (const s of shadows) {
@@ -1248,12 +1519,17 @@ export function createPlay3D(ctx) {
               nextNibble = 0.6 + Math.random() * 0.8;
               ripple(target.x, target.z, 0.5);
               sfx.tick();
+              buzz(25); // 톡: 물고기가 찌를 건드린다
+              rodShake = 0.4;
               bob.userData.dip = 0.035;
               say(pick(['톡… 톡…', '물고기가 찌를 건드려요.', '아직이에요, 조금만 기다려요.']));
             } else if (pending) {
               st = 'bite';
               if (active) active.state = 'bite';
-              biteUntil = waitT + 1.3;
+              biteUntil = waitT + (boat ? 1.6 : 1.3);
+              buzz([80, 40, 160]); // 덥석: 찌를 물었다
+              rodShake = 1;
+              rodDip = 0.5;
               bob.userData.dip = 0.14;
               ripple(target.x, target.z, 1.4);
               splash(target.x, target.z, 10);
@@ -1270,13 +1546,13 @@ export function createPlay3D(ctx) {
             reelIn('물고기가 도망갔어요.');
           }
         }
-        if (st !== 'reel') {
+        if (st !== 'reel' && st !== 'stopped') {
           bob.userData.dip = Math.max(0, (bob.userData.dip || 0) - dt * 0.25);
           bob.position.set(target.x, WY + 0.05 + Math.sin(time * 2.4) * 0.008 - bob.userData.dip, target.z);
         }
       } else if (st === 'landing') {
         t += dt;
-        const head = handFront(pl, 0.5, P.sit ? 0.85 : 1.0);
+        const head = showPt(showP);
         if (held) {
           const k = clamp01(t / 0.7);
           held.position.lerpVectors(from, head, ease(k));
@@ -1287,13 +1563,13 @@ export function createPlay3D(ctx) {
       } else if (st === 'show') {
         t += dt;
         if (held) {
-          held.position.copy(handFront(pl, 0.5, P.sit ? 0.85 : 1.0));
+          held.position.copy(showPt(showP));
           held.rotation.set(0, pl.root.rotation.y, Math.sin(t * 9) * 0.12);
         }
       }
 
       if (line.visible) {
-        const sag = st === 'bite' ? 0.02 : st === 'cast' ? 0.05 : 0.22;
+        const sag = st === 'fight' ? 0.005 : st === 'bite' ? 0.02 : st === 'cast' ? 0.05 : 0.22;
         for (let i = 0; i < 18; i++) {
           const k = i / 17;
           LP[i * 3] = lerp(tipPos.x, bob.position.x, k);
@@ -1332,13 +1608,29 @@ export function createPlay3D(ctx) {
       }
     };
     game.state = () => st;
+    // 시험용: 줄다리기 바늘과 초록 칸
+    game.fightState = () => fight && { needle: fight.needle, zone: fight.zone, zw: fight.lv.zone, hits: fight.hits, need: fight.lv.hits, tension: fight.tension };
 
     const book = () => {
       const box = h('div', { class: 'mem pond-tabs' }, h('p', { class: 'empty-big' }, '도감을 꺼내고 있어요…'));
       modal.open('물고기 도감', box, { cls: 'game-sheet' });
       renderFishBook(box, { rpc, getToken, onSessionLost: () => lost({ code: 'SESSION' }), place: P.place });
     };
-    begin(P.id, P.title, game, boat ? [['book', '도감', book], ['swap', '노 젓기', moveSpot]] : [['book', '도감', book]]);
+    // 1인칭 ↔ 밖에서 보기 (기기에 기억한다)
+    const toggleFp = (e) => {
+      const on = !seaFpPref();
+      setSeaFpPref(on);
+      const b = e && e.currentTarget;
+      if (b && b.lastChild) b.lastChild.textContent = on ? '밖에서' : '1인칭';
+      if (st === 'row' || st === 'sail') { ui.banner(on ? '낚시할 때 1인칭으로 봐요' : '낚시할 때 밖에서 봐요', '', 1800); return; }
+      v.setFirstPerson(on);
+      if (on) v.view.game.elev = 0.34;
+      ui.banner(on ? '1인칭으로 봐요' : '밖에서 봐요', on ? '화면을 끌면 둘러볼 수 있어요' : '', 1800);
+    };
+    begin(P.id, P.title, game, boat ? [['book', '도감', book], ['swap', '노 젓기', moveSpot]] : [['book', '도감', book]], -1,
+      boat ? [['eye', seaFpPref() ? '밖에서' : '1인칭', toggleFp]] : []);
+    // 줄다리기는 누르는 순간을 잰다 (손을 뗄 때 오는 click은 늦다)
+    if (boat && ui.main) ui.main.addEventListener('pointerdown', () => { if (st === 'fight') { downAt = performance.now(); hit(); } });
     if (boat) {
       // 나루터 끝 앞바다까지는 저절로 나간 뒤, 그다음은 아이가 노를 젓는다
       st = 'sail';

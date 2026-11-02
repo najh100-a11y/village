@@ -37,6 +37,8 @@ export function clean(type, p) {
   if (type === 'fish') return WORD_RE.test(p.f) ? { f: p.f } : null;
   if (type === 'art') return {};
   if (type === 'dish') return {};
+  // 나눔 수레: s 나눔 바구니 번호, e 1이면 먹었다(0이면 새로 올렸다)
+  if (type === 'share') return Number.isSafeInteger(p.s) && p.s > 0 ? { s: p.s, e: p.e === 1 ? 1 : 0 } : null;
   if (type === 'jp') return {}; // 폴짝 뛰었다
   // 불꽃놀이: 종류와 쏜 자리
   if (type === 'fw') return ['fw_spark', 'fw_flower', 'fw_heart'].includes(p.k) && num(p.x) && num(p.z) ? { k: p.k, x: p.x, z: p.z } : null;

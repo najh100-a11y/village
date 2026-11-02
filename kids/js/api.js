@@ -3,6 +3,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 
 export const DEMO = new URLSearchParams(location.search).has('demo') || window.KV_FORCE_DEMO === true;
 const demo = DEMO ? new (await import('./demo.js')).DemoBackend() : null;
+if (demo) window.kvDemo = demo; // 체험판 시험용
 
 export class ApiError extends Error {
   constructor(code) {
@@ -94,6 +95,17 @@ const MESSAGES = {
   APP_OLD: '마을이 새로워졌어요. 화면을 새로 고쳐 주세요.',
   BAD_SALE: '할인은 0~50% 사이에서 10%씩, 팔기 한도는 0~30개로 정해 주세요.',
   NO_PET: '아직 데려오지 않은 친구예요. 열매 상점에서 데려와요.',
+  BAD_PET_NAME: '이름은 한글, 영어, 숫자로 8글자까지 지어 주세요. 나쁜 말이나 전화번호는 쓸 수 없어요.',
+  NO_PLANT: '밭에 그 식물이 없어요. 집을 새로 열어 볼까요?',
+  NOT_RIPE: '아직 덜 자랐어요. 조금 더 기다려요!',
+  NOT_CROP: '꽃은 거두지 않고 밭에서 예쁘게 피어 있어요.',
+  RIPE: '다 자랐어요! 이제 거둘 수 있어요.',
+  WATERED: '벌써 물을 주었어요. 물은 12시간에 한 번 줄 수 있어요.',
+  NO_CROP: '수확 바구니에 그만큼 없어요.',
+  SHARE_DAY: '오늘은 나눔을 많이 했어요. 내일 또 나눠요!',
+  OWN_SHARE: '내가 나눈 바구니예요. 친구들이 먹으러 올 거예요!',
+  ATE_SHARE: '이 바구니에서는 벌써 하나 먹었어요. 친구들 몫도 남겨 줘요!',
+  ALL_EATEN: '바구니가 벌써 다 비었어요.',
   CHAT_OFF: '지금은 글 대화가 꺼져 있어요. 말풍선 단추로 말해요.',
   CHAT_MUTED: '선생님이 글 대화를 잠시 쉬게 했어요. 말풍선 단추로 말해요.',
   EMPTY_CHAT: '할 말을 써 주세요.',

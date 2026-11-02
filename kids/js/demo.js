@@ -4,7 +4,7 @@ import PLAN from './plan-data.js';
 import { FISH, FRIDGE as FRIDGE_IDS } from './play-data.js';
 import { toJpeg } from './images.js';
 import { cleanChat } from './chatfilter.js';
-import { HOME_ITEMS, HOME_IDS, isSeed } from './homeitems.js';
+import { HOME_ITEMS, HOME_IDS, isSeed, CROPS, HARVEST } from './homeitems.js';
 import { WARDROBE, WARDROBE_IDS, wearItem } from './wardrobe.js';
 import { SELL_BUNDLE, SELL_DAY_DEFAULT, GIFT, GIFT_MSGS, SALES, salePrice } from './economy.js';
 import { TREASURES } from './beach-data.js';
@@ -12,15 +12,21 @@ import { TREASURES } from './beach-data.js';
 const TREASURE_WEIGHT = { shell: 24, conch: 18, seaglass: 14, starfish: 10, crab: 8, coin: 6, pearl: 3, bottle: 3, fossil: 2, chest: 1, can: 7, sandal: 5 };
 const BUG_KINDS = ['cabbage_white', 'swallowtail', 'honeybee', 'ladybug', 'grasshopper', 'red_dragonfly', 'mantis', 'cicada', 'stag_beetle', 'rhino_beetle', 'firefly'];
 const BUG_RARITY = [0, 1, 0, 0, 0, 0, 1, 1, 2, 2, 2]; // js/bugs.js와 같은 차례
-const ITEM_PRICE = { fw_spark: 1, fw_flower: 3, fw_heart: 5, pet_dog: 30, pet_cat: 30, pet_rabbit: 30, pet_chick: 30, ...Object.fromEntries(HOME_IDS.map((id) => [id, HOME_ITEMS[id].price])),
+const ITEM_PRICE = { fw_spark: 1, fw_flower: 3, fw_heart: 5, pet_dog: 30, pet_cat: 30, pet_rabbit: 30, pet_chick: 30, pet_parrot: 30, ...Object.fromEntries(HOME_IDS.map((id) => [id, HOME_ITEMS[id].price])),
   ...Object.fromEntries(WARDROBE_IDS.map((id) => [id, WARDROBE[id].price])) };
 // 열매 1개가 되는 묶음 마릿수 (서버 kids__sell_bundle과 같다)
 function sellBundle(kind, id) {
   if (kind === 'fish') { const f = FISH.find((x) => x.id === id); return f && f.rarity >= 0 ? SELL_BUNDLE.fish[f.rarity] : null; }
   if (kind === 'bug') { const i = BUG_KINDS.indexOf(id); return i >= 0 ? SELL_BUNDLE.bug[BUG_RARITY[i]] : null; }
   if (kind === 'treasure') { const t = TREASURES.find((x) => x.id === id); return t && t.rarity >= 0 ? SELL_BUNDLE.treasure[t.rarity] : null; }
+  if (kind === 'crop') return HARVEST[id] ? HARVEST[id].sell : null;
   return null;
 }
+// 밭 식물이 자란 시간 (서버 kids__grown_h, kids__need_h와 같다)
+const grownH = (e) => Math.max(0, (Date.now() - (e.t || Date.now())) / 3600000) + (e.g || 0);
+const needH = (e) => { const c = CROPS[e.k] || {}; return (e.n || 0) > 0 ? c.again : c.need; };
+const growOf = (e) => { const o = {}; for (const k of ['t', 'g', 'w', 'n']) if (e[k] != null) o[k] = e[k]; return o; };
+const PET_NAME_OK = /^[가-힣ㄱ-ㅎㅏ-ㅣA-Za-z0-9 ]{1,8}$/;
 // 낚시터(pond 연못, sea 바다)에서 무게대로 물고기 하나 뽑기 (서버 kids_fish_hook, kids_sea_hook과 같다)
 // 체험판 예시 친구 '바다'의 꾸민 집 (친구 집 놀러 가기를 시험해 볼 수 있게)
 function sampleHome() {
@@ -29,8 +35,9 @@ function sampleHome() {
     { id: 'd1', k: 'h_bed', x: -9, z: -10, r: 0 }, { id: 'd2', k: 'h_rug', x: -6, z: -8, r: 0 }, { id: 'd3', k: 'h_sofa', x: -6, z: -6, r: 0 },
     { id: 'd4', k: 'h_lamp', x: -4, z: -10, r: 0 }, { id: 'd5', k: 'h_piano', x: -6, z: -10, r: 0 },
     { id: 'd6', k: 'y_fountain', x: 3, z: 2, r: 0 }, { id: 'd7', k: 'y_bench', x: 3, z: 5, r: 0 }, { id: 'd8', k: 'y_tree', x: -6, z: 3, r: 0 },
-    { id: 'd9', k: 'y_swing', x: 6, z: -5, r: 0 }, { id: 'd10', k: 's_sunflower', x: 2, z: -10, r: 0, t: now - 13 * h },
-    { id: 'd11', k: 's_carrot', x: 3, z: -10, r: 0, t: now - 5 * h }, { id: 'd12', k: 's_tulip', x: 4, z: -10, r: 0, t: now - 20 * h },
+    { id: 'd9', k: 'y_swing', x: 6, z: -5, r: 0 }, { id: 'd10', k: 's_sunflower', x: 2, z: -10, r: 0, t: now - 80 * h },
+    { id: 'd11', k: 's_carrot', x: 3, z: -10, r: 0, t: now - 30 * h }, { id: 'd12', k: 's_tulip', x: 4, z: -10, r: 0, t: now - 50 * h },
+    { id: 'd13', k: 's_tomato', x: 5, z: -10, r: 0, t: now - 40 * h, n: 1 },
   ];
   const items = {};
   for (const e of layout) items[e.k] = (items[e.k] || 0) + 1;
@@ -124,11 +131,18 @@ function seedDrawings() {
 // 이 기기에 남은 체험판 자료에 새 계획(이야기, 묵상 해설)을 덮어쓴다. 아이들이 쓴 글은 그대로 둔다.
 // 체험판 예시 친구 바다는 토끼를 데리고 다닌다 (친구 애완동물이 어떻게 보이는지)
 function seedPets(db) {
+  // 바다의 토끼 이름 (이름 짓기가 생긴 뒤 한 번)
+  if (db && !db.petNamesSeeded) {
+    db.petNamesSeeded = true;
+    const c = (db.children || []).find((x) => x.id === 'c3');
+    if (c && c.pet === 'pet_rabbit' && !(c.pet_names || {}).pet_rabbit) c.pet_names = { ...(c.pet_names || {}), pet_rabbit: '솜이' };
+  }
   if (!db || db.petsSeeded) return db;
   db.petsSeeded = true;
   const c3 = (db.children || []).find((c) => c.id === 'c3');
   if (c3 && !c3.pet) {
     c3.pet = 'pet_rabbit';
+    c3.pet_names = { pet_rabbit: '솜이' };
     db.items = db.items || {};
     db.items.c3 = { ...(db.items.c3 || {}), pet_rabbit: 1 };
   }
@@ -309,7 +323,7 @@ export class DemoBackend {
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true }; }
   // 쪽지함: 친구별 마지막 쪽지와 안 읽은 수 (최근 30일)
   kids_dm_box({ p_token }) {
     const me = this.session(p_token, 'child');
@@ -503,7 +517,7 @@ export class DemoBackend {
     const sale = this.villageConf().sale;
     const prices = Object.fromEntries(Object.entries(ITEM_PRICE).map(([k, p]) => [k, salePrice(p, sale)]));
     return { fruits: this.child(me).fruits, items, sale, prices, base: { ...ITEM_PRICE }, pet: this.child(me).pet || null,
-      gift_left: this.giftLeft(me), sell: this.sellInfo(me) };
+      pet_names: { ...(this.child(me).pet_names || {}) }, gift_left: this.giftLeft(me), sell: this.sellInfo(me) };
   }
   kids_shop_buy({ p_token, p_item, p_n }) {
     const me = this.session(p_token, 'child');
@@ -533,10 +547,11 @@ export class DemoBackend {
     for (const t of this.db.treasures || []) if (t.child === me && !t.sold && sellBundle('treasure', t.item)) treasures[t.item] = (treasures[t.item] || 0) + 1;
     const today0 = startOfToday();
     return {
-      fish, bugs, treasures,
+      fish, bugs, treasures, crops: this.cropsOf(me),
       bundle: { fish: Object.fromEntries(FISH.filter((f) => f.rarity >= 0).map((f) => [f.id, sellBundle('fish', f.id)])),
         bug: Object.fromEntries(BUG_KINDS.map((b) => [b, sellBundle('bug', b)])),
-        treasure: Object.fromEntries(TREASURES.filter((t) => t.rarity >= 0).map((t) => [t.id, sellBundle('treasure', t.id)])) },
+        treasure: Object.fromEntries(TREASURES.filter((t) => t.rarity >= 0).map((t) => [t.id, sellBundle('treasure', t.id)])),
+        crop: Object.fromEntries(Object.keys(HARVEST).map((c) => [c, HARVEST[c].sell])) },
       today: (this.db.sellLog || []).filter((l) => l.child === me && l.at >= today0).reduce((a, l) => a + l.fruits, 0),
       cap: this.villageConf().sell_day,
     };
@@ -551,11 +566,17 @@ export class DemoBackend {
     const info = this.sellInfo(me);
     if (info.cap <= 0) fail('SELL_CLOSED');
     if (info.today + k > info.cap) fail('SELL_DAY');
-    const list = (p_kind === 'fish' ? this.db.fish.filter((f) => f.fish === p_item) : p_kind === 'bug' ? (this.db.bugs || []).filter((b) => b.bug === p_item)
-      : (this.db.treasures || []).filter((t) => t.item === p_item))
-      .filter((x) => x.child === me && !x.sold).sort((a, b) => a.at.localeCompare(b.at));
-    if (list.length < k * size) fail('NO_ITEM');
-    list.slice(0, k * size).forEach((x) => { x.sold = nowIso(); });
+    if (p_kind === 'crop') {
+      const c = this.cropsOf(me);
+      if ((c[p_item] || 0) < k * size) fail('NO_ITEM');
+      this.addCrop(me, p_item, -k * size);
+    } else {
+      const list = (p_kind === 'fish' ? this.db.fish.filter((f) => f.fish === p_item) : p_kind === 'bug' ? (this.db.bugs || []).filter((b) => b.bug === p_item)
+        : (this.db.treasures || []).filter((t) => t.item === p_item))
+        .filter((x) => x.child === me && !x.sold).sort((a, b) => a.at.localeCompare(b.at));
+      if (list.length < k * size) fail('NO_ITEM');
+      list.slice(0, k * size).forEach((x) => { x.sold = nowIso(); });
+    }
     this.child(me).fruits += k;
     this.db.sellLog = this.db.sellLog || [];
     this.db.sellLog.push({ id: Date.now(), child: me, kind: p_kind, item: p_item, n: k * size, fruits: k, at: nowIso() });
@@ -607,6 +628,19 @@ export class DemoBackend {
     this.child(me).pet = p_pet || null;
     return { pet: p_pet || null };
   }
+  kids_pet_name({ p_token, p_pet, p_name }) {
+    const me = this.session(p_token, 'child');
+    if (!p_pet || !String(p_pet).startsWith('pet_') || !(((this.db.items || {})[me] || {})[p_pet] > 0)) fail('NO_PET');
+    const c = this.child(me);
+    c.pet_names = c.pet_names || {};
+    const v = String(p_name || '').replace(/\s+/g, ' ').trim();
+    if (!v) delete c.pet_names[p_pet];
+    else {
+      if (!PET_NAME_OK.test(v) || cleanChat(v) !== v) fail('BAD_PET_NAME');
+      c.pet_names[p_pet] = v;
+    }
+    return { pet_names: { ...c.pet_names } };
+  }
   // ---------- 내 집 ----------
   homeItems(me) {
     const out = {};
@@ -616,14 +650,90 @@ export class DemoBackend {
   kids_home({ p_token }) {
     const me = this.session(p_token, 'child');
     this.db.homes = this.db.homes || {};
-    return { layout: JSON.parse(JSON.stringify(this.db.homes[me] || [])), items: this.homeItems(me), fruits: this.child(me).fruits };
+    return { layout: JSON.parse(JSON.stringify(this.db.homes[me] || [])), items: this.homeItems(me), fruits: this.child(me).fruits, crops: this.cropsOf(me), now: Date.now() };
+  }
+  // ---------- 밭: 수확 바구니, 물 주기, 거두기, 나눔 수레 (서버 kids_garden_*, kids_crop_share, kids_share_*와 같다) ----------
+  cropsOf(me) {
+    const out = {};
+    for (const [k, n] of Object.entries(((this.db.crops || {})[me]) || {})) if (n > 0) out[k] = n;
+    return out;
+  }
+  addCrop(me, crop, n) {
+    this.db.crops = this.db.crops || {};
+    const c = this.db.crops[me] || (this.db.crops[me] = {});
+    c[crop] = Math.max(0, Math.min(999, (c[crop] || 0) + n));
+  }
+  plantOf(me, id) {
+    const layout = ((this.db.homes || {})[me]) || [];
+    const i = layout.findIndex((e) => e.id === id);
+    if (i < 0 || !isSeed(layout[i].k)) fail('NO_PLANT');
+    return { layout, i, e: layout[i] };
+  }
+  kids_garden_water({ p_token, p_id }) {
+    const me = this.session(p_token, 'child');
+    const { e } = this.plantOf(me, p_id);
+    if (grownH(e) >= needH(e)) fail('RIPE');
+    if (e.w && Date.now() - e.w < 12 * 3600000) fail('WATERED');
+    e.g = (e.g || 0) + 6;
+    e.w = Date.now();
+    return { id: p_id, plant: growOf(e), now: Date.now() };
+  }
+  kids_garden_harvest({ p_token, p_id }) {
+    const me = this.session(p_token, 'child');
+    const { layout, i, e } = this.plantOf(me, p_id);
+    const c = CROPS[e.k] || {};
+    if (!c.crop) fail('NOT_CROP');
+    if (grownH(e) < needH(e)) fail('NOT_RIPE');
+    this.addCrop(me, c.crop, c.yield);
+    const n = (e.n || 0) + 1;
+    const done = n >= c.picks;
+    if (done) {
+      layout.splice(i, 1);
+      const bag = this.db.items[me] || {};
+      if (bag[e.k] > 0) bag[e.k] -= 1;
+    } else {
+      delete e.g; delete e.w;
+      e.t = Date.now();
+      e.n = n;
+    }
+    return { id: p_id, crop: c.crop, got: c.yield, done, picks: n, plant: done ? null : growOf(e), crops: this.cropsOf(me), items: this.homeItems(me), now: Date.now() };
+  }
+  kids_crop_share({ p_token, p_crop, p_n }) {
+    const me = this.session(p_token, 'child');
+    if (!HARVEST[p_crop] || !Number.isInteger(p_n) || p_n < 1 || p_n > 10) fail('BAD_ITEM');
+    this.db.shares = this.db.shares || [];
+    const mine = this.db.shares.filter((x) => x.child === me);
+    if (mine.some((x) => Date.now() - Date.parse(x.at) < 3000)) fail('TOO_FAST');
+    if (mine.filter((x) => x.at >= startOfToday()).length >= 10) fail('SHARE_DAY');
+    if ((this.cropsOf(me)[p_crop] || 0) < p_n) fail('NO_CROP');
+    this.addCrop(me, p_crop, -p_n);
+    const id = Date.now();
+    this.db.shares.push({ id, child: me, crop: p_crop, n: p_n, at: nowIso(), eats: [] });
+    return { id, crops: this.cropsOf(me) };
+  }
+  shareEaters(x) { return x.eats.map((e) => (this.db.children.find((c) => c.id === e.child) || {}).village_name).filter(Boolean); }
+  kids_share_table({ p_token }) {
+    const me = this.session(p_token, 'child');
+    const week = Date.now() - 7 * 86400000;
+    return (this.db.shares || []).filter((x) => Date.parse(x.at) > week && x.eats.length < x.n).slice(-4).reverse().map((x) => ({
+      id: x.id, crop: x.crop, n: x.n, by: (this.db.children.find((c) => c.id === x.child) || {}).village_name, me: x.child === me,
+      eaten: x.eats.length, eaters: this.shareEaters(x).slice(0, 10), ate: x.eats.some((e) => e.child === me) }));
+  }
+  kids_share_eat({ p_token, p_share }) {
+    const me = this.session(p_token, 'child');
+    const x = (this.db.shares || []).find((y) => y.id === p_share) || fail('NOT_FOUND');
+    if (x.child === me) fail('OWN_SHARE');
+    if (x.eats.some((e) => e.child === me)) fail('ATE_SHARE');
+    if (x.eats.length >= x.n) fail('ALL_EATEN');
+    x.eats.push({ child: me, at: nowIso() });
+    return { id: x.id, crop: x.crop, n: x.n, eaten: x.eats.length, eaters: this.shareEaters(x).slice(0, 10) };
   }
   // 친구 집 구경 (구경만 한다)
   kids_home_visit({ p_token, p_child }) {
     this.session(p_token, 'child');
     const c = this.db.children.find((x) => x.id === p_child && x.village_name && x.avatar);
     if (!c) fail('NOT_FOUND');
-    return { name: c.village_name, layout: JSON.parse(JSON.stringify((this.db.homes || {})[p_child] || [])) };
+    return { name: c.village_name, layout: JSON.parse(JSON.stringify((this.db.homes || {})[p_child] || [])), now: Date.now() };
   }
   kids_home_save({ p_token, p_layout, p_harvest }) {
     const me = this.session(p_token, 'child');
@@ -639,19 +749,21 @@ export class DemoBackend {
     const old = this.db.homes[me] || [];
     this.db.items = this.db.items || {};
     const bag = this.db.items[me] || (this.db.items[me] = {});
-    const harvest = Array.isArray(p_harvest) ? p_harvest : [];
-    if (harvest.length > 30) fail('BAD_HOME');
-    const before = { ...bag };
-    for (const h of harvest) {
-      const o = old.find((x) => x.id === h);
-      if (!o || !isSeed(o.k) || ids.has(h)) { Object.assign(bag, before); fail('BAD_HOME'); }
-      if (bag[o.k] > 0) bag[o.k] -= 1;
-    }
     const need = {};
     for (const e of p_layout) need[e.k] = (need[e.k] || 0) + 1;
-    if (Object.entries(need).some(([k, n]) => n > (bag[k] || 0))) { Object.assign(bag, before); fail('NOT_ENOUGH'); }
-    this.db.homes[me] = JSON.parse(JSON.stringify(p_layout));
-    return { ok: true, items: this.homeItems(me) };
+    if (Object.entries(need).some(([k, n]) => n > (bag[k] || 0))) fail('NOT_ENOUGH');
+    // 식물 자람 기록은 서버(여기)가 정한다: 있던 식물은 그대로, 새로 심은 것은 지금 시각
+    const now = Date.now();
+    const next = p_layout.map((e0) => {
+      const { t, g, w, n, ...e } = e0; // eslint-disable-line no-unused-vars
+      if (!isSeed(e.k)) return e;
+      const o = old.find((x) => x.id === e.id && x.k === e.k);
+      return o ? { ...e, ...growOf(o) } : { ...e, t: now };
+    });
+    this.db.homes[me] = next;
+    const plants = {};
+    for (const e of next) if (isSeed(e.k)) plants[e.id] = growOf(e);
+    return { ok: true, items: this.homeItems(me), plants, now };
   }
 
   // ---------- 마을 건의함 ----------
@@ -773,7 +885,8 @@ export class DemoBackend {
   }
   kids_village({ p_token }) {
     this.session(p_token, 'child');
-    return { room: 'demo', people: this.db.children.filter((c) => c.village_name && c.avatar).map((c) => ({ id: c.id, name: c.village_name, avatar: c.avatar, pet: c.pet || null, teacher: !!c.teacher })) };
+    return { room: 'demo', people: this.db.children.filter((c) => c.village_name && c.avatar).map((c) => ({ id: c.id, name: c.village_name, avatar: c.avatar, pet: c.pet || null,
+      pet_name: c.pet ? ((c.pet_names || {})[c.pet] || null) : null, teacher: !!c.teacher })) };
   }
   kids_today({ p_token }) {
     const me = this.session(p_token, 'child');

@@ -13,7 +13,7 @@ const MAP_ZOOM = 4;
 const mapFrom = (mode) => (mode === 'game' ? 2.0 : 1.6);
 import { Bugs, makeBug } from './bugs.js';
 import { Fireworks } from './fireworks.js';
-import { HomeSpace, HOME_O } from './home.js';
+import { HomeSpace, HOME_O, buildCrop } from './home.js';
 import { Sea } from './sea.js';
 import { Beach, makeShovel, digPoseAt, remoteDigPose, DIG_SPOTS } from './beach.js';
 // 내 집(따로 된 장면) 근처 좌표인지: 마을 친구와 동물은 늘 마을 좌표라서 좌표로 가른다
@@ -545,91 +545,198 @@ export class Village {
   }
 
   buildBuildings() {
-    // 암송의 집
+    // 말씀 활동을 하는 세 곳(암송의 집, 필사 도서관, 묵상의 숲)은 마을에서 가장 크고 멀리서도 보이는 건물로 짓는다
+    const pageTex = (lines, sub) => canvasTexture(256, 320, (ctx, w, hh) => {
+      ctx.fillStyle = '#FFFBEF'; ctx.fillRect(0, 0, w, hh);
+      ctx.strokeStyle = '#E8D7B5'; ctx.lineWidth = 3;
+      for (let y = 70; y < hh - 20; y += 34) { ctx.beginPath(); ctx.moveTo(26, y); ctx.lineTo(w - 26, y); ctx.stroke(); }
+      ctx.fillStyle = '#8B4A2E'; ctx.textAlign = 'center';
+      ctx.font = `46px ${FONT}`;
+      lines.forEach((t, i) => ctx.fillText(t, w / 2, 120 + i * 64));
+      if (sub) { ctx.font = `26px ${FONT}`; ctx.fillStyle = '#B07A4F'; ctx.fillText(sub, w / 2, hh - 40); }
+    });
+    // 펼친 큰 책 (cover: 표지 색, left·right: 두 쪽 그림)
+    const openBook = (wd, dp, cover, left, right) => {
+      const bk = new THREE.Group();
+      const pm = (tex) => new THREE.MeshToonMaterial({ map: tex, gradientMap: toonGradient() });
+      const paper = toon('#FFF6E0');
+      for (const [sx, tex] of [[-1, left], [1, right]]) {
+        const half = new THREE.Group();
+        half.add(box(wd / 2, 0.08, dp, toon(cover), sx * wd / 4, 0, 0));
+        half.add(m(new THREE.BoxGeometry(wd / 2 - 0.08, 0.1, dp - 0.1), [paper, paper, pm(tex), paper, paper, paper], sx * wd / 4, 0.08, 0));
+        half.rotation.z = -sx * 0.16;
+        bk.add(half);
+      }
+      bk.add(box(0.05, 0.02, dp * 1.05, toon('#E5484D'), 0.06, 0.15, 0.08)); // 책갈피 끈
+      return bk;
+    };
+
+    // 암송의 집: 종탑이 있는 큰 집과 앞마당의 펼친 말씀 책
     {
       const g = new THREE.Group();
-      g.add(box(6.4, 0.36, 5.2, toon('#D9C8A8'), 0, 0.18, 0));
-      g.add(box(5.6, 3.0, 4.4, toon('#FFF3D9'), 0, 1.86, 0));
-      g.add(box(5.72, 0.34, 4.52, toon('#E9C99E'), 0, 0.52, 0));
-      const roof = prism(6.8, 2.5, 5.4, toon('#EC7A5C'));
-      roof.position.y = 3.34;
+      const cream = toon('#FFF3D9'), coral = toon('#EC7A5C'), wood = toon('#A06E45'), gold = toon('#F4C542');
+      g.add(box(8.4, 0.4, 6.8, toon('#D9C8A8'), 0, 0.2, 0));
+      for (let i = 0; i < 3; i++) g.add(box(2.6 - i * 0.2, 0.14, 0.5, toon('#E3D3B5'), 0, 0.07 + i * 0.14, 3.6 - i * 0.28)); // 계단
+      g.add(box(7.2, 3.8, 5.6, cream, 0, 2.3, 0));
+      g.add(box(7.34, 0.4, 5.74, toon('#E9C99E'), 0, 0.6, 0));
+      g.add(box(7.34, 0.16, 5.74, toon('#E9C99E'), 0, 4.15, 0));
+      const roof = prism(8.8, 3.1, 7.0, coral);
+      roof.position.y = 4.2;
       g.add(roof);
-      const gable = prism(5.4, 2.0, 0.12, toon('#FFF3D9'));
-      gable.position.set(0, 3.36, 2.16);
+      const gable = prism(7.0, 2.5, 0.12, cream);
+      gable.position.set(0, 4.22, 2.76);
       g.add(gable);
-      const round = cyl(0.42, 0.42, 0.12, this.glow('#9FD8F0'), 0, 4.15, 2.28, 24);
+      const round = cyl(0.55, 0.55, 0.12, this.glow('#9FD8F0'), 0, 5.2, 2.88, 28);
       round.rotation.x = Math.PI / 2;
       g.add(round);
-      const ring = m(new THREE.TorusGeometry(0.44, 0.07, 8, 24), toon('#FFFDF7'), 0, 4.15, 2.3);
-      g.add(ring);
-      // 문
-      g.add(box(1.6, 2.15, 0.12, toon('#E9C99E'), 0, 1.42, 2.22));
-      g.add(box(1.3, 1.75, 0.16, toon('#A06E45'), 0, 1.25, 2.25));
-      const arch = cyl(0.65, 0.65, 0.16, toon('#A06E45'), 0, 2.1, 2.25, 24);
+      g.add(m(new THREE.TorusGeometry(0.58, 0.09, 8, 28), toon('#FFFDF7'), 0, 5.2, 2.9));
+      // 큰 아치 문
+      g.add(box(2.1, 2.8, 0.12, toon('#E9C99E'), 0, 1.8, 2.82));
+      g.add(box(1.7, 2.2, 0.16, wood, 0, 1.5, 2.85));
+      const arch = cyl(0.85, 0.85, 0.16, wood, 0, 2.6, 2.85, 28);
       arch.rotation.x = Math.PI / 2;
       g.add(arch);
-      g.add(ball(0.08, toon('#F4C542'), 0.42, 1.3, 2.36));
-      g.add(this.windowMesh(1.1, 1.1, -1.85, 2.0, 2.24));
-      g.add(this.windowMesh(1.1, 1.1, 1.85, 2.0, 2.24));
-      for (const s of [-1, 1]) {
-        g.add(box(1.3, 0.3, 0.4, toon('#A06E45'), s * 1.85, 1.3, 2.42));
-        for (let i = 0; i < 4; i++) g.add(ball(0.11, toon(['#EF6461', '#F6D55C', '#F6A2C4', '#FAF6EC'][i]), s * 1.85 - 0.45 + i * 0.3, 1.5, 2.45, 10));
+      g.add(box(0.04, 2.9, 0.18, toon('#7A5233'), 0, 1.85, 2.87));
+      g.add(ball(0.1, gold, 0.5, 1.5, 2.98));
+      g.add(ball(0.1, gold, -0.5, 1.5, 2.98));
+      for (const sx of [-1, 1]) {
+        g.add(this.windowMesh(1.2, 1.3, sx * 2.45, 2.4, 2.84));
+        g.add(box(1.4, 0.3, 0.42, wood, sx * 2.45, 1.55, 3.02));
+        for (let i = 0; i < 4; i++) g.add(ball(0.12, toon(['#EF6461', '#F6D55C', '#F6A2C4', '#FAF6EC'][i]), sx * 2.45 - 0.48 + i * 0.32, 1.76, 3.05, 10));
+        // 옆벽 창
+        const sw = this.windowMesh(1.0, 1.2, sx * 3.62, 2.4, 0);
+        sw.rotation.y = sx * Math.PI / 2;
+        g.add(sw);
       }
-      g.add(box(0.6, 1.3, 0.6, toon('#C9654F'), 1.7, 4.8, -0.9));
-      const sign = signMesh('암송의 집', 2.6, { bg: '#FFF6E0', fg: '#8B4A2E', border: '#EC7A5C' });
-      sign.position.set(0, 3.08, 2.42);
+      const sign = signMesh('암송의 집', 3.2, { bg: '#FFF6E0', fg: '#8B4A2E', border: '#EC7A5C' });
+      sign.position.set(0, 3.82, 2.92);
       g.add(sign);
+      // 종탑: 뒤 왼쪽 모서리에 높이 솟은 탑, 열린 종루에 금빛 종, 뾰족 지붕 위 십자가
+      {
+        const tw = new THREE.Group();
+        tw.add(box(2.0, 7.4, 2.0, cream, 0, 3.7, 0));
+        tw.add(box(2.12, 0.2, 2.12, toon('#E9C99E'), 0, 4.4, 0));
+        tw.add(box(2.16, 0.24, 2.16, toon('#E9C99E'), 0, 7.4, 0));
+        for (const [px, pz] of [[-0.85, -0.85], [0.85, -0.85], [-0.85, 0.85], [0.85, 0.85]]) tw.add(box(0.3, 1.7, 0.3, cream, px, 8.35, pz));
+        tw.add(box(2.24, 0.26, 2.24, toon('#E9C99E'), 0, 9.3, 0));
+        tw.add(cyl(0.05, 0.05, 0.4, toon('#7A5233'), 0, 9.0, 0, 6));
+        tw.add(cyl(0.18, 0.55, 0.75, gold, 0, 8.45, 0, 18)); // 종
+        tw.add(ball(0.12, toon('#C99A2E'), 0, 8.02, 0, 10));
+        const spire = cyl(0, 1.55, 2.4, coral, 0, 10.6, 0, 4);
+        spire.rotation.y = Math.PI / 4;
+        tw.add(spire);
+        tw.add(box(0.12, 0.85, 0.12, gold, 0, 12.2, 0));
+        tw.add(box(0.5, 0.12, 0.12, gold, 0, 12.35, 0));
+        const tr = this.windowMesh(0.6, 0.9, 0, 5.6, 1.02);
+        tw.add(tr);
+        tw.position.set(-2.6, 0, -1.5);
+        g.add(tw);
+      }
+      // 앞마당: 받침 위에 펼친 큰 말씀 책
+      {
+        const mon = new THREE.Group();
+        mon.add(box(1.5, 0.75, 1.1, toon('#D9CBB4'), 0, 0.38, 0));
+        mon.add(box(1.7, 0.12, 1.3, toon('#C9B99E'), 0, 0.78, 0));
+        const bk = openBook(2.2, 1.5, '#C2453A', pageTex(['말씀을', '마음에'], '외우고'), pageTex(['새겨요'], '또 외워요'));
+        bk.position.set(0, 0.95, 0);
+        bk.rotation.x = -0.35;
+        mon.add(bk);
+        mon.position.set(3.6, 0, 4.1);
+        mon.rotation.y = -0.45;
+        g.add(mon);
+      }
       // 칠판
       const easel = new THREE.Group();
-      easel.add(box(0.08, 1.5, 0.08, toon('#A06E45'), -0.55, 0.75, 0));
-      easel.add(box(0.08, 1.5, 0.08, toon('#A06E45'), 0.55, 0.75, 0));
-      const board = m(new THREE.BoxGeometry(1.4, 0.95, 0.06), [toon('#A06E45'), toon('#A06E45'), toon('#A06E45'), toon('#A06E45'),
+      easel.add(box(0.08, 1.5, 0.08, wood, -0.55, 0.75, 0));
+      easel.add(box(0.08, 1.5, 0.08, wood, 0.55, 0.75, 0));
+      const board = m(new THREE.BoxGeometry(1.4, 0.95, 0.06), [wood, wood, wood, wood,
         new THREE.MeshToonMaterial({ gradientMap: toonGradient(), map: canvasTexture(256, 176, (ctx, w, h) => {
           ctx.fillStyle = '#3F6B4E'; ctx.fillRect(0, 0, w, h);
           ctx.strokeStyle = '#A06E45'; ctx.lineWidth = 12; ctx.strokeRect(0, 0, w, h);
           ctx.fillStyle = '#FFFDF2'; ctx.textAlign = 'center'; ctx.font = `40px ${FONT}`;
           ctx.fillText('말씀', w / 2, 74); ctx.fillText('외워요!', w / 2, 126);
-        }) }), toon('#A06E45')], 0, 1.25, 0.04);
+        }) }), wood], 0, 1.25, 0.04);
       easel.add(board);
-      easel.position.set(3.3, 0, 3.0);
-      easel.rotation.y = -0.4;
+      easel.position.set(-3.7, 0, 3.9);
+      easel.rotation.y = 0.45;
       g.add(easel);
-      this.placeBuilding('memory', g, { x: -10.6, z: -12.2, rot: 0.32, hw: 3.2, hd: 2.6, doorZ: 3.4, name: '암송의 집' });
+      this.placeBuilding('memory', g, { x: -11.0, z: -13.4, rot: 0.32, hw: 4.2, hd: 3.4, doorZ: 4.6, name: '암송의 집', fade: 5.6 });
+      this.addObstacleBox(-11.0 + Math.cos(0.32) * 3.6 + Math.sin(0.32) * 4.1, -13.4 - Math.sin(0.32) * 3.6 + Math.cos(0.32) * 4.1, 0.85, 0.65, 0.32 - 0.45);
     }
 
-    // 필사 도서관
+    // 필사 도서관: 기둥과 박공이 있는 2층 도서관, 파란 둥근 지붕 위 금빛 깃펜, 큰 연필 탑, 책 계단
     {
       const g = new THREE.Group();
-      g.add(box(6.8, 0.36, 5.2, toon('#D9D2C2'), 0, 0.18, 0));
-      g.add(box(6.0, 3.3, 4.4, toon('#EAF2FF'), 0, 2.0, 0));
-      const roof = prism(7.0, 2.3, 5.4, toon('#5B8BD9'));
-      roof.position.y = 3.62;
+      const wall = toon('#EAF2FF'), blue = toon('#5B8BD9'), white = toon('#FFFDF7'), gold = toon('#F4C542');
+      g.add(box(9.0, 0.4, 7.0, toon('#D9D2C2'), 0, 0.2, 0));
+      g.add(box(8.0, 4.6, 5.6, wall, 0, 2.7, 0));
+      g.add(box(8.14, 0.22, 5.74, white, 0, 2.55, 0)); // 층 띠
+      g.add(box(8.3, 0.3, 5.9, white, 0, 5.1, 0));
+      const roof = prism(8.6, 1.6, 6.2, blue);
+      roof.position.y = 5.2;
       g.add(roof);
-      const gable = prism(5.8, 1.8, 0.12, toon('#EAF2FF'));
-      gable.position.set(0, 3.64, 2.16);
-      g.add(gable);
-      g.add(box(3.8, 0.25, 1.4, toon('#FFFDF7'), 0, 3.4, 2.75));
-      for (const s of [-1, 1]) g.add(cyl(0.18, 0.2, 3.0, toon('#FFFDF7'), s * 1.55, 1.85, 3.2, 16));
-      g.add(box(1.8, 2.3, 0.16, toon('#7C5235'), 0, 1.5, 2.25));
-      g.add(box(0.05, 2.2, 0.2, toon('#5E3D27'), 0, 1.5, 2.28));
-      g.add(this.windowMesh(0.9, 1.5, -2.2, 2.1, 2.24));
-      g.add(this.windowMesh(0.9, 1.5, 2.2, 2.1, 2.24));
-      const sign = signMesh('필사 도서관', 2.8, { bg: '#FFFDF7', fg: '#2F4A8A', border: '#5B8BD9' });
-      sign.position.set(0, 4.35, 2.26);
+      // 둥근 지붕과 깃펜
+      g.add(cyl(1.85, 1.85, 1.1, white, 0, 6.6, -0.2, 28));
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        const win = box(0.28, 0.6, 0.06, this.glow('#9FD8F0'), Math.sin(a) * 1.86, 6.62, -0.2 + Math.cos(a) * 1.86);
+        win.rotation.y = a; // add()는 부모를 돌려주므로 만든 다음 돌린다
+        g.add(win);
+      }
+      const dome = m(new THREE.SphereGeometry(1.95, 28, 14, 0, Math.PI * 2, 0, Math.PI / 2), blue, 0, 7.15, -0.2);
+      g.add(dome);
+      g.add(ball(0.22, gold, 0, 9.15, -0.2, 12));
+      {
+        const quill = new THREE.Group();
+        const fe = ball(1, white, 0, 0.9, 0, 14);
+        fe.scale.set(0.12, 0.85, 0.32);
+        quill.add(fe);
+        quill.add(cyl(0.025, 0.035, 1.9, toon('#E3D3B5'), 0, 0.85, 0, 6));
+        const nib = cyl(0.0, 0.07, 0.3, gold, 0, -0.18, 0, 8);
+        nib.rotation.x = Math.PI;
+        quill.add(nib);
+        quill.position.set(0, 9.55, -0.2);
+        quill.rotation.z = -0.35;
+        g.add(quill);
+      }
+      // 앞 기둥 넷과 박공
+      g.add(box(6.2, 0.3, 1.6, white, 0, 0.55, 3.55));
+      for (const px of [-2.6, -0.9, 0.9, 2.6]) {
+        g.add(cyl(0.24, 0.28, 4.2, white, px, 2.75, 3.75, 16));
+        g.add(box(0.7, 0.2, 0.7, white, px, 4.9, 3.75));
+      }
+      g.add(box(6.4, 0.36, 1.7, white, 0, 5.1, 3.55));
+      const ped = prism(6.6, 1.5, 1.7, white);
+      ped.position.set(0, 5.28, 3.55);
+      g.add(ped);
+      const sign = signMesh('필사 도서관', 3.4, { bg: '#FFFDF7', fg: '#2F4A8A', border: '#5B8BD9' });
+      sign.position.set(0, 5.75, 4.46);
       g.add(sign);
+      // 문과 창 (1층 둘, 2층 넷)
+      g.add(box(2.0, 2.6, 0.16, toon('#7C5235'), 0, 1.7, 2.85));
+      g.add(box(0.05, 2.5, 0.2, toon('#5E3D27'), 0, 1.7, 2.88));
+      const fan = cyl(1.0, 1.0, 0.16, this.glow('#BFE6F2'), 0, 3.0, 2.85, 24);
+      fan.rotation.x = Math.PI / 2;
+      g.add(fan);
+      for (const sx of [-1, 1]) g.add(this.windowMesh(1.0, 1.5, sx * 2.9, 1.6, 2.84));
+      for (const wx of [-3.0, -1.6, 1.6, 3.0]) g.add(this.windowMesh(0.8, 1.2, wx, 3.75, 2.84));
+      // 책 계단: 큰 책 세 권을 쌓아 문 앞 계단으로
+      ['#EF6461', '#4FA36C', '#4D7DDB'].forEach((col, i) => {
+        g.add(box(3.0 - i * 0.5, 0.2, 1.4 - i * 0.35, toon(col), 0, 0.5 + i * 0.2, 4.45 - i * 0.2));
+        g.add(box(2.9 - i * 0.5, 0.14, 0.06, white, 0, 0.5 + i * 0.2, 5.16 - i * 0.37));
+      });
       // 연필 탑
       const pencil = new THREE.Group();
-      pencil.add(cyl(0.6, 0.6, 5.6, toon('#F6D55C'), 0, 2.8, 0, 6));
-      pencil.add(cyl(0.62, 0.62, 0.4, toon('#C9C9CF'), 0, 0.5, 0, 6));
-      pencil.add(cyl(0.62, 0.62, 0.5, toon('#F6A2C4'), 0, 0.2, 0, 6));
-      pencil.add(cyl(0.18, 0.6, 1.1, toon('#F3D2A2'), 0, 6.15, 0, 6));
-      pencil.add(cyl(0.0, 0.18, 0.34, toon('#3B3B42'), 0, 6.87, 0, 6));
-      pencil.position.set(3.7, 0, -0.9);
+      pencil.add(cyl(0.75, 0.75, 7.0, toon('#F6D55C'), 0, 3.5, 0, 6));
+      pencil.add(cyl(0.77, 0.77, 0.5, toon('#C9C9CF'), 0, 0.6, 0, 6));
+      pencil.add(cyl(0.77, 0.77, 0.6, toon('#F6A2C4'), 0, 0.25, 0, 6));
+      pencil.add(cyl(0.22, 0.75, 1.35, toon('#F3D2A2'), 0, 7.68, 0, 6));
+      pencil.add(cyl(0.0, 0.22, 0.42, toon('#3B3B42'), 0, 8.56, 0, 6));
+      pencil.position.set(4.9, 0, -1.4);
       g.add(pencil);
       // 책 더미
-      const books = ['#EF6461', '#4FA36C', '#4D7DDB', '#F49A4C'];
-      books.forEach((c, i) => g.add(box(1.0 - i * 0.06, 0.24, 0.7, toon(c), -2.9 + (i % 2) * 0.08, 0.48 + i * 0.25, 3.1)));
-      this.placeBuilding('library', g, { x: 10.8, z: -12.2, rot: -0.32, hw: 3.5, hd: 2.6, doorZ: 3.6, name: '필사 도서관' });
+      ['#EF6461', '#4FA36C', '#4D7DDB', '#F49A4C', '#A07FE3'].forEach((col, i) => g.add(box(1.1 - i * 0.07, 0.26, 0.76, toon(col), -4.2 + (i % 2) * 0.08, 0.53 + i * 0.27, 3.4)));
+      this.placeBuilding('library', g, { x: 11.2, z: -13.4, rot: -0.32, hw: 4.5, hd: 3.6, doorZ: 5.1, name: '필사 도서관', fade: 5.8 });
     }
 
     // 열매 상점
@@ -672,32 +779,88 @@ export class Village {
       this.placeBuilding('shop', g, { x: 16.6, z: 1.6, rot: -0.75, hw: 3.0, hd: 2.4, doorZ: 3.9, name: '열매 상점' });
     }
 
-    // 묵상의 숲 (정자)
+    // 묵상의 숲: 큰 팔각 정자(지붕 두 겹, 처마 등불)와 그 뒤의 커다란 묵상 나무
     {
       const g = new THREE.Group();
-      g.add(cyl(3.0, 3.1, 0.4, toon('#C99B6A'), 0, 0.2, 0, 32));
-      g.add(box(1.6, 0.2, 0.8, toon('#B88A5C'), 0, 0.1, 3.2));
-      for (let i = 0; i < 6; i++) {
-        const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
-        g.add(cyl(0.14, 0.16, 2.7, toon('#A06E45'), Math.sin(a) * 2.6, 1.7, Math.cos(a) * 2.6, 10));
+      const wood = toon('#A06E45');
+      g.add(cyl(3.8, 3.95, 0.45, toon('#C99B6A'), 0, 0.22, 0, 8));
+      g.add(cyl(3.95, 4.1, 0.12, toon('#B88A5C'), 0, 0.06, 0, 8));
+      for (let i = 0; i < 2; i++) g.add(box(2.0 - i * 0.3, 0.14, 0.5, toon('#B88A5C'), 0, 0.08 + i * 0.16, 4.05 - i * 0.3));
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+        const px = Math.sin(a) * 3.3, pz = Math.cos(a) * 3.3;
+        g.add(cyl(0.16, 0.19, 3.3, wood, px, 2.05, pz, 10));
+        // 난간 (앞 입구는 비운다)
+        if (i !== 0 && i !== 7) {
+          const b = (((i + 0.5) / 8) * Math.PI * 2) + Math.PI / 8;
+          const rail = box(2.4, 0.12, 0.12, wood, Math.sin(b) * 3.05, 1.05, Math.cos(b) * 3.05);
+          rail.rotation.y = b + Math.PI / 2;
+          g.add(rail);
+        }
       }
-      g.add(cyl(0.2, 3.7, 1.5, toon('#6FAE5A'), 0, 3.75, 0, 28));
-      g.add(cyl(0.1, 2.6, 1.3, toon('#82C46A'), 0, 4.6, 0, 24));
-      g.add(ball(0.32, toon('#F6D55C'), 0, 5.35, 0, 12));
-      const lantern = ball(0.26, this.glow('#FFE7A8'), 0, 2.55, 0, 14);
+      // 지붕 두 겹
+      g.add(cyl(0.3, 4.6, 1.5, toon('#6FAE5A'), 0, 4.45, 0, 8));
+      g.add(cyl(4.62, 4.62, 0.18, toon('#5A9A49'), 0, 3.72, 0, 8));
+      g.add(cyl(0.3, 2.9, 1.3, toon('#82C46A'), 0, 5.65, 0, 8));
+      g.add(cyl(2.92, 2.92, 0.14, toon('#6FAE5A'), 0, 5.02, 0, 8));
+      g.add(cyl(0.1, 0.12, 0.6, toon('#C99A2E'), 0, 6.55, 0, 8));
+      g.add(ball(0.34, toon('#F6D55C'), 0, 6.95, 0, 12));
+      // 처마 끝마다 등불
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2;
+        const lx = Math.sin(a) * 4.25, lz = Math.cos(a) * 4.25;
+        g.add(cyl(0.02, 0.02, 0.4, toon('#6B4429'), lx, 3.45, lz, 4));
+        g.add(cyl(0.16, 0.16, 0.36, this.glow('#FFE7A8'), lx, 3.08, lz, 8));
+        g.add(cyl(0.2, 0.2, 0.06, toon('#C2453A'), lx, 3.28, lz, 8));
+      }
+      const lantern = ball(0.32, this.glow('#FFE7A8'), 0, 3.2, 0, 14);
       g.add(lantern);
-      g.add(box(2.2, 0.16, 0.6, toon('#A06E45'), 0, 0.85, -1.2));
-      g.add(box(0.12, 0.45, 0.5, toon('#A06E45'), -0.9, 0.62, -1.2));
-      g.add(box(0.12, 0.45, 0.5, toon('#A06E45'), 0.9, 0.62, -1.2));
+      g.add(cyl(0.02, 0.02, 0.7, toon('#6B4429'), 0, 3.75, 0, 4));
+      // 가운데 낮은 상과 펼친 책, 둘레 의자
+      g.add(cyl(0.9, 0.9, 0.12, wood, 0, 0.95, 0, 16));
+      g.add(cyl(0.2, 0.25, 0.5, wood, 0, 0.68, 0, 10));
+      const bk = openBook(1.1, 0.75, '#4FA36C', pageTex(['조용히'], '말씀 듣기'), pageTex(['묵상'], '날마다'));
+      bk.position.set(0, 1.05, 0.05);
+      bk.rotation.x = -0.25;
+      g.add(bk);
+      for (const a of [Math.PI * 0.75, Math.PI, Math.PI * 1.25]) {
+        const bench = box(1.9, 0.14, 0.55, wood, Math.sin(a) * 2.3, 0.9, Math.cos(a) * 2.3);
+        bench.rotation.y = a;
+        g.add(bench);
+      }
       const post = new THREE.Group();
-      post.add(box(0.14, 1.6, 0.14, toon('#A06E45'), 0, 0.8, 0));
-      const sign = signMesh('묵상의 숲', 2.2, { bg: '#FFFDF7', fg: '#3F7A4A', border: '#6FAE5A', sub: '날마다 새 말씀' });
-      sign.position.set(0, 1.75, 0.1);
+      post.add(box(0.14, 1.7, 0.14, wood, 0, 0.85, 0));
+      const sign = signMesh('묵상의 숲', 2.4, { bg: '#FFFDF7', fg: '#3F7A4A', border: '#6FAE5A', sub: '날마다 새 말씀' });
+      sign.position.set(0, 1.9, 0.1);
       post.add(sign);
-      post.position.set(1.8, 0, 3.6);
+      post.position.set(2.3, 0, 4.6);
       post.rotation.y = -0.2;
       g.add(post);
-      this.placeBuilding('qt', g, { x: -17, z: 1.8, rot: 0.85, hw: 2.9, hd: 2.9, doorZ: 4.2, name: '묵상의 숲', fade: 3.6 });
+      // 둥근 꽃덤불 (입구 쪽은 비운다)
+      for (let i = 0; i < 10; i++) {
+        const a = Math.PI * 0.32 + (i / 9) * Math.PI * 1.36;
+        g.add(ball(0.45, toon(i % 2 ? '#5FAE4E' : '#6DBE5A'), Math.sin(a + Math.PI) * 4.6, 0.32, Math.cos(a + Math.PI) * 4.6, 10));
+        g.add(ball(0.11, toon(['#F6A2C4', '#FFFDF7', '#F6D55C'][i % 3]), Math.sin(a + Math.PI) * 4.6, 0.72, Math.cos(a + Math.PI) * 4.6 + 0.1, 8));
+      }
+      // 묵상 나무: 정자 뒤에 크고 둥근 나무, 반딧불처럼 빛나는 열매
+      {
+        const tr = new THREE.Group();
+        tr.add(cyl(0.45, 0.75, 4.6, toon('#8A5A3B'), 0, 2.3, 0, 10));
+        for (const [bx, by, bz, br] of [[-0.9, 4.6, 0.6, 0.18], [1.0, 4.4, -0.4, 0.16]]) {
+          const br2 = cyl(br, br * 1.4, 2.2, toon('#8A5A3B'), bx * 0.6, by - 0.5, bz * 0.6, 8);
+          br2.rotation.z = -bx * 0.5;
+          tr.add(br2);
+        }
+        for (const [cx, cy, cz, r, col] of [[0, 7.0, 0, 3.0, '#7ACB66'], [-1.9, 6.1, 0.6, 2.2, '#6DBE5A'], [1.9, 6.2, -0.4, 2.2, '#8BD46A'], [0.3, 8.3, -0.3, 2.0, '#A2D86E'], [0, 6.2, 1.6, 1.8, '#6DBE5A']]) tr.add(ball(r, toon(col), cx, cy, cz, 16));
+        for (let i = 0; i < 14; i++) {
+          const a = i * 2.4, rr = 2.2 + (i % 3) * 0.5;
+          tr.add(ball(0.13, this.glow('#FFE27A'), Math.cos(a) * rr, 5.6 + (i % 5) * 0.65, Math.sin(a) * rr * 0.8 + 0.4, 8));
+        }
+        tr.position.set(0, 0, -6.4);
+        g.add(tr);
+      }
+      this.placeBuilding('qt', g, { x: -17.8, z: 1.1, rot: 0.85, hw: 3.9, hd: 3.9, doorZ: 5.2, name: '묵상의 숲', fade: 4.6 });
+      this.addObstacleCircle(-17.8 - Math.sin(0.85) * 6.4, 1.1 - Math.cos(0.85) * 6.4, 1.0);
     }
 
     // 내 집
@@ -979,8 +1142,141 @@ export class Village {
       this.dishTable.position.set(11.2, 0, 20.6);
       this.scene.add(this.dishTable);
     }
+    // 나눔 수레: 아이들이 밭에서 거둔 채소와 열매를 바구니에 담아 올려 두면 친구들이 하나씩 먹는다
+    {
+      const SX = 14.7, SZ = 20.4, ROT = -0.35;
+      const g = new THREE.Group();
+      const leaf = toon('#5DB760');
+      g.add(box(2.3, 0.1, 0.95, wood, 0, 0.74, 0));
+      for (const sz of [-0.47, 0.47]) g.add(box(2.3, 0.2, 0.06, wood, 0, 0.88, sz));
+      for (const sx of [-1.15, 1.15]) g.add(box(0.06, 0.2, 0.95, wood, sx, 0.88, 0));
+      // 바퀴 두 개와 받침 다리, 손잡이
+      for (const sz of [-0.55, 0.55]) {
+        const w = cyl(0.36, 0.36, 0.07, dark, 0.45, 0.36, sz, 18);
+        w.rotation.x = Math.PI / 2;
+        g.add(w);
+        const hub = cyl(0.09, 0.09, 0.09, cream, 0.45, 0.36, sz, 10);
+        hub.rotation.x = Math.PI / 2;
+        g.add(hub);
+      }
+      for (const sz of [-0.38, 0.38]) g.add(box(0.08, 0.7, 0.08, dark, -0.95, 0.35, sz));
+      for (const sz of [-0.32, 0.32]) g.add(box(0.75, 0.06, 0.06, wood, -1.5, 0.8, sz));
+      // 초록 흰 줄무늬 차양
+      for (const sx of [-1.05, 1.05]) for (const sz of [-0.42, 0.42]) g.add(box(0.06, 1.2, 0.06, wood, sx, 1.4, sz));
+      for (let i = 0; i < 6; i++) g.add(box(0.4, 0.06, 1.15, i % 2 ? cream : leaf, -1.0 + i * 0.4, 2.02, 0));
+      const sign = this.postSign('나눔 수레', 1.5);
+      sign.position.set(1.65, 0, 0.35);
+      g.add(sign);
+      g.position.set(SX, 0, SZ);
+      g.rotation.y = ROT;
+      mergeStatic(g);
+      this.scene.add(g);
+      this.addObstacleBox(SX, SZ, 1.3, 0.62, ROT);
+      this.shareCart = new THREE.Group();
+      this.shareCart.position.set(SX, 0, SZ);
+      this.shareCart.rotation.y = ROT;
+      this.scene.add(this.shareCart);
+    }
   }
 
+  // 나눔 수레 바구니 (list: [{id, crop, n, eaten, by, me, ate, eaters}] 최근 4개)
+  setShareCart(list) {
+    if (!this.shareCart) return;
+    this.pickRoots = this.pickRoots.filter((o) => !(o.userData.pick && o.userData.pick.type === 'share'));
+    for (const c of [...this.shareCart.children]) {
+      c.traverse((o) => {
+        if (o.geometry) o.geometry.dispose();
+        const mt = o.material;
+        if (mt && mt.userData && mt.userData.own) { if (mt.map) mt.map.dispose(); mt.dispose(); }
+      });
+      c.removeFromParent();
+    }
+    this.shareList = (list || []).slice(0, 4);
+    const basketMat = toon('#C9935A'), rimMat = toon('#A06E45');
+    this.shareList.forEach((d, i) => {
+      const x = -0.78 + i * 0.52;
+      const g = new THREE.Group();
+      const bk = new THREE.Group();
+      const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.16, 0.16, 14, 1, true), basketMat);
+      bowl.position.y = 0.08;
+      bk.add(bowl);
+      const bottom = new THREE.Mesh(new THREE.CircleGeometry(0.16, 14), basketMat);
+      bottom.rotation.x = -Math.PI / 2;
+      bottom.position.y = 0.01;
+      bk.add(bottom);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.025, 6, 18), rimMat);
+      rim.rotation.x = Math.PI / 2;
+      rim.position.y = 0.16;
+      bk.add(rim);
+      // 남은 만큼 담긴다 (최대 여섯 개 보인다)
+      const left = Math.max(0, (d.n || 0) - (d.eaten || 0));
+      const spots = [[0, 0.06, 0], [0.09, 0.07, 0.05], [-0.09, 0.07, 0.05], [0.06, 0.08, -0.08], [-0.07, 0.08, -0.07], [0, 0.15, 0]];
+      for (let k = 0; k < Math.min(6, left); k++) {
+        const c = buildCrop(d.crop);
+        const [cx, cy, cz] = spots[k];
+        c.position.set(cx, cy, cz);
+        c.rotation.y = k * 1.7;
+        if (d.crop === 'cabbage') c.scale.setScalar(k ? 0.75 : 1);
+        bk.add(c);
+      }
+      g.add(bk);
+      const hit = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), new THREE.MeshBasicMaterial({ visible: false }));
+      hit.position.y = 0.12;
+      g.add(hit);
+      g.position.set(x, 0.79, 0);
+      g.userData.pick = { type: 'share', i };
+      this.pickRoots.push(g);
+      this.shareCart.add(g);
+      // 이름표: 누가 나눴는지, 몇 개 남았는지
+      const names = { carrot: '당근', tomato: '토마토', cabbage: '배추', strawberry: '딸기' };
+      const unit = d.crop === 'cabbage' ? '포기' : '개';
+      const tex = canvasTexture(256, 112, (ctx, w, hh) => {
+        ctx.fillStyle = '#FFFDF7'; ctx.fillRect(0, 0, w, hh);
+        ctx.strokeStyle = '#5DB760'; ctx.lineWidth = 6; ctx.strokeRect(3, 3, w - 6, hh - 6);
+        ctx.fillStyle = '#6B4429'; ctx.textAlign = 'center';
+        const fit = (text, size, min, y) => {
+          ctx.font = `${size}px ${FONT}`;
+          while (ctx.measureText(text).width > w - 20 && size > min) { size -= 1; ctx.font = `${size}px ${FONT}`; }
+          ctx.fillText(text, w / 2, y);
+        };
+        fit(`${d.by || '친구'}의 ${names[d.crop] || ''}`, 28, 14, 46);
+        ctx.fillStyle = '#3E8F4A';
+        fit(`${left}${unit} 남았어요`, 24, 14, 86);
+      });
+      const mt = new THREE.MeshBasicMaterial({ map: tex, transparent: false });
+      mt.userData.own = true;
+      const lab = new THREE.Mesh(new THREE.PlaneGeometry(0.48, 0.21), mt);
+      lab.position.set(x, 1.0, 0.52);
+      lab.rotation.x = -0.35;
+      this.shareCart.add(lab);
+    });
+  }
+  // 나눔 수레 앞으로 걸어가서 바구니를 연다
+  walkToShare(i) {
+    const d = this.shareList && this.shareList[i];
+    if (!d || !this.player || this.mode !== 'play') return;
+    const c = this.shareCart;
+    const local = new THREE.Vector3(-0.78 + i * 0.52, 0, 1.15);
+    const pos = local.applyAxisAngle(new THREE.Vector3(0, 1, 0), c.rotation.y).add(c.position);
+    this.resolve(pos);
+    this.target = { pos, action: () => { this.player.root.rotation.y = c.rotation.y + Math.PI; if (this.on.onShare) this.on.onShare(i, d); } };
+    this.showTapMark(pos);
+    this.reportMove(pos.x, pos.z);
+  }
+  // 친구가 나눈 채소·열매를 하나 집어 먹는다 (서버에 기록한 뒤 부른다)
+  eatShare(d) {
+    if (this.mode !== 'play' || this.eating || !this.player) return;
+    const c = buildCrop(d.crop);
+    c.scale.setScalar(1.3);
+    c.position.set(0, -0.5, 0.06);
+    const held = new THREE.Group();
+    held.add(c);
+    this.player.hold(held, 1);
+    const names = { carrot: '당근', tomato: '토마토', cabbage: '배추', strawberry: '딸기' };
+    this.eating = { t: 0.45, f: null, held, bites: 0, c: 0, name: names[d.crop] || '채소', what: 'share' };
+    this.player.pose = eatPose(this.eating);
+    if (this.on.onFruit) this.on.onFruit('start', this.eating.name, 'share');
+  }
   // 마을 식탁 접시 (items: [{id, name, kind, items, cook}] 최근 4개)
   setDishTable(list) {
     if (!this.dishTable || !this.buildDish) return;
@@ -1299,7 +1595,7 @@ export class Village {
     const bites = [0.85, 1.35, 1.85];
     while (e.bites < 3 && e.t >= bites[e.bites]) {
       e.bites++;
-      if (e.what === 'fruit') e.held.scale.setScalar(1 - e.bites * 0.3);
+      if (e.what === 'fruit' || e.what === 'share') e.held.scale.setScalar(1 - e.bites * 0.3);
       if (this.on.onFruit) this.on.onFruit('bite', e.name, e.what);
     }
     if (e.t >= 2.3) this.finishEat();
@@ -1312,7 +1608,7 @@ export class Village {
     this.player.pose = null;
     resetLimbs(this.player);
     this.player.celebrate();
-    if (e.what === 'dish') disposeObj(e.held);
+    if (e.what === 'dish' || e.what === 'share') disposeObj(e.held);
     if (this.on.onFruit) this.on.onFruit('done', e.name, e.what);
   }
   cancelEat() {
@@ -1322,7 +1618,7 @@ export class Village {
     if (this.player) { this.player.drop(); if (this.player.pose && this.player.pose.eat) this.player.pose = null; resetLimbs(this.player); }
     // 다 못 먹은 열매는 나무로 돌아간다
     if (e.bites === 0 && e.f) { e.f.alive = true; e.f.grow = 1; this.setFruit(e.f); }
-    if (e.what === 'dish') disposeObj(e.held);
+    if (e.what === 'dish' || e.what === 'share') disposeObj(e.held);
     if (this.on.onFruit) this.on.onFruit('stop', e.name, e.what);
   }
   tickFruit(dt) {
@@ -1880,6 +2176,9 @@ export class Village {
     this.labels.appendChild(el);
     holder.bubble = { el, life: Math.min(9, 3.8 + [...text].length * 0.14) };
     av.celebrate();
+    // 앵무새를 데리고 다니면 주인 말을 따라 한다
+    const f = this.followers && this.followers.get(id);
+    if (f) f.echo(text);
   }
   // 내 머리 위 이름표
   setMyName(name, teacher = false) {
@@ -2297,6 +2596,7 @@ export class Village {
       if (p.type === 'bug') { this.walkToBug(p.i); return; }
       if (p.type === 'dig') { this.walkToDig(p.i); return; }
       if (p.type === 'dish') { this.walkToDish(p.i); return; }
+      if (p.type === 'share') { this.walkToShare(p.i); return; }
     }
     const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     const pt = new THREE.Vector3();
@@ -2449,13 +2749,15 @@ export class Village {
   }
   // 강아지·고양이를 누르면 멈춰서 반기고, 나는 그 옆으로 간다
   // ---------- 애완동물: 주인('me' 또는 친구 id)을 따라다닌다 ----------
-  setPet(owner, item) {
+  // name: 아이가 지어 준 애완동물 이름 (없으면 이름표 없이)
+  setPet(owner, item, name = '') {
     this.followers = this.followers || new Map();
     const cur = this.followers.get(owner);
-    if (cur && cur.item === item) return;
+    if (cur && cur.item === item) { cur.setName(name); return; }
     if (cur) { cur.dispose(); this.followers.delete(owner); }
     if (!item || !PET_ITEMS[item]) return;
     const f = new Follower(this, item, owner);
+    f.setName(name);
     this.followers.set(owner, f);
     if (owner === 'me' && this.atHome && this.homeSpace) this.homeSpace.scene.add(f.root);
   }

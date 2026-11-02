@@ -139,7 +139,10 @@ export const PET_ITEMS = {
   pet_cat: { kind: 'cat', name: '고양이', desc: '살금살금 곁을 지켜 줘요.', coat: '#F2E2C4', ear: '#D9B98A', collar: '#EF6461', price: 30 },
   pet_rabbit: { kind: 'rabbit', name: '토끼', desc: '깡충깡충 뛰어서 따라와요.', coat: '#FFFFFF', ear: '#F6B8C8', price: 30 },
   pet_chick: { kind: 'chick', name: '병아리', desc: '삐약삐약 종종걸음으로 따라와요.', coat: '#FFD84D', price: 30 },
+  pet_parrot: { kind: 'parrot', name: '앵무새', desc: '머리 위를 훨훨 날아 따라오고, 내가 한 말을 따라 해요.', coat: '#3DBB5C', ear: '#F6D55C', wing: '#3E8FE0', tail: '#E5484D', price: 30 },
 };
+// 눌렀을 때 하는 말
+export const PET_SOUND = { dog: '멍멍!', cat: '야옹~', rabbit: '깡충!', chick: '삐약삐약!', parrot: '안녕! 안녕!' };
 export const PET_IDS = Object.keys(PET_ITEMS);
 
 function makeRabbit(d) {
@@ -247,7 +250,80 @@ function makeChick(d) {
   return { root, body, head, legs, tail, H };
 }
 
+// 앵무새: 초록 몸, 노란 얼굴, 파란 날개 끝, 빨간 꼬리. 날개(wings)는 따로 움직인다
+function makeParrot(d) {
+  const H = 0.1;
+  const coat = toon(d.coat), face = toon(d.ear), blue = toon(d.wing), red = toon(d.tail);
+  const dark = toon('#2E2A2A'), white = toon('#FFFFFF'), beakC = toon('#F3E6C8'), grey = toon('#8D8A86');
+  const root = new THREE.Group();
+  const body = new THREE.Group();
+  root.add(body);
+  const torsoG = new THREE.Group();
+  const torso = ball(1, coat, 0, H + 0.17, 0, 14);
+  torso.scale.set(0.12, 0.17, 0.13);
+  torso.rotation.x = 0.25;
+  torsoG.add(torso);
+  const belly = ball(1, face, 0, H + 0.13, 0.06, 12);
+  belly.scale.set(0.085, 0.12, 0.08);
+  belly.rotation.x = 0.25;
+  torsoG.add(belly);
+  // 꼬리: 길고 가늘게 아래 뒤로
+  const tl = rod(V(0, H + 0.08, -0.08), V(0, H - 0.04, -0.34), 0.035, red);
+  tl.scale.set(1.5, 1, 0.45);
+  torsoG.add(tl);
+  torsoG.add(rod(V(0.02, H + 0.08, -0.07), V(0.03, H - 0.02, -0.28), 0.022, blue));
+  merge(torsoG);
+  body.add(torsoG);
+  const head = new THREE.Group();
+  head.position.set(0, H + 0.36, 0.05);
+  head.add(ball(0.1, coat, 0, 0, 0, 14));
+  const cheek = ball(1, face, 0, -0.02, 0.05, 12);
+  cheek.scale.set(0.085, 0.07, 0.06);
+  head.add(cheek);
+  // 굽은 부리: 위는 아래로 굽은 원뿔, 아래는 작은 공
+  const beak = mesh(new THREE.ConeGeometry(0.035, 0.09, 8), beakC, 0, -0.02, 0.12);
+  beak.rotation.x = Math.PI / 2 + 0.7;
+  head.add(beak);
+  head.add(ball(0.022, grey, 0, -0.05, 0.095, 8, false));
+  for (const s of [-1, 1]) {
+    head.add(ball(0.03, white, s * 0.06, 0.025, 0.065, 8, false));
+    head.add(ball(0.016, dark, s * 0.066, 0.027, 0.085, 8, false));
+  }
+  head.add(rod(V(0, 0.08, -0.01), V(0, 0.15, -0.06), 0.018, coat)); // 머리 깃
+  merge(head);
+  body.add(head);
+  // 날개: 어깨에서 돌아간다
+  const wings = [];
+  for (const s of [-1, 1]) {
+    const g = new THREE.Group();
+    g.position.set(s * 0.11, H + 0.27, -0.01);
+    const w = ball(1, coat, s * 0.02, -0.1, -0.02, 10);
+    w.scale.set(0.035, 0.13, 0.09);
+    g.add(w);
+    const tip = ball(1, blue, s * 0.025, -0.2, -0.05, 8);
+    tip.scale.set(0.03, 0.07, 0.06);
+    g.add(tip);
+    merge(g);
+    body.add(g);
+    wings.push(g);
+  }
+  const legGeo = new THREE.CylinderGeometry(0.014, 0.014, H, 5);
+  const footGeo = new THREE.BoxGeometry(0.05, 0.015, 0.06);
+  const legs = [];
+  for (const s of [-1, 1]) {
+    const g = new THREE.Group();
+    g.position.y = H;
+    g.add(mesh(legGeo, grey, s * 0.045, -H / 2, 0.01));
+    g.add(mesh(footGeo, grey, s * 0.045, -H + 0.008, 0.025));
+    merge(g);
+    body.add(g);
+    legs.push(g);
+  }
+  return { root, body, head, legs, tail: wings[0], wings, H };
+}
+
 function makeAnyPet(d) {
+  if (d.kind === 'parrot') return makeParrot(d);
   if (d.kind === 'rabbit') return makeRabbit(d);
   if (d.kind === 'chick') return makeChick(d);
   return makePet(d);
@@ -264,6 +340,7 @@ export class Follower {
     Object.assign(this, p);
     this.root.traverse((o) => { if (o.isMesh) o.castShadow = false; });
     this.body.children[0].traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    if (this.def.kind === 'parrot') this.root.scale.setScalar(1.3); // 날아다니니 조금 크게
     this.root.userData.pick = { type: 'mypet', owner: ownerId };
     v.scene.add(this.root);
     v.pickRoots.push(this.root);
@@ -273,12 +350,33 @@ export class Follower {
     this.react = 0;
     this.placed = false;
     this.side = Math.random() < 0.5 ? -1 : 1;
+    this.fly = 0; // 앵무새가 나는 정도 (0 앉음 ~ 1 날기)
+    this.echoQ = null;
+    this.tag = null;
   }
   dispose() {
     this.root.removeFromParent();
     const i = this.v.pickRoots.indexOf(this.root);
     if (i >= 0) this.v.pickRoots.splice(i, 1);
     if (this.bubble) this.bubble.el.remove();
+    if (this.tag) this.tag.remove();
+    if (this.hearts) for (const hh of this.hearts) hh.el.remove();
+  }
+  // 아이가 지어 준 이름 (머리 위 작은 이름표)
+  setName(name) {
+    this.name = name || '';
+    if (!this.name) { if (this.tag) { this.tag.remove(); this.tag = null; } return; }
+    if (!this.tag) this.tag = this.v.makeLabel('', 'kv-tag kv-pet' + (this.ownerId === 'me' ? ' home-ok' : ''));
+    this.tag.textContent = this.name;
+  }
+  // 앵무새는 주인이 한 말을 조금 뒤에 따라 한다
+  echo(text) {
+    if (this.def.kind !== 'parrot') return;
+    const t = String(text || '').trim();
+    if (!/[가-힣A-Za-z]/.test(t)) return;
+    const chars = [...t];
+    const short = chars.length > 12 ? chars.slice(0, 12).join('') + '…' : t;
+    this.echoQ = { text: chars.length <= 4 ? `${short} ${short}` : short, at: 1.1 };
   }
   say(text) {
     if (this.bubble) this.bubble.el.remove();
@@ -288,7 +386,7 @@ export class Follower {
   pet() {
     this.react = 2.2;
     this.hop = 1;
-    this.say({ dog: '멍멍!', cat: '야옹~', rabbit: '깡충!', chick: '삐약삐약!' }[this.def.kind]);
+    this.say(PET_SOUND[this.def.kind]);
     const el = this.v.makeLabel('💕', 'kv-heart' + (this.ownerId === 'me' ? ' home-ok' : ''));
     (this.hearts || (this.hearts = [])).push({ el, pos: this.root.position.clone(), life: 1.3 });
     return this.def.kind;
@@ -325,7 +423,7 @@ export class Follower {
     if (this.react > 0) this.react -= dt;
     const d = Math.hypot(tx - pos.x, tz - pos.z);
     if (!wait && d > 0.45 && this.react <= 0) {
-      const sp = Math.min(10, Math.max(1.6, d * 2.4, (od - 1.2) * 3.4)) * (this.def.kind === 'chick' ? 0.9 : 1);
+      const sp = Math.min(10, Math.max(1.6, d * 2.4, (od - 1.2) * 3.4)) * (this.def.kind === 'chick' ? 0.9 : this.def.kind === 'parrot' ? 1.15 : 1);
       const step = Math.min(d, sp * dt);
       const nx = pos.x + ((tx - pos.x) / d) * step, nz = pos.z + ((tz - pos.z) / d) * step;
       if (!inPool(nx, nz)) {
@@ -341,32 +439,62 @@ export class Follower {
     if (!moving) r.rotation.y = turn(r.rotation.y, Math.atan2(o.x - pos.x, o.z - pos.z), dt * 3);
     this.idle = moving ? 0 : this.idle + dt;
     const k = this.def.kind;
-    const sw = moving ? Math.sin(this.walk) * (k === 'rabbit' ? 0.25 : 0.55) : 0;
-    this.legs[0].rotation.x = sw;
-    this.legs[1].rotation.x = -sw;
-    let y = 0;
-    if (moving) y = k === 'rabbit' ? Math.abs(Math.sin(this.walk * 0.5)) * 0.16 : Math.abs(Math.sin(this.walk)) * 0.03;
-    if (this.hop > 0) { this.hop = Math.max(0, this.hop - dt * 2.4); y += Math.sin((1 - this.hop) * Math.PI) * 0.3; }
-    const sit = !moving && this.idle > 1.5 && (k === 'dog' || k === 'cat');
-    this.body.rotation.x += ((sit ? -0.32 : 0) - this.body.rotation.x) * Math.min(1, dt * 6);
-    this.body.rotation.z = k === 'chick' && moving ? Math.sin(this.walk) * 0.12 : 0;
-    this.body.position.y = y - (sit ? 0.09 : 0);
     const t = v.time;
-    if (k === 'dog') this.tail.rotation.y = Math.sin(t * (this.react > 0 || d < 1.6 ? 18 : 7)) * 0.6;
-    else if (k === 'cat') this.tail.rotation.z = Math.sin(t * 1.8) * 0.35;
-    // 병아리는 가끔 땅을 콕콕
-    this.head.rotation.x = k === 'chick' && !moving && Math.sin(t * 1.3) > 0.85 ? 0.5 : (k === 'dog' && sit ? 0.15 : 0);
+    let lift = 0; // 앵무새가 날고 있는 높이 (말풍선, 이름표도 함께 올린다)
+    if (k === 'parrot') {
+      // 주인이 움직이면 날아올라 머리 위쪽을 따라오고, 멈추면 곁에 내려앉는다
+      const want = moving || this.react > 0 || this.idle < 1.2 ? 1 : 0;
+      this.fly += (want - this.fly) * Math.min(1, dt * (want ? 3 : 1.6));
+      lift = this.fly * (1.4 + Math.sin(t * 3.1) * 0.06);
+      const flap = this.fly > 0.05 ? Math.sin(t * 24) * 0.9 * Math.min(1, this.fly * 2) : 0;
+      this.wings[0].rotation.z = -0.1 - flap;
+      this.wings[1].rotation.z = 0.1 + flap;
+      this.body.rotation.x = this.fly * 0.35;
+      const hopW = !moving && this.fly < 0.1 ? Math.abs(Math.sin(t * 1.7)) > 0.97 : false;
+      this.legs[0].rotation.x = this.legs[1].rotation.x = this.fly * -0.6;
+      let y = lift + (hopW ? 0.04 : 0);
+      if (this.hop > 0) { this.hop = Math.max(0, this.hop - dt * 2.4); y += Math.sin((1 - this.hop) * Math.PI) * 0.3; }
+      this.body.position.y = y;
+      lift *= this.root.scale.y; // 말풍선·이름표는 세상 높이로
+      this.head.rotation.y = !moving && this.fly < 0.2 ? Math.sin(t * 0.9) * 0.5 : 0;
+      this.head.rotation.x = 0;
+    } else {
+      const sw = moving ? Math.sin(this.walk) * (k === 'rabbit' ? 0.25 : 0.55) : 0;
+      this.legs[0].rotation.x = sw;
+      this.legs[1].rotation.x = -sw;
+      let y = 0;
+      if (moving) y = k === 'rabbit' ? Math.abs(Math.sin(this.walk * 0.5)) * 0.16 : Math.abs(Math.sin(this.walk)) * 0.03;
+      if (this.hop > 0) { this.hop = Math.max(0, this.hop - dt * 2.4); y += Math.sin((1 - this.hop) * Math.PI) * 0.3; }
+      const sit = !moving && this.idle > 1.5 && (k === 'dog' || k === 'cat');
+      this.body.rotation.x += ((sit ? -0.32 : 0) - this.body.rotation.x) * Math.min(1, dt * 6);
+      this.body.rotation.z = k === 'chick' && moving ? Math.sin(this.walk) * 0.12 : 0;
+      this.body.position.y = y - (sit ? 0.09 : 0);
+      if (k === 'dog') this.tail.rotation.y = Math.sin(t * (this.react > 0 || d < 1.6 ? 18 : 7)) * 0.6;
+      else if (k === 'cat') this.tail.rotation.z = Math.sin(t * 1.8) * 0.35;
+      // 병아리는 가끔 땅을 콕콕
+      this.head.rotation.x = k === 'chick' && !moving && Math.sin(t * 1.3) > 0.85 ? 0.5 : (k === 'dog' && sit ? 0.15 : 0);
+    }
+    if (this.echoQ) {
+      this.echoQ.at -= dt;
+      if (this.echoQ.at <= 0) { this.say(this.echoQ.text); this.echoQ = null; this.hop = Math.max(this.hop, 0.6); }
+    }
     if (this.bubble) {
       this.bubble.life -= dt;
       if (this.bubble.life <= 0) { this.bubble.el.remove(); this.bubble = null; }
-      else { this.bubble.el.style.opacity = String(Math.min(1, this.bubble.life / 0.4)); v.placeLabel(this.bubble.el, pos, 1.0); }
+      else { this.bubble.el.style.opacity = String(Math.min(1, this.bubble.life / 0.4)); v.placeLabel(this.bubble.el, pos, 1.0 + lift); }
+    }
+    if (this.tag) {
+      // 이름표 (말풍선이 떠 있을 때와 1인칭으로 볼 때는 감춘다)
+      const show = this.root.visible && !this.bubble && !v.fp;
+      if (show) v.placeLabel(this.tag, pos, (k === 'parrot' ? 0.8 : k === 'chick' ? 0.62 : k === 'rabbit' ? 0.82 : 0.95) + lift);
+      else this.tag.style.display = 'none';
     }
     if (this.hearts) {
       this.hearts = this.hearts.filter((hh) => {
         hh.life -= dt;
         if (hh.life <= 0) { hh.el.remove(); return false; }
         hh.el.style.opacity = String(Math.min(1, hh.life / 0.5));
-        v.placeLabel(hh.el, pos, 0.8 + (1.3 - hh.life) * 0.9);
+        v.placeLabel(hh.el, pos, 0.8 + lift + (1.3 - hh.life) * 0.9);
         return true;
       });
     }
