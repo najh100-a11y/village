@@ -7,6 +7,9 @@ import { cleanChat } from './chatfilter.js';
 import { HOME_ITEMS, HOME_IDS, isSeed } from './homeitems.js';
 import { WARDROBE, WARDROBE_IDS, wearItem } from './wardrobe.js';
 import { SELL_BUNDLE, SELL_DAY_DEFAULT, GIFT, GIFT_MSGS, SALES, salePrice } from './economy.js';
+import { TREASURES } from './beach-data.js';
+// 보물 무게 (서버 kids_treasure_kinds와 같다)
+const TREASURE_WEIGHT = { shell: 24, conch: 18, seaglass: 14, starfish: 10, crab: 8, coin: 6, pearl: 3, bottle: 3, fossil: 2, chest: 1, can: 7, sandal: 5 };
 const BUG_KINDS = ['cabbage_white', 'swallowtail', 'honeybee', 'ladybug', 'grasshopper', 'red_dragonfly', 'mantis', 'cicada', 'stag_beetle', 'rhino_beetle', 'firefly'];
 const BUG_RARITY = [0, 1, 0, 0, 0, 0, 1, 1, 2, 2, 2]; // js/bugs.js와 같은 차례
 const ITEM_PRICE = { fw_spark: 1, fw_flower: 3, fw_heart: 5, pet_dog: 30, pet_cat: 30, pet_rabbit: 30, pet_chick: 30, ...Object.fromEntries(HOME_IDS.map((id) => [id, HOME_ITEMS[id].price])),
@@ -15,6 +18,7 @@ const ITEM_PRICE = { fw_spark: 1, fw_flower: 3, fw_heart: 5, pet_dog: 30, pet_ca
 function sellBundle(kind, id) {
   if (kind === 'fish') { const f = FISH.find((x) => x.id === id); return f && f.rarity >= 0 ? SELL_BUNDLE.fish[f.rarity] : null; }
   if (kind === 'bug') { const i = BUG_KINDS.indexOf(id); return i >= 0 ? SELL_BUNDLE.bug[BUG_RARITY[i]] : null; }
+  if (kind === 'treasure') { const t = TREASURES.find((x) => x.id === id); return t && t.rarity >= 0 ? SELL_BUNDLE.treasure[t.rarity] : null; }
   return null;
 }
 // 낚시터(pond 연못, sea 바다)에서 무게대로 물고기 하나 뽑기 (서버 kids_fish_hook, kids_sea_hook과 같다)
@@ -305,7 +309,7 @@ export class DemoBackend {
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true }; }
   // 쪽지함: 친구별 마지막 쪽지와 안 읽은 수 (최근 30일)
   kids_dm_box({ p_token }) {
     const me = this.session(p_token, 'child');
@@ -434,6 +438,63 @@ export class DemoBackend {
     return { bug: p_bug, count: all.filter((x) => x.bug === p_bug).length, kinds: new Set(all.map((x) => x.bug)).size };
   }
 
+  // ---------- 모래사장 보물 캐기 (서버 kids_dig와 같다) ----------
+  kids_dig({ p_token }) {
+    const me = this.session(p_token, 'child');
+    this.gate(me);
+    this.db.treasures = this.db.treasures || [];
+    const mine = this.db.treasures.filter((x) => x.child === me);
+    const last = mine.map((x) => x.at).sort().pop();
+    if (last && Date.now() - new Date(last).getTime() < 2000) fail('TOO_FAST');
+    const today = mine.filter((x) => x.at >= startOfToday()).length;
+    if (today >= 60) fail('DIG_DAY');
+    const total = TREASURES.reduce((a, t) => a + TREASURE_WEIGHT[t.id], 0);
+    let r = Math.floor(Math.random() * total), k = TREASURES[0];
+    for (const t of TREASURES) { if (r < TREASURE_WEIGHT[t.id]) { k = t; break; } r -= TREASURE_WEIGHT[t.id]; }
+    const first = !mine.some((x) => x.item === k.id);
+    this.db.treasures.push({ child: me, item: k.id, at: nowIso() });
+    const all = this.db.treasures.filter((x) => x.child === me);
+    return { item: k.id, name: k.name, rarity: k.rarity, first, count: all.filter((x) => x.item === k.id).length,
+      kinds: new Set(all.filter((x) => (TREASURES.find((t) => t.id === x.item) || {}).rarity >= 0).map((x) => x.item)).size, today: today + 1 };
+  }
+  kids_treasure_book({ p_token }) {
+    const me = this.session(p_token, 'child');
+    const mine = {};
+    for (const t of (this.db.treasures || []).filter((x) => x.child === me)) mine[t.item] = (mine[t.item] || 0) + 1;
+    return { mine, today: (this.db.treasures || []).filter((x) => x.child === me && x.at >= startOfToday()).length };
+  }
+  // ---------- 물수제비 (서버 kids_skip_throw와 같다) ----------
+  skipTop(me) {
+    const t0 = startOfToday(), best = new Map();
+    for (const s of (this.db.skips || []).filter((x) => x.at >= t0 && x.n > 0)) {
+      const b = best.get(s.child);
+      if (!b || s.n > b.n || (s.n === b.n && s.at < b.at)) best.set(s.child, s);
+    }
+    return [...best.values()].map((s) => ({ s, c: this.db.children.find((c) => c.id === s.child) })).filter((x) => x.c && x.c.village_name)
+      .sort((a, b) => b.s.n - a.s.n || a.s.at.localeCompare(b.s.at)).slice(0, 5)
+      .map(({ s, c }) => ({ name: c.village_name, avatar: c.avatar, skips: s.n, me: c.id === me, teacher: !!c.teacher }));
+  }
+  kids_skip_throw({ p_token, p_aim }) {
+    const me = this.session(p_token, 'child');
+    this.gate(me);
+    this.db.skips = this.db.skips || [];
+    const mine = this.db.skips.filter((x) => x.child === me);
+    const last = mine.map((x) => x.at).sort().pop();
+    if (last && Date.now() - new Date(last).getTime() < 2000) fail('TOO_FAST');
+    const t0 = startOfToday(), todays = mine.filter((x) => x.at >= t0);
+    if (todays.length >= 300) fail('SKIP_DAY');
+    const bestToday = Math.max(0, ...todays.map((x) => x.n)), best = Math.max(0, ...mine.map((x) => x.n));
+    const a = Math.max(0, Math.min(1, Number(p_aim) || 0));
+    const n = a < 0.08 ? 0 : Math.min(20, Math.max(1, Math.round((1 + 14 * a ** 1.5) * (0.8 + Math.random() * 0.4))));
+    this.db.skips.push({ child: me, n, at: nowIso() });
+    return { skips: n, best_today: Math.max(bestToday, n), best: Math.max(best, n), new_best: n > best && n > 0, today_best_new: n > bestToday && n > 0, top: this.skipTop(me) };
+  }
+  kids_skip_board({ p_token }) {
+    const me = this.session(p_token, 'child');
+    const mine = (this.db.skips || []).filter((x) => x.child === me), t0 = startOfToday();
+    return { top: this.skipTop(me), best: Math.max(0, ...mine.map((x) => x.n)), best_today: Math.max(0, ...mine.filter((x) => x.at >= t0).map((x) => x.n)) };
+  }
+
   // ---------- 열매 상점: 불꽃놀이 ----------
   kids_shop({ p_token }) {
     const me = this.session(p_token, 'child');
@@ -466,14 +527,16 @@ export class DemoBackend {
   }
   // ---------- 팔기: 잡은 물고기와 곤충 (팔아도 도감 기록은 남는다) ----------
   sellInfo(me) {
-    const fish = {}, bugs = {};
+    const fish = {}, bugs = {}, treasures = {};
     for (const f of this.db.fish) if (f.child === me && !f.sold && sellBundle('fish', f.fish)) fish[f.fish] = (fish[f.fish] || 0) + 1;
     for (const b of this.db.bugs || []) if (b.child === me && !b.sold) bugs[b.bug] = (bugs[b.bug] || 0) + 1;
+    for (const t of this.db.treasures || []) if (t.child === me && !t.sold && sellBundle('treasure', t.item)) treasures[t.item] = (treasures[t.item] || 0) + 1;
     const today0 = startOfToday();
     return {
-      fish, bugs,
+      fish, bugs, treasures,
       bundle: { fish: Object.fromEntries(FISH.filter((f) => f.rarity >= 0).map((f) => [f.id, sellBundle('fish', f.id)])),
-        bug: Object.fromEntries(BUG_KINDS.map((b) => [b, sellBundle('bug', b)])) },
+        bug: Object.fromEntries(BUG_KINDS.map((b) => [b, sellBundle('bug', b)])),
+        treasure: Object.fromEntries(TREASURES.filter((t) => t.rarity >= 0).map((t) => [t.id, sellBundle('treasure', t.id)])) },
       today: (this.db.sellLog || []).filter((l) => l.child === me && l.at >= today0).reduce((a, l) => a + l.fruits, 0),
       cap: this.villageConf().sell_day,
     };
@@ -488,7 +551,8 @@ export class DemoBackend {
     const info = this.sellInfo(me);
     if (info.cap <= 0) fail('SELL_CLOSED');
     if (info.today + k > info.cap) fail('SELL_DAY');
-    const list = (p_kind === 'fish' ? this.db.fish.filter((f) => f.fish === p_item) : (this.db.bugs || []).filter((b) => b.bug === p_item))
+    const list = (p_kind === 'fish' ? this.db.fish.filter((f) => f.fish === p_item) : p_kind === 'bug' ? (this.db.bugs || []).filter((b) => b.bug === p_item)
+      : (this.db.treasures || []).filter((t) => t.item === p_item))
       .filter((x) => x.child === me && !x.sold).sort((a, b) => a.at.localeCompare(b.at));
     if (list.length < k * size) fail('NO_ITEM');
     list.slice(0, k * size).forEach((x) => { x.sold = nowIso(); });

@@ -11,8 +11,10 @@ import { aiMove, lineAt, OMOK_LEVELS } from './omok.js';
 import { friendPicker, waitInvite } from './play.js';
 import { renderFishBook } from './fishing.js';
 import { createRides } from './rides.js';
-import { SEA_Y, SEA_SPOTS, MOOR, BOARD, BOAT_FACE, seatOf } from './sea.js';
-import { onPier } from './isles.js';
+import { createSkipGame, SKIP_STANDS, SKIP_FACE } from './beach.js';
+import { createArkGame, ARK_SEATS } from './ark.js';
+import { SEA_Y, SEA_SPOTS, MOOR, BOARD, BOAT_FACE, HARBOR, seatOf, seaRoute, seaBlock, shoreGap, nearSchool } from './sea.js';
+import { onPier, PIER } from './isles.js';
 
 // ---------- 도우미 ----------
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -647,13 +649,14 @@ export function createPlay3D(ctx) {
     }
     if (act === 'sea' && v.sea) {
       // 바다 낚시: 친구 배를 띄워 친구를 앉힌다. 친구가 알려 준 자리로 배가 노를 저어 간다
-      const near = (q) => onPier(q.x, q.z, 0.5) || Math.hypot(q.x - MOOR.x, q.z - MOOR.z) < 3;
+      // 나루터 가까이거나 땅 위(아직 배에 타기 전 자리)면 묶는 곳에 둔다
+      const near = (q) => onPier(q.x, q.z, 0.5) || Math.hypot(q.x - MOOR.x, q.z - MOOR.z) < 3 || shoreGap(q.x, q.z) < 0.5;
       const goal = near(p) ? MOOR : { x: p.x, z: p.z };
       const spot = SEA_SPOTS.find((s) => Math.hypot(s.x - goal.x, s.z - goal.z) < 1.5);
       const face = goal === MOOR ? BOAT_FACE : spot ? spot.face : null;
       if (r.pin && r.pin.kind === 'sea') {
         const bp = r.pin.car.position;
-        if (Math.hypot(bp.x - goal.x, bp.z - goal.z) > 0.3) v.sea.sail(r.pin.car, v.sea.route(r.pin.car, goal), { face });
+        if (Math.hypot(bp.x - goal.x, bp.z - goal.z) > 0.3) v.sea.sail(r.pin.car, v.sea.route(r.pin.car, goal), { face, speed: 3.2 });
         return;
       }
       if (r.pin && r.pin.auto) v.unpinRemote(r.id);
@@ -662,6 +665,17 @@ export function createPlay3D(ctx) {
       if (face != null) b.rotation.y = face;
       if (!av.held || !av.held.obj.userData.isRod) av.hold(makeRod());
       v.pinRemote(r.id, { kind: 'sea', obj: seatOf(b), car: b, auto: true, pose: seaRodPose });
+      return;
+    }
+    if (act === 'skip') {
+      // 물수제비: 다리 끝에 서서 바다를 본다
+      const s = nearest(SKIP_STANDS, p);
+      if (s && s.d < 1.6) v.pinRemote(r.id, { x: s.x, y: 0, z: s.z, rot: SKIP_FACE, pose: (a) => { a.arms[1].rotation.x = -0.55; a.arms[1].rotation.z = 0.45; }, auto: true });
+      return;
+    }
+    if (act === 'ark') {
+      const s = nearest(ARK_SEATS, p);
+      if (s && s.d < 1.6) v.pinRemote(r.id, { x: s.x, y: SEAT_Y, z: s.z, rot: s.rot, pose: seatPose({}), auto: true });
       return;
     }
     if (act === 'omok') {
@@ -709,7 +723,7 @@ export function createPlay3D(ctx) {
     });
   }
 
-  // 바다: 나루터에 묶인 배에 앉아 노를 저어 바다로 나간 뒤, 뱃머리 앞바다에 던진다
+  // 바다: 나루터에 묶인 배에 앉아 노를 저어 바다로 나간다. 바다 어디든 저어 가서, 마음에 드는 곳에서 뱃머리 앞바다에 던진다
   function seaFishing() {
     stopAll();
     const sea = v.sea;
@@ -720,7 +734,7 @@ export function createPlay3D(ctx) {
     const area = () => K.clone().addScaledVector(F, 3.0); // 물고기 그림자가 노는 곳 (뱃머리 앞)
     const inSea = (x, z, m = 0) => {
       const c = area();
-      return Math.hypot(x - c.x, z - c.z) < 2.5 - m && Math.hypot(x - K.x, z - K.z) > 1.55 + m;
+      return Math.hypot(x - c.x, z - c.z) < 2.5 - m && Math.hypot(x - K.x, z - K.z) > 1.55 + m && shoreGap(x, z) > 0.3 + m && !onPier(x, z, 0.3);
     };
     fishGame({
       id: 'sea', title: '바다 낚시 나루터', hook: 'kids_sea_hook', place: 'sea', wy: SEA_Y, water: '바다', sit: true,
@@ -828,7 +842,7 @@ export function createPlay3D(ctx) {
       s.state = 'wander'; s.t = 0; s.op = 0;
       s.speed = 0.22 + Math.random() * 0.18;
     }
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < (boat ? 6 : 4); i++) {
       const holder = new THREE.Group();
       const mat = basicMat(boat ? '#0E3550' : '#163545', 0.001);
       const body = new THREE.Mesh(new THREE.CircleGeometry(0.5, 22), mat);
@@ -844,7 +858,7 @@ export function createPlay3D(ctx) {
     // 상태
     let st = 'idle', t = 0, active = null, pending = null, hooking = false, lastHook = 0;
     let nibbles = 0, nextNibble = 0, biteUntil = 0, waitT = 0, held = null, landed = null, showTimer = null;
-    let spotI = 0, leaving = false;
+    let leaving = false, school = false;
     const target = V(), from = V();
     const say = (txt) => ui.say(txt);
 
@@ -983,12 +997,15 @@ export function createPlay3D(ctx) {
     }
 
     // ---------- 배 (바다에서만) ----------
+    // 'row': 아이가 노를 저어 바다 어디든 간다 (바다를 누르면 그곳까지, 방향 단추·화살표로는 직접).
+    // '낚시하기'를 누르면 배를 세우고 뱃머리 앞바다에 낚시를 한다. 물고기 떼(거품, 뛰는 물고기, 갈매기) 가까이면 물고기가 더 많이, 빨리 온다
+    const ROW_V = 3.0;
     const followCam = { pos: V(), look: V() };
     function aimFollow() {
       const b = boat.position, a = boat.rotation.y, far = portrait() ? 1.3 : 1;
       const fx0 = Math.sin(a), fz0 = Math.cos(a);
-      followCam.pos.set(b.x - fx0 * 7.5 * far - fz0 * 3.0 * far, SEA_Y + 6.0 * far, b.z - fz0 * 7.5 * far + fx0 * 3.0 * far);
-      followCam.look.set(b.x + fx0 * 2.2, SEA_Y + 0.4, b.z + fz0 * 2.2);
+      followCam.pos.set(b.x - fx0 * 8.5 * far - fz0 * 2.2 * far, SEA_Y + 7.2 * far, b.z - fz0 * 8.5 * far + fx0 * 2.2 * far);
+      followCam.look.set(b.x + fx0 * 5.5, SEA_Y, b.z + fz0 * 5.5);
     }
     function clearLine() {
       if (active) flee(active);
@@ -997,41 +1014,120 @@ export function createPlay3D(ctx) {
       if (held) { disposeTree(held); held = null; }
       clearTimeout(showTimer);
     }
-    // i번째 바다 자리로 노를 저어 간다
-    function sailTo(i, msg) {
+    // 화살표와 방향 단추 (휴대폰은 방향 단추가 나온다)
+    const keys = new Set();
+    const KEYMAP = { ArrowUp: 'u', KeyW: 'u', ArrowDown: 'd', KeyS: 'd', ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r' };
+    const kd = (e) => {
+      if (st !== 'row' || (e.target && ['INPUT', 'TEXTAREA'].includes(e.target.tagName))) return;
+      if (KEYMAP[e.code]) { keys.add(KEYMAP[e.code]); e.preventDefault(); }
+    };
+    const ku = (e) => { if (KEYMAP[e.code]) keys.delete(KEYMAP[e.code]); };
+    if (boat) { window.addEventListener('keydown', kd); window.addEventListener('keyup', ku); }
+    let sendT = 0, schoolSaid = -1, blockT = 0;
+    const sentP = V(9999, 0, 9999), seatP = V();
+    // 친구들에게 배가 있는 자리를 알린다 (움직이는 동안 1.2초마다, 많이 옮겼을 때만)
+    function tellPos(force) {
+      boat.updateMatrixWorld(true);
+      seatOf(boat).getWorldPosition(seatP);
+      if (!force && Math.hypot(seatP.x - sentP.x, seatP.z - sentP.z) < 0.8) return;
+      sentP.copy(seatP);
+      v.placePlayer(seatP.x, seatP.z, boat.rotation.y, seatP.y);
+    }
+    const BLOCK = {
+      land: '앗, 더 가면 모래밭에 닿아요. 배를 바다 쪽으로 돌려요.',
+      far: '너무 멀리 나왔어요. 섬 쪽으로 돌아가요.',
+      pier: '나무 다리에 부딪히겠어요. 조금 떨어져서 저어요.',
+    };
+    function blocked(why) {
+      if (blockT > 0) return;
+      blockT = 2.5;
+      say(BLOCK[why]);
+      sfx.bonk();
+    }
+    function rowMode(msg) {
       clearLine();
-      st = 'sail';
-      spotI = i;
+      st = 'row';
       rod.visible = false;
       pl.pose = rowPose;
+      school = false;
       for (const s of shadows) { s.state = 'gone'; s.t = -99; s.op = 0; }
       aimFollow();
       game.cam = followCam;
-      ui.setMain('…', { disabled: true });
-      say(msg);
-      const spot = SEA_SPOTS[i];
-      sea.sail(boat, sea.route(boat, spot), { face: spot.face, onArrive: arrive });
+      document.body.classList.add('pad-game');
+      schoolSaid = -1;
+      say(msg || '바다를 누르면 그쪽으로 노를 저어 가요. 마음에 드는 곳에서 ‘낚시하기’를 눌러요.');
+      ui.setMain('낚시하기', { onClick: () => fishHere() });
+    }
+    // 배를 세우고 여기서 낚시
+    function fishHere() {
+      if (st !== 'row') return;
+      const p = boat.position, a = boat.rotation.y;
+      if (Math.hypot(p.x - MOOR.x, p.z - MOOR.z) < 4.5) { say('나루터 바로 앞이에요. 조금 더 바다로 나가 봐요.'); return; }
+      const ax = p.x + Math.sin(a) * 3.2, az = p.z + Math.cos(a) * 3.2;
+      if (shoreGap(ax, az) < 1.2 || onPier(ax, az, 0.5)) { say('뱃머리 앞이 모래밭이에요. 배를 바다 쪽으로 돌려 봐요.'); return; }
+      Object.assign(boat.userData, { path: [], face: null, onArrive: null, manual: true, v: 0 });
+      keys.clear();
+      document.body.classList.remove('pad-game');
+      arrive();
     }
     function arrive() {
-      if (st !== 'sail' || leaving || !live(game)) return;
+      if (leaving || !live(game)) return;
       boat.updateMatrixWorld(true);
       seatOf(boat).getWorldPosition(P.kid);
       P.fwd.set(Math.sin(boat.rotation.y), 0, Math.cos(boat.rotation.y));
-      v.placePlayer(P.kid.x, P.kid.z, boat.rotation.y, P.kid.y); // 친구들에게 배가 선 자리를 알린다
+      tellPos(true); // 친구들에게 배가 선 자리를 알린다
       cams = P.cams();
-      for (const s of shadows) { spawnShadow(s); s.op = 0; }
-      setIdle(spotI === 0 ? '바다에 왔어요! 물고기 그림자 가까이 물을 누르거나 ‘던지기’를 눌러요.' : '여기서 던져 볼까요?');
+      const ahead = P.kid.clone().addScaledVector(P.fwd, 3.0);
+      school = nearSchool(ahead.x, ahead.z, 6.5) >= 0;
+      shadows.forEach((s, i) => { s.off = i >= 4 && !school; spawnShadow(s); s.op = 0; });
+      setIdle(school ? '물고기 떼 한가운데예요! 물고기가 금방 모여들어요. 그림자 가까이 물을 누르거나 ‘던지기’를 눌러요.'
+        : '여기서 던져 볼까요? 물고기 그림자 가까이 물을 누르거나 ‘던지기’를 눌러요.');
     }
     function moveSpot() {
       if (!boat || leaving) return;
-      if (st !== 'idle') { say('낚싯줄을 다 감은 다음에 옮겨요.'); return; }
-      sailTo((spotI + 1) % SEA_SPOTS.length, '다른 자리로 가 볼까요? 영차영차!');
+      if (st === 'row' || st === 'sail') return;
+      if (st !== 'idle') { say('낚싯줄을 다 감은 다음에 저어요.'); return; }
+      rowMode();
+    }
+    // 노 젓기 (st === 'row'): 화살표·방향 단추는 직접, 바다를 누른 곳은 바닷길(sea.sail)로 간다
+    function rowUpdate(dt) {
+      const u = boat.userData, p = boat.position;
+      blockT = Math.max(0, blockT - dt);
+      let thrust = 0, turn = 0;
+      if (keys.size) {
+        if (!u.manual) Object.assign(u, { path: [], face: null, onArrive: null, manual: true });
+        if (keys.has('l')) turn += 1;
+        if (keys.has('r')) turn -= 1;
+        if (keys.has('u')) thrust = 1;
+        else if (keys.has('d')) thrust = -0.45;
+      }
+      if (u.manual) {
+        boat.rotation.y += turn * 1.5 * dt;
+        u.v += Math.max(-dt * 2.6, Math.min(dt * 1.6, thrust * ROW_V - u.v));
+        if (Math.abs(u.v) > 0.01) {
+          const fx = Math.sin(boat.rotation.y), fz = Math.cos(boat.rotation.y);
+          const nx = p.x + fx * u.v * dt, nz = p.z + fz * u.v * dt, bow = u.v > 0 ? 1.35 : -1.1;
+          const why = seaBlock(nx, nz, 1.0) || seaBlock(nx + fx * bow, nz + fz * bow, 0.2);
+          if (why) { u.v = 0; blocked(why); } else { p.x = nx; p.z = nz; }
+        }
+        const busy = thrust !== 0 || turn !== 0;
+        u.row = busy ? Math.min(1, u.row + dt * 2.5) : Math.max(0, u.row - dt * 1.5);
+        u.ph += dt * 5.5 * (thrust < 0 ? -1 : 1) * (busy ? 1 : 0.3);
+      }
+      sendT += dt;
+      if (sendT > 1.2) { sendT = 0; tellPos(false); }
+      // 물고기 떼 가까이 오면 알려 준다
+      const i = nearSchool(p.x + Math.sin(boat.rotation.y) * 3, p.z + Math.cos(boat.rotation.y) * 3, 6.5);
+      if (i >= 0 && i !== schoolSaid) { schoolSaid = i; say('물고기 떼 가까이 왔어요! 여기서 낚시해 볼까요?'); sfx.tick(); }
+      else if (i < 0 && schoolSaid >= 0 && blockT <= 0) schoolSaid = -1;
     }
     // 그만: 나루터까지 노를 저어 돌아간 뒤 내린다 (한 번 더 누르면 바로 내린다)
     game.onExit = () => {
       if (!boat || leaving || st === 'stopped') { stopAll(); return; }
       leaving = true;
       clearLine();
+      keys.clear();
+      document.body.classList.remove('pad-game');
       st = 'sail';
       rod.visible = false;
       pl.pose = rowPose;
@@ -1044,6 +1140,19 @@ export function createPlay3D(ctx) {
     };
 
     game.onTap = (ray) => {
+      if (st === 'row') {
+        const pt = V();
+        if (!ray.ray.intersectPlane(new THREE.Plane(V(0, 1, 0), -SEA_Y), pt)) return;
+        const why = seaBlock(pt.x, pt.z, 1.0);
+        if (why === 'land') say('배는 바다로만 갈 수 있어요. 물을 눌러요.');
+        else if (why === 'far') say('그곳은 너무 멀어요. 섬 가까운 바다를 눌러요.');
+        else if (why === 'pier') say('나무 다리 옆은 좁아요. 조금 떨어진 바다를 눌러요.');
+        else {
+          sea.sail(boat, seaRoute(boat.position, pt), { speed: ROW_V });
+          ripple(pt.x, pt.z, 1.6);
+        }
+        return;
+      }
       if (st === 'idle') {
         const pt = V();
         const ok = ray.ray.intersectPlane(new THREE.Plane(V(0, 1, 0), -(WY + 0.05)), pt);
@@ -1054,14 +1163,17 @@ export function createPlay3D(ctx) {
 
     game.update = (dt, time) => {
       if (boat) {
+        if (st === 'row') rowUpdate(dt);
+        else if (st === 'sail') { sendT += dt; if (sendT > 1.2) { sendT = 0; tellPos(false); } } // 저절로 저어 갈 때도 친구들에게 알린다
         // 배에 앉은 채로 배와 함께 흔들린다
         const seat = seatOf(boat);
         boat.updateMatrixWorld(true);
         seat.getWorldPosition(pl.root.position);
         pl.root.rotation.set(0, boat.rotation.y, 0); // 방향만 (기울기까지 옮기면 rotation.y가 뒤집혀 읽힌다)
-        if (st === 'sail') aimFollow();
+        if (st === 'sail' || st === 'row') aimFollow();
       }
       for (const s of shadows) {
+        if (s.off) { s.mat.opacity = 0; continue; } // 물고기 떼가 없는 곳에서는 넷만
         s.t += dt;
         if (s.state === 'gone') { s.op = 0; if (s.t > 2.5) spawnShadow(s); } else if (s.state === 'flee') {
           s.x += Math.sin(s.a) * 1.6 * dt; s.z += Math.cos(s.a) * 1.6 * dt;
@@ -1121,7 +1233,7 @@ export function createPlay3D(ctx) {
             const d = Math.hypot(s.x - target.x, s.z - target.z);
             if (d < bd) { bd = d; best = s; }
           }
-          if (best && (bd < 2.2 || waitT > 2.6)) {
+          if (best && (bd < 2.2 || waitT > (school ? 1.3 : 2.6))) {
             if (bd > 1.5) { placeShadow(best, target.x, target.z, 1.3); best.op = 0; }
             active = best;
             active.state = 'approach';
@@ -1212,6 +1324,9 @@ export function createPlay3D(ctx) {
       pl.pose = null;
       if (boat) {
         // 배는 나루터에 다시 묶고, 나는 배 타는 곳에 내려 선다 (섬 쪽을 보고)
+        window.removeEventListener('keydown', kd);
+        window.removeEventListener('keyup', ku);
+        document.body.classList.remove('pad-game');
         sea.dock(boat);
         v.placePlayer(BOARD.x, BOARD.z, BOAT_FACE + Math.PI, 0);
       }
@@ -1223,9 +1338,21 @@ export function createPlay3D(ctx) {
       modal.open('물고기 도감', box, { cls: 'game-sheet' });
       renderFishBook(box, { rpc, getToken, onSessionLost: () => lost({ code: 'SESSION' }), place: P.place });
     };
-    begin(P.id, P.title, game, boat ? [['book', '도감', book], ['swap', '배 옮기기', moveSpot]] : [['book', '도감', book]]);
-    if (boat) sailTo(0, '영차영차! 노를 저어 바다로 나가요.');
-    else setIdle();
+    begin(P.id, P.title, game, boat ? [['book', '도감', book], ['swap', '노 젓기', moveSpot]] : [['book', '도감', book]]);
+    if (boat) {
+      // 나루터 끝 앞바다까지는 저절로 나간 뒤, 그다음은 아이가 노를 젓는다
+      st = 'sail';
+      rod.visible = false;
+      pl.pose = rowPose;
+      for (const s of shadows) { s.state = 'gone'; s.t = -99; s.op = 0; s.x = boat.position.x; s.z = boat.position.z; }
+      aimFollow();
+      game.cam = followCam;
+      ui.setMain('…', { disabled: true });
+      say('영차영차! 노를 저어 바다로 나가요.');
+      tellPos(true); // 친구들에게: 나루터에서 배에 탔어요
+      const out = { x: HARBOR.x + PIER.ux * 3, z: HARBOR.z + PIER.uz * 3 };
+      sea.sail(boat, [HARBOR, out], { speed: 2.6, onArrive: () => { if (live(game) && !leaving) { tellPos(true); rowMode('바다에 나왔어요! 바다를 누르면 그쪽으로 노를 저어 가요. 마음에 드는 곳에서 ‘낚시하기’를 눌러요.'); } } });
+    } else setIdle();
   }
 
   // =====================================================================
@@ -2835,10 +2962,14 @@ export function createPlay3D(ctx) {
 
   // 놀이동산 놀이기구
   const rides = createRides({ v, ui, begin, stopAll, portrait, shout: (id) => ctx.shout && ctx.shout(id), setActivity });
+  const skip = createSkipGame({ v, ui, begin, stopAll, portrait, rpc, getToken, lost, live, onCelebrate });
+  const arkGame = createArkGame({ v, ui, begin, stopAll, portrait, live, hub, onlineFriends, friendPicker, waitInvite,
+    menuTok: { next: () => ++menuTok, is: (t) => t === menuTok }, myId: () => (ctx.myId ? ctx.myId() : null), seatPose, SEAT_Y, onCelebrate });
 
   return {
     ride: rides.ride,
     fishing, seaFishing, omokMenu, omok, omokWatch, cookMenu, cook, cookFree, easel, artSaved,
+    skipping: skip.skipping, arkMenu: arkGame.arkMenu, ark: arkGame.ark,
     observe(id, st) { if (watchUpdate) watchUpdate(id, st); },
     stop: stopAll, decorateRemote,
     get active() { return cur && cur.id; },

@@ -4,8 +4,8 @@
 // 이 파일은 나루터와 배 모형, 배가 물 위를 오가는 움직임을 맡는다 (내 배와 친구 배 모두).
 import * as THREE from './three.module.min.js';
 import { toon, toonGradient } from './avatar.js';
-import { mergeStatic, mergeColored } from './merge.js';
-import { PIER, pierPoint } from './isles.js';
+import { mergeStatic, mergeColored, mergeGeos } from './merge.js';
+import { PIER, pierPoint, onPier, onJetty, PARK_ISLE, POOL_ISLE } from './isles.js';
 
 export const SEA_Y = -1.15; // 바다 물 높이 (마을 둘레 바다 면)
 const BOAT_Y = SEA_Y - 0.13; // 배 바닥 높이 (물에 0.13만큼 잠긴다)
@@ -24,6 +24,115 @@ export const BOARD = at(PIER.len - 1.5, PIER.hw2 - 0.55); // 배에 타고 내�
 const spot = (u, w, turn) => { const p = at(u, w); return { ...p, face: Math.atan2(-p.x, -p.z) + turn }; };
 export const SEA_SPOTS = [spot(PIER.len + 8, 3, 0.25), spot(PIER.len + 11, 9, 0.1), spot(PIER.len + 12, -4, -0.2)];
 export const BOAT_FACE = HEAD0;
+
+// ---------- 바닷길 ----------
+// 배가 못 가는 곳: 섬 셋의 모래밭(놀이동산 섬은 롤러코스터 기둥까지)과 나루터. 모래밭에서 SEA_FAR보다 멀리는 나가지 않는다
+const SHORES = [{ x: 0, z: 0, r: 39.5 }, { x: PARK_ISLE.x, z: PARK_ISLE.z, r: PARK_ISLE.r + 5.1 }, { x: POOL_ISLE.x, z: POOL_ISLE.z, r: POOL_ISLE.r + 4.5 }];
+export const SEA_FAR = 24;
+// 가장 가까운 모래밭 끝까지 거리 (땅 위면 0보다 작다)
+export function shoreGap(x, z) {
+  let g = Infinity;
+  for (const L of SHORES) g = Math.min(g, Math.hypot(x - L.x, z - L.z) - L.r);
+  return g;
+}
+// 배 가운데가 (x, z)에 있어도 되는지. 왜 안 되는지도 알려 준다 ('land', 'far', 'pier')
+export function seaBlock(x, z, m = 1.0) {
+  const g = shoreGap(x, z);
+  if (g < m) return 'land';
+  if (g > SEA_FAR) return 'far';
+  if (onPier(x, z, 0.75) || onJetty(x, z, 0.75)) return 'pier';
+  return null;
+}
+export const canSail = (x, z, m = 1.0) => !seaBlock(x, z, m);
+function clearLine(a, b, m = 1.0) {
+  const d = Math.hypot(b.x - a.x, b.z - a.z), n = Math.max(1, Math.ceil(d / 0.4));
+  for (let i = 1; i <= n; i++) { const k = i / n; if (!canSail(a.x + (b.x - a.x) * k, a.z + (b.z - a.z) * k, m)) return false; }
+  return true;
+}
+// 섬 셋 바깥을 한 바퀴 도는 바닷길 고리 (가운데에서 바깥으로 그은 줄마다, 마지막 땅에서 조금 더 나간 곳)
+const RING = (() => {
+  const C = { x: 15, z: 22 }, N = 96, out = [];
+  const land = (x, z) => shoreGap(x, z) < 0 || onPier(x, z, 0.75) || onJetty(x, z, 0.75);
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2, dx = Math.cos(a), dz = Math.sin(a);
+    let last = 0;
+    for (let r = 0; r < 110; r += 0.5) if (land(C.x + dx * r, C.z + dz * r)) last = r;
+    let r = last;
+    while (r < 140 && (shoreGap(C.x + dx * r, C.z + dz * r) < 4.5 || onPier(C.x + dx * r, C.z + dz * r, 2.5) || onJetty(C.x + dx * r, C.z + dz * r, 2.5))) r += 0.5;
+    out.push({ x: C.x + dx * r, z: C.z + dz * r, dx, dz });
+  }
+  // 이웃한 점 사이 길이 땅을 스치면 두 점을 조금씩 바깥으로 민다
+  for (let it = 0; it < 30; it++) {
+    let moved = false;
+    for (let i = 0; i < N; i++) {
+      const p = out[i], q = out[(i + 1) % N];
+      if (clearLine(p, q, 1.6)) continue;
+      for (const o of [p, q]) if (shoreGap(o.x + o.dx * 0.5, o.z + o.dz * 0.5) <= SEA_FAR - 1) { o.x += o.dx * 0.5; o.z += o.dz * 0.5; moved = true; }
+    }
+    if (!moved) break;
+  }
+  return out.map((p) => ({ x: +p.x.toFixed(2), z: +p.z.toFixed(2) }));
+})();
+// from에서 to까지 땅에 닿지 않는 바닷길 (점 목록, 마지막이 to). 곧게 갈 수 있으면 [to]
+export function seaRoute(from, to) {
+  if (clearLine(from, to)) return [{ x: to.x, z: to.z }];
+  const N = RING.length;
+  const near = (p) => {
+    let best = -1, bd = Infinity;
+    for (let i = 0; i < N; i++) {
+      const d = Math.hypot(RING[i].x - p.x, RING[i].z - p.z);
+      if (d < bd && clearLine(p, RING[i], 0.9)) { bd = d; best = i; }
+    }
+    return best;
+  };
+  const i0 = near(from), i1 = near(to);
+  if (i0 < 0 || i1 < 0) return [{ x: to.x, z: to.z }];
+  const walk = (dir) => {
+    const pts = [];
+    let len = 0;
+    for (let i = i0; ; i = (i + dir + N) % N) {
+      pts.push(RING[i]);
+      if (pts.length > 1) len += Math.hypot(RING[i].x - pts[pts.length - 2].x, RING[i].z - pts[pts.length - 2].z);
+      if (i === i1) break;
+    }
+    return { pts, len };
+  };
+  const f = walk(1), b = walk(-1);
+  const path = [...(f.len <= b.len ? f.pts : b.pts), { x: to.x, z: to.z }];
+  // 곧게 보이는 점까지 건너뛰어 길을 줄인다
+  const out = [];
+  let cur = from, k = 0;
+  while (k < path.length) {
+    let j = path.length - 1;
+    while (j > k && !clearLine(cur, path[j])) j--;
+    out.push(path[j]);
+    cur = path[j];
+    k = j + 1;
+  }
+  return out;
+}
+export const SEA_RING = RING;
+
+// ---------- 물고기 떼 ----------
+// 바다 몇 곳에 물고기 떼가 천천히 맴돈다. 거품이 보글보글 오르고, 물고기가 가끔 뛰어오르고, 갈매기가 위를 돈다.
+// 모든 기기가 같은 시계(Date.now)로 움직여서 친구 화면에서도 같은 곳에 있다. 물고기 떼 가까이에서 낚시하면 물고기가 더 많이, 빨리 온다
+// (잡히는 물고기 종류와 확률은 서버가 정하고 어디서나 같다).
+export const SCHOOLS = [
+  { x: 40, z: 36, r: 4, T: 260, ph: 0.4 }, // 나루터 앞바다
+  { x: -50, z: 8, r: 5, T: 300, ph: 2.1 }, // 마을 섬 서쪽
+  { x: 8, z: -50, r: 5, T: 280, ph: 4.0 }, // 마을 섬 북쪽
+  { x: -34, z: 44, r: 4, T: 240, ph: 1.2 }, // 놀이동산 섬 서쪽
+  { x: 84, z: -6, r: 4, T: 320, ph: 5.3 }, // 수영장 섬 동쪽
+];
+export function schoolAt(i, tSec = Date.now() / 1000) {
+  const S = SCHOOLS[i], a = S.ph + ((tSec % S.T) / S.T) * Math.PI * 2;
+  return { x: S.x + Math.cos(a) * S.r, z: S.z + Math.sin(a) * S.r };
+}
+// (x, z) 가까이(within) 있는 물고기 떼 번호, 없으면 -1
+export function nearSchool(x, z, within = 7) {
+  for (let i = 0; i < SCHOOLS.length; i++) { const p = schoolAt(i); if (Math.hypot(p.x - x, p.z - z) < within) return i; }
+  return -1;
+}
 
 function mk(geo, mat, x = 0, y = 0, z = 0) {
   const o = new THREE.Mesh(geo, mat);
@@ -150,6 +259,101 @@ export class Sea {
     this.rope.frustumCulled = false;
     world.scene.add(this.rope);
     this.ropeFrom = (() => { const p = pierPoint(PIER.len - 0.6, PIER.hw2 - 0.15); return V(p.x, 0.32, p.z); })();
+    this.buildSchools();
+  }
+
+  // 물고기 떼: 떼마다 어두운 물빛, 거품 8개, 뛰어오르는 물고기 1마리, 갈매기 2마리. 그리기 횟수를 줄이려고 같은 것끼리 한 덩어리(InstancedMesh)로 그린다
+  buildSchools() {
+    const n = SCHOOLS.length;
+    const IM = (geo, mat, count) => { const m = new THREE.InstancedMesh(geo, mat, count); m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); this.v.scene.add(m); return m; };
+    // 물고기 떼 아래 어두운 물빛: 가운데는 진하고 가장자리로 갈수록 옅어진다
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g2 = c.getContext('2d'), gr = g2.createRadialGradient(32, 32, 2, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(14,53,80,0.32)');
+    gr.addColorStop(0.6, 'rgba(14,53,80,0.18)');
+    gr.addColorStop(1, 'rgba(14,53,80,0)');
+    g2.fillStyle = gr;
+    g2.fillRect(0, 0, 64, 64);
+    const patchTex = new THREE.CanvasTexture(c);
+    const patchGeo = new THREE.PlaneGeometry(6.4, 6.4);
+    patchGeo.rotateX(-Math.PI / 2);
+    this.sPatch = IM(patchGeo, new THREE.MeshBasicMaterial({ map: patchTex, transparent: true, depthWrite: false }), n);
+    this.sBub = IM(new THREE.SphereGeometry(0.07, 8, 6), new THREE.MeshBasicMaterial({ color: '#FFFFFF', transparent: true, opacity: 0.85 }), n * 8);
+    const fishGeo = new THREE.SphereGeometry(0.2, 10, 8);
+    fishGeo.scale(0.45, 0.6, 1.25);
+    const tail = new THREE.ConeGeometry(0.16, 0.26, 4);
+    tail.rotateX(-Math.PI / 2);
+    tail.scale(0.3, 1, 1);
+    tail.translate(0, 0, -0.32);
+    this.sFish = IM(mergeGeos([{ geo: fishGeo, m: new THREE.Matrix4() }, { geo: tail, m: new THREE.Matrix4() }]), toon('#7FA9C9'), n);
+    const gullBody = new THREE.SphereGeometry(0.16, 10, 8);
+    gullBody.scale(0.8, 0.8, 1.6);
+    this.sGull = IM(gullBody, toon('#FFFFFF'), n * 2);
+    const wing = new THREE.BoxGeometry(0.62, 0.03, 0.22);
+    wing.translate(0.31, 0, 0);
+    this.sWing = IM(wing, toon('#F2F4F7'), n * 4);
+    this.sRing = []; // 뛰어오른 물고기가 떨어진 자리 물결 (떼마다 하나)
+    for (let i = 0; i < n; i++) {
+      const m = new THREE.Mesh(new THREE.RingGeometry(0.2, 0.3, 24), new THREE.MeshBasicMaterial({ color: '#FFFFFF', transparent: true, opacity: 0, depthWrite: false }));
+      m.rotation.x = -Math.PI / 2;
+      this.v.scene.add(m);
+      this.sRing.push(m);
+    }
+    this.sM = new THREE.Matrix4();
+    this.sQ = new THREE.Quaternion();
+    this.sE = new THREE.Euler();
+    this.sS = new THREE.Vector3();
+    this.sP = new THREE.Vector3();
+  }
+  updateSchools() {
+    const tSec = Date.now() / 1000, M = this.sM, Q = this.sQ, E = this.sE, S = this.sS, P = this.sP;
+    const put = (im, i, x, y, z, rx, ry, rz, sx = 1, sy = 1, sz = 1) => {
+      E.set(rx, ry, rz, 'YXZ');
+      Q.setFromEuler(E);
+      M.compose(P.set(x, y, z), Q, S.set(sx, sy, sz));
+      im.setMatrixAt(i, M);
+    };
+    for (let i = 0; i < SCHOOLS.length; i++) {
+      const c = schoolAt(i, tSec);
+      put(this.sPatch, i, c.x, SEA_Y + 0.02, c.z, 0, 0, 0, 1 + Math.sin(tSec * 0.8 + i) * 0.06, 1, 1);
+      // 거품: 떼 안 여기저기서 솟았다가 터진다
+      for (let k = 0; k < 8; k++) {
+        const ph = (tSec * 0.7 + k * 0.137 + i * 0.31) % 1;
+        const a = k * 2.4 + i * 1.7 + Math.floor(tSec * 0.7 + k * 0.137 + i * 0.31) * 1.3;
+        const rr = 0.4 + ((k * 37 + i * 11) % 10) * 0.18;
+        const sc = ph < 0.8 ? 0.5 + ph * 0.9 : (1 - ph) * 5;
+        put(this.sBub, i * 8 + k, c.x + Math.cos(a) * rr, SEA_Y + 0.03 + ph * 0.06, c.z + Math.sin(a) * rr, 0, 0, 0, sc, sc * 0.6, sc);
+      }
+      // 뛰어오르는 물고기: 떼마다 4.7초에 한 번, 0.9초 동안 둥글게
+      const P0 = 4.7, q = (tSec + i * 1.3) % P0, J = 0.9;
+      const ja = Math.floor((tSec + i * 1.3) / P0) * 2.3 + i;
+      const jx = c.x + Math.cos(ja) * 1.0, jz = c.z + Math.sin(ja) * 1.0, dir = ja + Math.PI / 2;
+      if (q < J) {
+        const k = q / J, d = (k - 0.5) * 1.6;
+        put(this.sFish, i, jx + Math.sin(dir) * d, SEA_Y + 0.05 + Math.sin(k * Math.PI) * 0.95, jz + Math.cos(dir) * d, -(k - 0.5) * 2.2, dir, 0);
+      } else put(this.sFish, i, jx, SEA_Y - 2, jz, 0, 0, 0, 0.001, 0.001, 0.001);
+      const ring = this.sRing[i];
+      const rk = (q - J) / 1.1;
+      if (rk >= 0 && rk < 1) {
+        ring.position.set(jx + Math.sin(dir) * 0.8, SEA_Y + 0.04, jz + Math.cos(dir) * 0.8);
+        ring.scale.setScalar(1 + rk * 4);
+        ring.material.opacity = 0.8 * (1 - rk);
+      } else ring.material.opacity = 0;
+      // 갈매기 둘: 떼 위를 빙빙 돌며 날갯짓
+      for (let g = 0; g < 2; g++) {
+        const ga = tSec * (0.55 + g * 0.12) + g * Math.PI + i;
+        const gr = 2.4 + g * 0.8, gy = SEA_Y + 3.4 + g * 0.7 + Math.sin(tSec * 0.9 + g) * 0.25;
+        const gx = c.x + Math.cos(ga) * gr, gz = c.z + Math.sin(ga) * gr;
+        const head = -ga; // 원을 따라 도는 쪽
+        const j = i * 2 + g;
+        put(this.sGull, j, gx, gy, gz, 0, head, 0.35);
+        const flap = Math.sin(tSec * 7 + j) * 0.55;
+        put(this.sWing, j * 2, gx, gy + 0.03, gz, 0, head, 0.35 + flap);
+        put(this.sWing, j * 2 + 1, gx, gy + 0.03, gz, 0, head, Math.PI + 0.35 - flap);
+      }
+    }
+    for (const im of [this.sPatch, this.sBub, this.sFish, this.sGull, this.sWing]) im.instanceMatrix.needsUpdate = true;
   }
 
   buildPier() {
@@ -249,19 +453,19 @@ export class Sea {
   dock(boat) {
     boat.position.set(MOOR.x, BOAT_Y, MOOR.z);
     boat.rotation.y = HEAD0;
-    Object.assign(boat.userData, { path: [], v: 0, row: 0, face: null, onArrive: null });
+    Object.assign(boat.userData, { path: [], v: 0, row: 0, face: null, onArrive: null, manual: false });
   }
   // 배를 pts 자리들을 거쳐 몬다. face: 마지막에 바라볼 방향, onArrive: 다 오면 한 번 부른다
   sail(boat, pts, { face = null, onArrive = null, speed = 2.4 } = {}) {
-    Object.assign(boat.userData, { path: pts.map((p) => ({ x: p.x, z: p.z })), face, onArrive, vmax: speed });
+    Object.assign(boat.userData, { path: pts.map((p) => ({ x: p.x, z: p.z })), face, onArrive, vmax: speed, manual: false });
   }
   // 지금 자리에서 goal까지 갈 길 (묶는 곳을 드나들 때는 나루터 끝 앞바다를 거친다)
   route(boat, goal) {
     const p = boat.position;
     const atMoor = (q) => Math.hypot(q.x - MOOR.x, q.z - MOOR.z) < 2.5;
-    if (atMoor(goal) && !atMoor(p)) return [HARBOR, MOOR];
-    if (atMoor(p) && !atMoor(goal)) return [HARBOR, goal];
-    return [goal];
+    if (atMoor(goal) && !atMoor(p)) return [...seaRoute(p, HARBOR), MOOR];
+    if (atMoor(p) && !atMoor(goal)) return [HARBOR, ...seaRoute(HARBOR, goal)];
+    return seaRoute(p, goal);
   }
   moving(boat) { const u = boat.userData; return u.path.length > 0 || (u.face != null && Math.abs(wrapA(u.face - boat.rotation.y)) > 0.02); }
 
@@ -275,6 +479,7 @@ export class Sea {
   }
 
   update(dt, t) {
+    this.updateSchools();
     this.move(this.boat, dt, t);
     for (const b of this.boats) {
       if (!b.parent) { this.boats.delete(b); continue; }
@@ -296,7 +501,9 @@ export class Sea {
   }
   move(b, dt, t) {
     const u = b.userData, p = b.position;
-    if (u.path.length) {
+    if (u.manual) {
+      // 놀이(js/play3d.js)가 직접 노를 젓는다: 자리, 방향, 빠르기(v), 노(row, ph)를 거기서 정한다
+    } else if (u.path.length) {
       const q = u.path[0];
       const dx = q.x - p.x, dz = q.z - p.z, d = Math.hypot(dx, dz);
       let rem = d;

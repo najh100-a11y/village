@@ -4,7 +4,7 @@ import { h, josa } from './ui.js';
 import { drawFaceIcon, normalizeAvatar } from './face.js';
 import { sfx } from './sound.js';
 
-const KIND_ASK = { omok: '오목 한 판 두자고 해요!', cook: '같이 요리하자고 해요!' };
+const KIND_ASK = { omok: '오목 한 판 두자고 해요!', cook: '같이 요리하자고 해요!', ark: '노아의 방주 짝 맞추기 하자고 해요!' };
 const newGid = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]).join('') + Date.now().toString(36).slice(-4);
 
 // 받는 쪽에서 메시지를 한 번만 처리하고, 보내는 쪽은 받았다는 대답이 올 때까지 다시 보낸다

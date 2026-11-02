@@ -30,13 +30,17 @@ export function onPier(x, z, m = 0) {
   return PIER_RECTS.some(([u0, u1, hw]) => u >= u0 - m && u <= u1 + m && Math.abs(w) <= hw + m);
 }
 
+// 물수제비 터: 수영장 섬 동쪽 모래밭에서 바다로 곧게 뻗은 작은 나무 다리 (동쪽 +x로, 가운데 줄 z, 반너비 hw)
+export const JETTY = { x0: 65.4, x1: 75.6, z: -4.8, hw: 0.8 };
+export function onJetty(x, z, m = 0) { return x >= JETTY.x0 - m && x <= JETTY.x1 + m && Math.abs(z - JETTY.z) <= JETTY.hw + m; }
+
 // 섬과 다리를 한 줄로 놓으면: 놀이동산 섬 - 다리 - 마을 섬 - 다리 - 수영장 섬
 // 서로 다른 곳으로 갈 때는 다리 끝을 거쳐 간다.
 const CHAIN = ['park', 'b-park', 'main', 'b-pool', 'pool'];
 const LINKS = [{ x: 0, z: 43.8 }, { x: 0, z: 29.6 }, { x: 29.6, z: -4 }, { x: 44.4, z: -4 }];
 export function regionOf(x, z) {
   if (Math.hypot(x - PARK_ISLE.x, z - PARK_ISLE.z) <= PARK_ISLE.walk + 0.3) return 'park';
-  if (Math.hypot(x - POOL_ISLE.x, z - POOL_ISLE.z) <= POOL_ISLE.walk + 0.3) return 'pool';
+  if (Math.hypot(x - POOL_ISLE.x, z - POOL_ISLE.z) <= POOL_ISLE.walk + 0.3 || onJetty(x, z, 0.3)) return 'pool';
   if (Math.hypot(x, z) <= MAIN_WALK + 0.3) return 'main';
   for (const b of BRIDGES) if (x >= b.x0 - 0.3 && x <= b.x1 + 0.3 && z >= b.z0 - 0.3 && z <= b.z1 + 0.3) return 'b-' + b.id;
   return 'main';
@@ -55,7 +59,7 @@ export function clampWalk(p) {
   const circles = [{ x: 0, z: 0, r: MAIN_WALK }, { x: PARK_ISLE.x, z: PARK_ISLE.z, r: PARK_ISLE.walk }, { x: POOL_ISLE.x, z: POOL_ISLE.z, r: POOL_ISLE.walk }];
   for (const c of circles) if (Math.hypot(p.x - c.x, p.z - c.z) <= c.r) return p;
   for (const b of BRIDGES) if (p.x >= b.x0 && p.x <= b.x1 && p.z >= b.z0 && p.z <= b.z1) return p;
-  if (onPier(p.x, p.z)) return p;
+  if (onPier(p.x, p.z) || onJetty(p.x, p.z)) return p;
   let bx = p.x, bz = p.z, bd = Infinity;
   for (const c of circles) {
     const dx = p.x - c.x, dz = p.z - c.z, d = Math.hypot(dx, dz) || 1;
@@ -73,6 +77,11 @@ export function clampWalk(p) {
     const q = pierPoint(Math.max(u0, Math.min(u1, u)), Math.max(-hw, Math.min(hw, w)));
     const e = Math.hypot(p.x - q.x, p.z - q.z);
     if (e < bd) { bd = e; bx = q.x; bz = q.z; }
+  }
+  {
+    const qx = Math.max(JETTY.x0, Math.min(JETTY.x1, p.x)), qz = Math.max(JETTY.z - JETTY.hw, Math.min(JETTY.z + JETTY.hw, p.z));
+    const e = Math.hypot(p.x - qx, p.z - qz);
+    if (e < bd) { bd = e; bx = qx; bz = qz; }
   }
   p.x = bx;
   p.z = bz;

@@ -6,6 +6,7 @@ import { HOME_ITEMS } from './homeitems.js';
 import { WARDROBE } from './wardrobe.js';
 import { SALES, SELL_DAY_CHOICES, salePrice, GIFT_MSGS, BUG_NAMES } from './economy.js';
 import { FISH } from './play-data.js';
+import { treasureById } from './beach-data.js';
 
 const $ = (s) => document.querySelector(s);
 let token = store.get('teacher.token');
@@ -417,7 +418,7 @@ function renderVillage() {
     h('time', { datetime: l.at }, timeOf(l.at)),
     h('div', {}, h('span', { class: 'who' }, l.name || '-', h('small', {}, l.village_name || '')), ' ',
       l.sell ? h('span', { class: 'pill green' }, `팔아서 열매 +${l.fruits}개`) : h('span', { class: 'pill' }, `열매 ${l.price}개`),
-      h('div', { class: 'body' }, l.sell ? `${(l.kind === 'fish' ? FISH_NAME : BUG_NAMES)[l.item] || l.item} ${l.n}마리를 팔았어요` : `${ITEM[l.item] || l.item} ${l.n}개`,
+      h('div', { class: 'body' }, l.sell ? (l.kind === 'treasure' ? `${(treasureById(l.item) || {}).name || l.item} ${l.n}개를 팔았어요` : `${(l.kind === 'fish' ? FISH_NAME : BUG_NAMES)[l.item] || l.item} ${l.n}마리를 팔았어요`) : `${ITEM[l.item] || l.item} ${l.n}개`,
         h('small', { class: 'muted' }, `  · 지금 남은 열매 ${l.fruits_left}개`))))) : [h('div', { class: 'card empty' }, '아직 사거나 판 것이 없어요.')]));
   const gl = $('#giftList');
   const gifts = v.gifts || [];

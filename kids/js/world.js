@@ -15,6 +15,7 @@ import { Bugs, makeBug } from './bugs.js';
 import { Fireworks } from './fireworks.js';
 import { HomeSpace, HOME_O } from './home.js';
 import { Sea } from './sea.js';
+import { Beach, makeShovel, digPoseAt, remoteDigPose, DIG_SPOTS } from './beach.js';
 // 내 집(따로 된 장면) 근처 좌표인지: 마을 친구와 동물은 늘 마을 좌표라서 좌표로 가른다
 const nearHome = (p) => Math.abs(p.x - HOME_O.x) < 200 && Math.abs(p.z - HOME_O.z) < 200;
 
@@ -347,6 +348,7 @@ export class Village {
     }
     this.buildNature();
     this.sea = new Sea(this, { signMesh }); // 나무를 심은 뒤에 짓는다 (나무 자리가 바뀌지 않게)
+    this.beach = new Beach(this); // 수영장 섬 보물 캐기 자리와 물수제비 터
     this.critters = new Critters(this);
     this.critters.onSound = (kind, soft) => this.on.onCritterSound && this.on.onCritterSound(kind, soft);
     this.bugs = new Bugs(this);
@@ -1393,6 +1395,70 @@ export class Village {
     if (this.on.onNet) this.on.onNet(false);
   }
 
+  // ---------- 모래사장 보물 캐기: 반짝이는 곳 옆에 서서 삽으로 판다 ----------
+  walkToDig(i) {
+    const sp = DIG_SPOTS[i];
+    if (!sp || !this.player || this.mode !== 'play' || !this.beach || !this.beach.isActive(i)) return;
+    const p = this.player.root.position;
+    const dx = p.x - sp.x, dz = p.z - sp.z, d = Math.hypot(dx, dz) || 1;
+    const pos = new THREE.Vector3(sp.x + (dx / d) * 0.75, 0, sp.z + (dz / d) * 0.75);
+    this.resolve(pos);
+    this.target = { pos, action: () => this.on.onDig && this.on.onDig(i) };
+    this.showTapMark(pos);
+    this.reportMove(pos.x, pos.z);
+  }
+  // cb(): 삽을 처음 넣는 순간 부른다 (서버에 물어본다). 1.5초 동안 세 번 퍼낸 뒤 끝난다. done(item)으로 캔 것을 띄운다
+  startDig(i, cb) {
+    const sp = DIG_SPOTS[i];
+    if (this.mode !== 'play' || this.digging || this.netting || !this.player || !sp) return false;
+    this.cancelEat();
+    const p = this.player.root.position;
+    this.player.root.rotation.y = Math.atan2(sp.x - p.x, sp.z - p.z);
+    const shovel = makeShovel();
+    this.player.hold(shovel, 1);
+    const dig = { t: 0, i, cb, shovel, asked: false, item: null, failed: false, shown: false };
+    this.digging = dig;
+    const f = (av) => digPoseAt(av, dig.t);
+    f.dig = true;
+    this.player.pose = f;
+    if (this.on.onDigging) this.on.onDigging(true);
+    return true;
+  }
+  // 서버가 알려 준 보물 (id) 또는 실패(null)
+  digResult(item) {
+    const d = this.digging;
+    if (!d) return;
+    if (item) d.item = item; else d.failed = true;
+  }
+  tickDig(dt) {
+    const d = this.digging;
+    d.t += dt;
+    if (!d.asked && d.t >= 0.2) { d.asked = true; try { d.cb(); } catch (e) { console.error(e); } }
+    // 퍼낼 때마다 모래가 튄다
+    const ph = Math.floor(d.t / 0.5);
+    if (ph !== d.ph && d.t < 1.5) { d.ph = ph; if (this.beach) this.beach.sand(d.i); }
+    if (d.failed) { this.endDig(); return; }
+    if (d.t >= 1.5 && d.item && !d.shown) {
+      d.shown = true;
+      if (this.beach) { this.beach.markDug(d.i); this.beach.popItem(d.i, d.item); }
+      this.player.celebrate();
+    }
+    if (d.shown && d.t >= 2.3) this.endDig();
+    if (d.t > 9) this.endDig(); // 서버 대답이 너무 늦으면 그만
+  }
+  endDig() {
+    const d = this.digging;
+    if (!d) return;
+    this.digging = null;
+    if (this.player) {
+      if (this.player.held && this.player.held.obj === d.shovel) this.player.drop();
+      if (this.player.pose && this.player.pose.dig) this.player.pose = null;
+      resetLimbs(this.player);
+    }
+    disposeObj(d.shovel);
+    if (this.on.onDigging) this.on.onDigging(false);
+  }
+
   // ---------- 마을 식탁: 친구 요리를 먹는다 ----------
   walkToDish(i) {
     const d = this.dishList && this.dishList[i];
@@ -1694,6 +1760,13 @@ export class Village {
       if (r.pin && r.pin.kind === 'bench' && r.pin.seat === r.actSeat) return;
       if (this.decorateRemote) this.decorateRemote(r, '');
       this.pinBench(r, r.actSeat);
+      return;
+    }
+    if (act !== 'dig' && av.held && av.held.obj.userData.isShovel) { const o = av.held.obj; av.drop(); disposeObj(o); if (av.pose === remoteDigPose) { av.pose = null; resetLimbs(av); } }
+    if (act === 'dig') {
+      if (this.decorateRemote) this.decorateRemote(r, '');
+      if (!av.held || !av.held.obj.userData.isShovel) av.hold(makeShovel(), 1);
+      av.pose = remoteDigPose;
       return;
     }
     if (act !== 'bug' && av.held && av.held.obj.userData.isNet) { const o = av.held.obj; av.drop(); disposeObj(o); if (av.pose && av.pose.net) { av.pose = null; resetLimbs(av); } }
@@ -2222,6 +2295,7 @@ export class Village {
       if (p.type === 'pet') { this.petAnimal(p.i); return; }
       if (p.type === 'mypet') { this.petFollower(p.owner); return; }
       if (p.type === 'bug') { this.walkToBug(p.i); return; }
+      if (p.type === 'dig') { this.walkToDig(p.i); return; }
       if (p.type === 'dish') { this.walkToDish(p.i); return; }
     }
     const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -2284,6 +2358,7 @@ export class Village {
     if (this.sitting) this.standUp(true);
     if (this.eating) this.cancelEat();
     if (this.netting) this.endNet();
+    if (this.digging) this.endDig();
     H.setOwner(ownerName);
     H.setLayout(layout || []);
     const door = this.doors.find((d) => d.id === 'home');
@@ -2632,6 +2707,7 @@ export class Village {
     if (this.sitting) this.standUp(true);
     if (this.eating) this.cancelEat();
     if (this.netting) this.endNet();
+    if (this.digging) this.endDig();
     if (this.swim) {
       // 헤엄치다 바로 놀이로 가면 (초대 받기 등) 헤엄 자세를 풀고 영법 단추를 감춘다
       this.swim = false;
@@ -2737,6 +2813,7 @@ export class Village {
     }
 
     if (this.sea) this.sea.update(dt, t); // 배가 먼저 움직여야 배에 탄 친구가 제자리에 붙는다
+    if (this.beach) this.beach.update(dt);
     this.updateRemotes(dt);
     if (this.atHome && this.homeSpace) {
       const H = this.homeSpace;
@@ -2878,6 +2955,11 @@ export class Village {
     if (this.netting) {
       if (this.netting.hit === null || !(this.keys.size || this.target)) { this.tickNet(dt); pl.update(dt, false); if (this.netting) return; }
       else this.endNet();
+    }
+    if (this.digging) {
+      // 서버에 묻기 전이면 걸어가며 그만둘 수 있다. 물어본 뒤에는 끝까지 판다
+      if (this.digging.asked || !(this.keys.size || this.target)) { this.tickDig(dt); pl.update(dt, false); if (this.digging) return; }
+      else this.endDig();
     }
     let dx = 0, dz = 0;
     if (this.keys.size) {

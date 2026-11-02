@@ -12,6 +12,7 @@ import { createArt } from './art.js';
 import { createPlay3D } from './play3d.js';
 import { ACT_ICON, ACT_TEXT, fishById, recipeById, RECIPES, FISH } from './play-data.js';
 import { BUGS, bugById, bugIcon, catchChance, RARITY_TEXT } from './bugs.js';
+import { TREASURES, treasureById, treasureIcon, treasureShadow, TREASURE_RARITY, BOTTLE_NOTES } from './beach-data.js';
 import { FIREWORKS, FW_IDS, fireworkIcon } from './fireworks.js';
 import { PET_ITEMS, PET_IDS } from './critters.js';
 import { HOME_ITEMS, HOME_IDS, ZONE_NAMES } from './homeitems.js';
@@ -66,7 +67,7 @@ async function boot() {
       const p = $('#prompt');
       if (!d) { p.hidden = true; return; }
       $('#promptName').textContent = d.name;
-      $('#promptAct').textContent = { board: '보기', fish: '낚시하기', omok: '두기', cook: '요리하기', art: '그리기', ferris: '타기', viking: '타기', carousel: '타기', bumper: '타기', coaster: '타기', 'home-exit': '나가기', 'home-closet': '옷 갈아입기', suggest: '건의하기' }[d.id] || '들어가기';
+      $('#promptAct').textContent = { board: '보기', fish: '낚시하기', skip: '던지기', ark: '놀기', omok: '두기', cook: '요리하기', art: '그리기', ferris: '타기', viking: '타기', carousel: '타기', bumper: '타기', coaster: '타기', 'home-exit': '나가기', 'home-closet': '옷 갈아입기', suggest: '건의하기' }[d.id] || '들어가기';
       p.dataset.id = d.id;
       p.hidden = false;
     },
@@ -109,6 +110,8 @@ async function boot() {
     onPet: (r) => { if (r.kind === 'cat') sfx.meow(); else if (r.kind === 'rabbit') sfx.hop(); else if (r.kind === 'chick') sfx.peep(); else sfx.bark(); },
     onBug: (i, kind) => onBug(i, kind),
     onNet: (on) => setActivity(on ? 'bug' : ''),
+    onDig: (i) => onDig(i),
+    onDigging: (on) => setActivity(on ? 'dig' : ''),
     onDish: (i, d) => openDish(d),
     onBoom: (kind, c) => sfx.firework(kind, fwVol(c)),
     onFwLaunch: (item, x, z) => sfx.fwLaunch(fwVol({ x, z })),
@@ -150,7 +153,7 @@ async function boot() {
     isBusy: () => (!$('#maker').hidden || $('#hud').hidden ? true : !playOpen() ? 'locked' : false),
     onLockedInvite: (from, kind) => {
       const p = state.people.get(from);
-      if (p) toast(`${josa(p.name, '이가', '가')} ${kind === 'omok' ? '오목' : '요리'}를 같이 하재요. ${unlockHint()} 놀 수 있어요!`, 3800);
+      if (p) toast(`${josa(p.name, '이가', '가')} ${{ omok: '오목', ark: '방주 짝 맞추기', cook: '요리' }[kind] || '놀이'}를 같이 하재요. ${unlockHint()} 놀 수 있어요!`, 3800);
     },
     onAccept: (kind, session) => openGameWith(kind, session),
   });
@@ -492,6 +495,7 @@ function checkStamps(vs) {
 const playOpen = () => !!(state.today && state.today.cleared);
 const GAMES = {
   fish: () => play3d.fishing(), sea: () => play3d.seaFishing(), omok: () => play3d.omokMenu(), cook: () => play3d.cookMenu(), art: () => play3d.easel(),
+  skip: () => play3d.skipping(), ark: () => play3d.arkMenu(),
   ferris: () => play3d.ride('ferris'), viking: () => play3d.ride('viking'), carousel: () => play3d.ride('carousel'), bumper: () => play3d.ride('bumper'), coaster: () => play3d.ride('coaster'),
 };
 let benchTold = false, munchSaid = false, jumpSent = 0;
@@ -942,16 +946,65 @@ function showCatchCard(k, count, kinds) {
   setTimeout(close, 6500);
 }
 
+// ---------- 모래사장 보물 캐기 ----------
+let treasureBook = null;
+async function loadTreasureBook() {
+  try { treasureBook = await rpc('kids_treasure_book', { p_token: token() }); } catch (e) { if (e.code === 'SESSION') sessionLost(); treasureBook = treasureBook || { mine: {} }; }
+  return treasureBook;
+}
+function onDig(i) {
+  if (!state.features.beach) { toast('보물 캐기는 곧 열려요! 조금만 기다려 줘요.', 2600); return; }
+  if (!playOpen()) { toast(`${unlockHint()} 보물을 캘 수 있어요!`, 3000); return; }
+  village.startDig(i, async () => {
+    try {
+      const r = await rpc('kids_dig', { p_token: token() });
+      village.digResult(r.item);
+      if (treasureBook) treasureBook.mine[r.item] = r.count;
+      setTimeout(() => showTreasureCard(r), 1500);
+    } catch (e) {
+      village.digResult(null);
+      if (e.code === 'SESSION') { sessionLost(); return; }
+      toast(message(e), 2800);
+    }
+  });
+}
+let treasureCard = null;
+function showTreasureCard(r) {
+  const t = treasureById(r.item) || { name: r.name, rarity: r.rarity, desc: '' };
+  if (treasureCard) treasureCard.remove();
+  const close = () => { if (treasureCard === card) { card.remove(); treasureCard = null; } };
+  const ic = h('div', { class: 'bug-ic', 'aria-hidden': 'true' });
+  ic.innerHTML = treasureIcon(r.item, 56);
+  const kinds = TREASURES.filter((x) => x.rarity >= 0).length;
+  let line;
+  if (t.rarity < 0) line = '주워서 모래사장이 깨끗해졌어요!';
+  else if (r.first) line = `처음 캤어요. 보물 도감에 올랐어요! (${r.kinds}/${kinds}가지)`;
+  else line = `지금까지 ${r.count}개 캤어요.`;
+  const note = r.item === 'bottle' ? h('p', { class: 'bottle-note' }, `편지를 펼쳐 봤어요. “${BOTTLE_NOTES[Math.floor(Math.random() * BOTTLE_NOTES.length)]}”`) : null;
+  const card = h('div', { class: 'invite-card catch-card', role: 'status' }, ic,
+    h('div', { class: 'inv-main' },
+      h('p', {}, h('b', {}, `${josa(t.name, '을', '를')} ${t.rarity < 0 ? '주웠어요' : '캤어요'}!`), ' ', line),
+      note,
+      h('div', { class: 'row' },
+        h('button', { class: 'btn btn-plain btn-small', type: 'button', onclick: close }, '닫기'),
+        h('button', { class: 'btn btn-go btn-small', type: 'button', onclick: () => { close(); openBag(null, r.item); } }, '도감 보기'))));
+  treasureCard = card;
+  document.body.append(card);
+  if (t.rarity >= 2) { confetti(); sfx.success(); } else if (t.rarity < 0) sfx.blub(); else sfx.fruit();
+  setTimeout(close, note ? 9000 : 6500);
+}
+
 // ---------- 가방: 곤충 도감과 내 불꽃 ----------
 let shopData = null;
 async function loadShop() {
   try { shopData = await rpc('kids_shop', { p_token: token() }); if (shopData && Number.isFinite(shopData.fruits)) setFruits(shopData.fruits); } catch (e) { if (e.code === 'SESSION') sessionLost(); }
   return shopData;
 }
-async function openBag(focusBug) {
+async function openBag(focusBug, focusTreasure) {
   const body = h('div', { class: 'talk bag' }, h('p', { class: 'fb-empty' }, '가방을 여는 중…'));
   openSheet('내 가방', body, 'bag-sheet');
-  const [book, shop] = await Promise.all([state.features.bugs ? loadBugBook() : null, state.features.shop ? loadShop() : null]);
+  const [book, shop, tbook] = await Promise.all([state.features.bugs ? loadBugBook() : null, state.features.shop ? loadShop() : null,
+    state.features.beach ? loadTreasureBook() : null]);
   if (!modal.isOpen) return;
   const secs = [];
   // 불꽃
@@ -988,9 +1041,11 @@ async function openBag(focusBug) {
   if (state.features.sell && shop && shop.sell) {
     const nf = Object.values(shop.sell.fish || {}).reduce((a, n) => a + n, 0);
     const nb = Object.values(shop.sell.bugs || {}).reduce((a, n) => a + n, 0);
+    const nt = Object.values(shop.sell.treasures || {}).reduce((a, n) => a + n, 0);
+    const what = [nf && `물고기 ${nf}마리`, nb && `곤충 ${nb}마리`, nt && `보물 ${nt}개`].filter(Boolean).join(', ');
     const sec = h('section', { class: 'bag-sec' }, h('h3', {}, '🧺 팔 수 있는 것'),
-      h('p', { class: 'note' }, nf || nb ? `물고기 ${nf}마리, 곤충 ${nb}마리가 가방에 있어요. 열매 상점에서 팔면 흔한 것은 10마리에 열매 1개를 받아요 (오늘 ${shop.sell.today || 0}/${shop.sell.cap || 0}개 받음).` : '잡은 물고기와 곤충이 없어요. 낚시하고 곤충을 잡으면 열매 상점에서 팔 수 있어요.'));
-    if (nf || nb) sec.append(h('div', { class: 'row' }, h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => { shopTab = 'sell'; modal.close(); village.walkTo('shop'); } }, '열매 상점으로 가기')));
+      h('p', { class: 'note' }, what ? `${what}가 가방에 있어요. 열매 상점에서 팔면 흔한 것은 10개에 열매 1개를 받아요 (오늘 ${shop.sell.today || 0}/${shop.sell.cap || 0}개 받음).` : '잡은 물고기와 곤충, 캔 보물이 없어요. 낚시하고 곤충을 잡고 보물을 캐면 열매 상점에서 팔 수 있어요.'));
+    if (nf || nb || nt) sec.append(h('div', { class: 'row' }, h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => { shopTab = 'sell'; modal.close(); village.walkTo('shop'); } }, '열매 상점으로 가기')));
     secs.push(sec);
   }
   // 집 꾸미기 물건
@@ -1035,6 +1090,34 @@ async function openBag(focusBug) {
     if (focusBug) { const b = bugById(focusBug); if (b) show(b); }
   }
   secs.push(bugs);
+  // 보물 도감
+  if (state.features.beach) {
+    const mine = (tbook && tbook.mine) || {};
+    const list = TREASURES.filter((t) => t.rarity >= 0);
+    const got = list.filter((t) => mine[t.id]).length;
+    const detail = h('div', { class: 'bug-detail', hidden: true });
+    const show = (t) => {
+      const n = mine[t.id];
+      detail.hidden = false;
+      const ic = h('div', {});
+      ic.innerHTML = n ? treasureIcon(t.id, 56) : treasureShadow(t.id, 56);
+      detail.replaceChildren(ic, h('div', {},
+        h('b', {}, n ? t.name : '아직 못 찾은 보물'),
+        h('p', { class: 'note' }, `${TREASURE_RARITY[t.rarity]}${n ? ` · ${n}개 캠` : ''}`),
+        h('p', {}, n ? t.desc : '수영장 섬 모래밭에서 반짝이는 곳을 파 봐요.')));
+    };
+    const grid = h('div', { class: 'bug-grid' }, list.map((t) => {
+      const n = mine[t.id];
+      const cell = h('button', { class: 'bug-cell' + (t.id === focusTreasure ? ' new' : ''), type: 'button', onclick: () => show(t) });
+      cell.innerHTML = n ? treasureIcon(t.id, 48) : treasureShadow(t.id, 48);
+      cell.append(h('b', {}, n ? t.name : '???'), h('small', {}, n ? `${n}개` : TREASURE_RARITY[t.rarity]));
+      return cell;
+    }));
+    const tr = h('section', { class: 'bag-sec' }, h('h3', {}, `🏝️ 보물 도감 (${got}/${list.length})`),
+      h('p', { class: 'note' }, `수영장 섬 모래밭에서 반짝이는 곳을 눌러 삽으로 파요. 반짝이는 곳은 40초마다 바뀌어요. 오늘 ${(tbook && tbook.today) || 0}번 팠어요 (하루 60번까지).`), grid, detail);
+    if (focusTreasure) { const t = treasureById(focusTreasure); if (t && t.rarity >= 0) show(t); }
+    if (focusTreasure) secs.unshift(tr); else secs.push(tr);
+  }
   body.replaceChildren(...secs);
 }
 // 불꽃 한 줄 (상점과 가방에서 같이 쓴다)
@@ -1127,6 +1210,10 @@ function showNews() {
   if (state.features.qtgate) news.push(['qtgate', `새 소식! 묵상은 날마다 하는 거예요. 오늘 묵상을 마치면 열매 ${REWARD.qt}개를 받고 놀이 마당이 열려요(이번 주 암송·필사를 처음 하는 날에도 열려요). 필사는 열매 ${REWARD.copy}개, 공책 사진을 올리면 모두 ${REWARD.photo}개예요.`]);
   if (state.features.visit) news.push(['visit', "새 소식! 친구 집에 놀러 갈 수 있어요. 친구 목록에서 '집에 놀러 가기'를 누르거나, 내 집에서 '친구 부르기'로 친구를 불러요."]);
   if (state.features.sea) news.push(['sea', '새 소식! 마을 남동쪽 바닷가에 바다 낚시 나루터가 생겼어요. 배를 타고 나가 바다 물고기를 낚아 봐요.']);
+  if (state.features.sea) news.push(['searow', '새 소식! 바다 낚시 배를 마음대로 저어 갈 수 있어요. 갈매기가 맴도는 물고기 떼 가까이에서 낚시하면 물고기가 금방 모여요.']);
+  if (state.features.beach) news.push(['beach', '새 소식! 수영장 섬 모래밭이 반짝이면 눌러 보세요. 삽으로 파서 조개, 진주, 보물 상자를 찾아요.']);
+  if (state.features.skip) news.push(['skip', '새 소식! 수영장 섬 동쪽에 물수제비 터가 생겼어요. 오늘의 물수제비 왕에 도전해 봐요.']);
+  if (state.features.ark) news.push(['ark', '새 소식! 수영장 섬 북쪽 노아의 방주에서 동물 짝 맞추기를 해요. 혼자 해도 되고, 친구와 겨뤄도 돼요.']);
   const fresh = news.filter(([k]) => { try { return !localStorage.getItem(`kv.news.${k}`); } catch (e) { return false; } });
   fresh.forEach(([k, text]) => notice(text, 5200, () => { try { localStorage.setItem(`kv.news.${k}`, '1'); } catch (e) { /* 다음에 또 */ } }));
 }
@@ -1268,16 +1355,16 @@ function sellRows(shop) {
   const cap = sell.cap || 0, today = sell.today || 0, left = Math.max(0, cap - today);
   const head = h('div', { class: 'sell-head' },
     cap > 0 ? h('b', {}, `오늘 팔아서 받은 열매 ${today} / ${cap}개`) : h('b', {}, '지금은 팔기를 쉬고 있어요.'),
-    h('p', {}, cap > 0 ? (left ? `흔한 물고기와 곤충은 10마리를 모으면 열매 1개예요. 오늘은 열매 ${left}개 더 받을 수 있어요.` : '오늘은 다 팔았어요. 내일 또 팔아요!') : '선생님이 다시 열어 주면 팔 수 있어요.'));
+    h('p', {}, cap > 0 ? (left ? `흔한 물고기, 곤충, 보물은 10개를 모으면 열매 1개예요. 오늘은 열매 ${left}개 더 받을 수 있어요.` : '오늘은 다 팔았어요. 내일 또 팔아요!') : '선생님이 다시 열어 주면 팔 수 있어요.'));
   const out = [head];
   // size마리를 모으면 열매 1개
-  const row = (kind, id, name, count, size, icon) => {
+  const row = (kind, id, name, count, size, icon, u = '마리') => {
     const can = Math.min(Math.floor(count / size), left);
     const acts = h('div', { class: 'acts' },
-      h('button', { class: 'btn btn-go btn-small', type: 'button', disabled: count < size || left < 1, onclick: () => sellNow(kind, id, 1, size) }, `${size}마리 팔기 (열매 1개)`),
-      can > 1 ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => sellNow(kind, id, can, size) }, `${can * size}마리 팔기 (열매 ${can}개)`) : null);
-    const need = count < size ? ` · 열매 1개까지 ${size - count}마리 더 모아요` : '';
-    return h('div', { class: 'shop-item sell' }, icon, h('div', {}, h('b', {}, name), h('p', {}, `가방에 ${count}마리 · ${size}마리에 열매 1개${need}`)), acts);
+      h('button', { class: 'btn btn-go btn-small', type: 'button', disabled: count < size || left < 1, onclick: () => sellNow(kind, id, 1, size) }, `${size}${u} 팔기 (열매 1개)`),
+      can > 1 ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => sellNow(kind, id, can, size) }, `${can * size}${u} 팔기 (열매 ${can}개)`) : null);
+    const need = count < size ? ` · 열매 1개까지 ${size - count}${u} 더 모아요` : '';
+    return h('div', { class: 'shop-item sell' }, icon, h('div', {}, h('b', {}, name), h('p', {}, `가방에 ${count}${u} · ${size}${u}에 열매 1개${need}`)), acts);
   };
   const bundle = sell.bundle || {};
   const fishes = FISH.filter((f) => (sell.fish || {})[f.id] > 0 && (bundle.fish || {})[f.id]);
@@ -1291,7 +1378,13 @@ function sellRows(shop) {
     ic.innerHTML = bugIcon(b.id, true);
     out.push(row('bug', b.id, b.name, sell.bugs[b.id], bundle.bug[b.id], ic));
   }
-  if (!fishes.length && !bugs.length) out.push(h('p', { class: 'fb-empty' }, '팔 물고기나 곤충이 없어요. 반짝 연못과 바다에서 낚시하고, 반짝이는 곤충을 잡아 와요!'));
+  const trs = TREASURES.filter((t) => (sell.treasures || {})[t.id] > 0 && (bundle.treasure || {})[t.id]);
+  for (const t of trs) {
+    const ic = h('div', { class: 'fw-ic bug', 'aria-hidden': 'true' });
+    ic.innerHTML = treasureIcon(t.id, 44);
+    out.push(row('treasure', t.id, t.name, sell.treasures[t.id], bundle.treasure[t.id], ic, '개'));
+  }
+  if (!fishes.length && !bugs.length && !trs.length) out.push(h('p', { class: 'fb-empty' }, '팔 물고기나 곤충, 보물이 없어요. 반짝 연못과 바다에서 낚시하고, 반짝이는 곤충을 잡고, 모래밭에서 보물을 캐 와요!'));
   return out;
 }
 let selling = false;
@@ -1303,8 +1396,8 @@ async function sellNow(kind, id, k, size) {
     const r = await rpc('kids_sell_bundle', { p_token: token(), p_kind: kind, p_item: id, p_bundles: k });
     setFruits(r.fruits);
     sfx.success();
-    const name = kind === 'fish' ? (fishById(id) || {}).name : (bugById(id) || {}).name;
-    toast(`${name} ${k * size}마리를 팔고 열매 ${k}개를 받았어요!`, 2600);
+    const name = kind === 'fish' ? (fishById(id) || {}).name : kind === 'bug' ? (bugById(id) || {}).name : (treasureById(id) || {}).name;
+    toast(`${name} ${k * size}${kind === 'treasure' ? '개' : '마리'}를 팔고 열매 ${k}개를 받았어요!`, 2600);
     redrawShop(r);
   } catch (e) {
     if (e.code === 'SESSION') { sessionLost(); return; }
@@ -1803,6 +1896,7 @@ async function openGameWith(kind, session) {
   hideHint();
   $('#sayPanel').hidden = true;
   if (kind === 'omok') play3d.omok({ session });
+  else if (kind === 'ark') play3d.ark({ session });
   else play3d.cook({ recipe: recipeById(session.extra) || RECIPES[0], session });
 }
 
@@ -1813,7 +1907,10 @@ function onEnter(id) {
   if (id === 'memory') return openHouse(() => memory.open(), 'memory');
   if (id === 'qt') return openHouse(() => qt.open(), 'qt');
   if (id === 'library') return openHouse(() => copy.open(), 'copy');
-  if (GAMES[id] && (id !== 'sea' || state.features.sea)) return openGame(id);
+  // 서버에 아직 없는 놀이는 곧 열린다고만 알린다
+  const NEED = { sea: 'sea', skip: 'skip', ark: 'ark' };
+  if (GAMES[id] && NEED[id] && !state.features[NEED[id]]) { toast('곧 열려요! 조금만 기다려 줘요.', 2600); return; }
+  if (GAMES[id]) return openGame(id);
   if (id === 'shop' && state.features.shop) return openShop();
   const s = SOON[id];
   if (s) {
@@ -1842,7 +1939,7 @@ function onNpc() {
   if (t.qt && !t.qt.done) { lines.push(`오늘 묵상은 '${t.qt.title}'이야. 묵상의 숲에 가 볼래?`); go = ['묵상의 숲으로', 'qt']; }
   else if (cur && !cur.practiced_today && !cur.passed) { lines.push(`이번 주 말씀은 ${cur.ref}이야. 암송의 집에서 연습해 볼까?`); go = ['암송의 집으로', 'memory']; }
   else if (t.copy && !t.copy.done) { if (state.features.photo10) lines.push('이번 주 이야기를 공책에 손으로 써서 사진을 올리면 열매를 10개나 받을 수 있어!'); lines.push(t.theme ? `이번 주 필사는 '${t.theme}' 이야기야(${t.copy.ref}). 필사 도서관에서 읽고 따라 써 볼래?` : `이번 주 필사는 ${t.copy.ref}이야. 필사 도서관에서 따라 써 볼래?`); go = ['필사 도서관으로', 'library']; }
-  else if (t.qt || cur) { lines.push('오늘 할 일을 벌써 다 했구나. 정말 멋지다! 친구들 글에 응원도 보내 봐.'); lines.push('남쪽 다리를 건너면 놀이동산 섬이야. 친구랑 회전목마나 바이킹을 타도 좋아. 동쪽 다리 건너 수영장 섬에서 헤엄쳐도 좋고!'); if (state.features.sea) lines.push('남동쪽 바닷가 나루터에서 배를 타고 바다 낚시를 할 수도 있어!'); }
+  else if (t.qt || cur) { lines.push('오늘 할 일을 벌써 다 했구나. 정말 멋지다! 친구들 글에 응원도 보내 봐.'); lines.push('남쪽 다리를 건너면 놀이동산 섬이야. 친구랑 회전목마나 바이킹을 타도 좋아. 동쪽 다리 건너 수영장 섬에서 헤엄쳐도 좋고!'); if (state.features.sea) lines.push('남동쪽 바닷가 나루터에서 배를 타고 바다 낚시를 할 수도 있어! 갈매기가 맴도는 곳에 물고기 떼가 있대.'); if (state.features.beach) lines.push('수영장 섬 모래밭에서 반짝이는 곳을 파면 보물이 나와. 물수제비 터와 노아의 방주도 거기 있어!'); }
   else lines.push('마을을 천천히 둘러보렴. 남쪽 다리를 건너면 놀이동산 섬, 동쪽 다리를 건너면 수영장 섬이야. 열매가 달린 나무를 누르면 열매를 따 먹을 수 있어.');
   if (state.features.feedback) lines.push('마을에 바라는 게 있거나 이상한 곳을 찾았니? 내 옆 건의함에 적어 주면 선생님께 꼭 전할게.');
   openSheet('숲지기 솔', h('div', { class: 'talk' },
