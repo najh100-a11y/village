@@ -25,6 +25,7 @@ import { REWARD } from './economy.js';
 import { initSound, startMusic, stopMusic, setScene, sfx, cycleSound, soundMode } from './sound.js';
 import { h, modal, toast, confetti, josa } from './ui.js';
 import { drawFaceIcon, normalizeAvatar, defaultAvatar } from './face.js';
+import { VILLAGERS, TALK } from './villagers.js';
 
 const $ = (s) => document.querySelector(s);
 const state = { token: store.get('token'), me: null, people: new Map(), today: null, features: {}, dms: new Map(), unread: 0 };
@@ -103,6 +104,7 @@ async function boot() {
       if (what === 'start') { setActivity('eat'); sfx.pop(); }
       else if (what === 'bite') { sfx.munch(); if (!munchSaid) { munchSaid = true; village.say('me', SHOUTS.yum); } }
       else if (what === 'done' && kind === 'dish') { setActivity(''); munchSaid = false; sfx.success(); toast(`${josa(name, '을', '를')} 맛있게 먹었어요! 만든 친구에게 고맙다고 말해 볼까요?`, 3200); }
+      else if (what === 'done' && kind === 'npc') { setActivity(''); munchSaid = false; sfx.success(); toast(`${josa(npcSnackFrom || '마을 친구', '이', '가')} 준 ${josa(name, '을', '를')} 맛있게 먹었어요! 고맙다고 말해 볼까요?`, 3400); }
       else if (what === 'done' && kind === 'share') { setActivity(''); munchSaid = false; sfx.success(); toast(`친구가 키운 ${josa(name, '을', '를')} 맛있게 먹었어요! 나눠 준 친구에게 고맙다고 말해 볼까요?`, 3400); }
       else if (what === 'done') { setActivity(''); munchSaid = false; sfx.fruit(); toast(`${josa(name, '을', '를')} 냠냠 먹었어요. 정말 맛있어요!`, 2400); }
       else if (what === 'stop') { setActivity(''); munchSaid = false; }
@@ -114,6 +116,7 @@ async function boot() {
     onDig: (i) => onDig(i),
     onDigging: (on) => setActivity(on ? 'dig' : ''),
     onDish: (i, d) => openDish(d),
+    onVillager: (i) => openVillager(i),
     onShare: (i, d) => openShare(d),
     onBoom: (kind, c) => sfx.firework(kind, fwVol(c)),
     onFwLaunch: (item, x, z) => sfx.fwLaunch(fwVol({ x, z })),
@@ -1320,6 +1323,7 @@ function showNews() {
   if (state.features.ark) news.push(['ark', '새 소식! 수영장 섬 북쪽 노아의 방주에서 동물 짝 맞추기를 해요. 혼자 해도 되고, 친구와 겨뤄도 돼요.']);
   if (state.features.sea) news.push(['seafight', '새 소식! 바다 낚시가 1인칭이 되었어요. 물고기가 물면 바늘이 초록 칸에 올 때 ‘감기!’를 눌러 끌어와요. 줄이 팽팽하면 ‘줄 풀기’를 눌러요.']);
   if (state.features.farm) news.push(['farm2', "새 소식! 밭의 채소와 열매는 며칠에 걸쳐 자라요. 거둔 것은 수확 바구니에 모였다가, 마을 식탁 옆 '나눔 수레'에서 친구들과 나눠 먹거나 열매 상점에서 팔 수 있어요."]);
+  news.push(['npc', '새 소식! 마을에 친구 넷(봄이, 하람이, 튼튼이, 노을이)이 이사 왔어요. 눌러서 하이파이브, 가위바위보를 하고 간식도 나눠 먹어 봐요.']);
   if (state.features.petname) news.push(['petname', '새 소식! 애완동물에게 이름을 지어 줄 수 있어요(가방에서). 내 말을 따라 하는 앵무새도 열매 상점에 왔어요.']);
   const fresh = news.filter(([k]) => { try { return !localStorage.getItem(`kv.news.${k}`); } catch (e) { return false; } });
   fresh.forEach(([k, text]) => notice(text, 5200, () => { try { localStorage.setItem(`kv.news.${k}`, '1'); } catch (e) { /* 다음에 또 */ } }));
@@ -1809,6 +1813,86 @@ async function eatShare(d) {
     shareAt = 0;
     refreshShares();
   } finally { eatingShare = false; }
+}
+
+// ---------- 마을 친구 NPC: 눌러서 다가가면 하이파이브, 가위바위보, 간식 나눠 먹기 ----------
+let npcSnackFrom = null;
+const RPS = [['scissors', '✌️', '가위'], ['rock', '✊', '바위'], ['paper', '🖐️', '보']];
+function npcSnackKey(d) { return `kv.npcSnack.${(state.me && state.me.id) || 'me'}.${d.id}`; }
+function todayStr() { const t = new Date(); return `${t.getFullYear()}-${t.getMonth() + 1}-${t.getDate()}`; }
+function openVillager(i) {
+  const d = VILLAGERS[i];
+  const vg = village.villagers;
+  if (!d || !vg) return;
+  let after = null; // 창을 닫은 뒤 할 일
+  hideHint();
+  $('#sayPanel').hidden = true;
+  village.setPaused(true);
+  const body = h('div', { class: 'talk npc-talk' });
+  modal.open('마을 친구', body, { cls: 'talk-sheet', onClose: () => {
+    village.setPaused(false);
+    vg.hold(i, 2.5); // 잠깐 더 마주 보다가 하던 일로 돌아간다
+    if (after) { const f = after; after = null; f(); }
+  } });
+  const face = h('canvas', { width: 80, height: 80, class: 'fl-face', 'aria-hidden': 'true' });
+  drawFaceIcon(face, normalizeAvatar(d.av));
+  const head = h('div', { class: 'npc-head' }, face, h('div', {}, h('b', {}, d.name), h('p', {}, `마을 친구 · ${d.about}`)));
+  const btn = (label, fn, cls = 'btn-soft') => h('button', { class: `btn ${cls}`, type: 'button', onclick: fn }, label);
+  let snackDone = false;
+  try { snackDone = localStorage.getItem(npcSnackKey(d)) === todayStr(); } catch (e) { /* 그대로 */ }
+  const hv = HARVEST[d.snack];
+  function home() {
+    body.replaceChildren(...[head,
+      h('p', { class: 'npc-line' }, `“${TALK[vg.actOf(i)] || TALK.walk}”`),
+      h('div', { class: 'npc-acts' },
+        btn('👋 하이파이브', () => { after = () => highFive(); modal.close(); }),
+        btn('✌️ 가위바위보', () => rps()),
+        !snackDone && hv ? btn(`${hv.icon} 간식 나눠 먹기`, () => { after = () => snack(); modal.close(); }) : null),
+      snackDone ? h('p', { class: 'note' }, `오늘은 ${josa(d.name, '이', '가')} 간식을 벌써 나눠 줬어요. 내일 또 줄 거예요!`) : null,
+      h('p', { class: 'note' }, '마을 친구는 우리 마을에 사는 친구예요. 진짜 친구처럼 쪽지나 선물은 주고받을 수 없어요.'),
+      h('div', { class: 'row' }, btn('안녕, 또 봐!', () => { after = () => vg.say(i, '또 놀자!'); modal.close(); }, 'btn-plain'))].filter(Boolean));
+  }
+  let score = { me: 0, npc: 0 };
+  function rps(last) {
+    const pick = (k) => {
+      const mine = RPS.findIndex((r) => r[0] === k);
+      const theirs = Math.floor(Math.random() * 3);
+      // 가위(0)는 보(2)를, 바위(1)는 가위(0)를, 보(2)는 바위(1)를 이긴다
+      const res = mine === theirs ? 'draw' : (mine + 2) % 3 === theirs ? 'win' : 'lose';
+      if (res === 'win') { score.me++; sfx.success(); } else if (res === 'lose') { score.npc++; sfx.fail(); } else sfx.pop();
+      rps({ mine, theirs, res });
+    };
+    const lines = { win: [`내가 이겼다!`, `${d.name}: 와, 너 정말 잘한다!`], lose: [`${josa(d.name, '이', '가')} 이겼어요.`, `${d.name}: 헤헤, 한 판 더 할래?`], draw: ['비겼어요!', `${d.name}: 우리 마음이 똑같네!`] };
+    body.replaceChildren(...[head,
+      h('p', { class: 'npc-line' }, last ? lines[last.res][1] : `${d.name}: 가위, 바위, 보! 하나 골라!`),
+      last ? h('div', { class: 'rps-show' },
+        h('div', {}, h('span', { class: 'rps-big', 'aria-hidden': 'true' }, RPS[last.mine][1]), h('small', {}, `나 · ${RPS[last.mine][2]}`)),
+        h('b', { class: 'rps-res ' + last.res }, lines[last.res][0]),
+        h('div', {}, h('span', { class: 'rps-big', 'aria-hidden': 'true' }, RPS[last.theirs][1]), h('small', {}, `${d.name} · ${RPS[last.theirs][2]}`))) : null,
+      h('p', { class: 'note' }, `나 ${score.me} : ${score.npc} ${d.name}`),
+      h('div', { class: 'rps-pick' }, RPS.map(([k, ic, name]) => h('button', { class: 'rps-btn', type: 'button', onclick: () => pick(k) }, h('span', { 'aria-hidden': 'true' }, ic), name))),
+      h('div', { class: 'row' }, btn('그만할래', () => {
+        const won = score.me > score.npc, lost = score.me < score.npc;
+        after = () => { vg.say(i, won ? '다음엔 내가 이길 거야!' : lost ? '재밌었다! 또 하자!' : '재밌었다!'); if (lost) vg.cheer(i); else vg.jump(i); };
+        modal.close();
+      }, 'btn-plain'))].filter(Boolean));
+  }
+  function highFive() {
+    if (village.player) village.player.jump();
+    vg.jump(i);
+    sfx.pop();
+    village.say('me', '짝!');
+    vg.say(i, '하이파이브! 짝!');
+    setActivity('');
+  }
+  function snack() {
+    try { localStorage.setItem(npcSnackKey(d), todayStr()); } catch (e) { /* 이번만 */ }
+    npcSnackFrom = d.name;
+    vg.say(i, `이거 먹어 봐! 내가 좋아하는 ${josa(hv.name, '이야', '야')}.`, 2.8);
+    vg.cheer(i);
+    setTimeout(() => village.eatShare({ crop: d.snack }, 'npc'), 900);
+  }
+  home();
 }
 
 // ---------- 친구 목록, 둘이 대화, 오목 구경 ----------

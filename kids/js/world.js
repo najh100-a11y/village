@@ -14,6 +14,7 @@ const mapFrom = (mode) => (mode === 'game' ? 2.0 : 1.6);
 import { Bugs, makeBug } from './bugs.js';
 import { Fireworks } from './fireworks.js';
 import { HomeSpace, HOME_O, buildCrop } from './home.js';
+import { Villagers } from './villagers.js';
 import { Sea } from './sea.js';
 import { Beach, makeShovel, digPoseAt, remoteDigPose, DIG_SPOTS } from './beach.js';
 // 내 집(따로 된 장면) 근처 좌표인지: 마을 친구와 동물은 늘 마을 좌표라서 좌표로 가른다
@@ -357,6 +358,11 @@ export class Village {
     this.fireworks.onLaunch = (item, x, z) => this.on.onFwLaunch && this.on.onFwLaunch(item, x, z);
     this.buildNpcs();
     this.buildRoads();
+    // 마을 친구 NPC 넷 (길을 따라 걸어 다니며 논다)
+    this.villagers = new Villagers(this, {
+      paths: PATHS,
+      onTalk: (i) => this.on.onVillager && this.on.onVillager(i),
+    });
     this.applyTimeOfDay();
     this.bindInput();
     this.resize();
@@ -1266,7 +1272,8 @@ export class Village {
     this.reportMove(pos.x, pos.z);
   }
   // 친구가 나눈 채소·열매를 하나 집어 먹는다 (서버에 기록한 뒤 부른다)
-  eatShare(d) {
+  // what: 'share'(나눔 수레) 또는 'npc'(마을 친구가 준 간식)
+  eatShare(d, what = 'share') {
     if (this.mode !== 'play' || this.eating || !this.player) return;
     const c = buildCrop(d.crop);
     c.scale.setScalar(1.3);
@@ -1275,9 +1282,9 @@ export class Village {
     held.add(c);
     this.player.hold(held, 1);
     const names = { carrot: '당근', tomato: '토마토', cabbage: '배추', strawberry: '딸기' };
-    this.eating = { t: 0.45, f: null, held, bites: 0, c: 0, name: names[d.crop] || '채소', what: 'share' };
+    this.eating = { t: 0.45, f: null, held, bites: 0, c: 0, name: names[d.crop] || '채소', what };
     this.player.pose = eatPose(this.eating);
-    if (this.on.onFruit) this.on.onFruit('start', this.eating.name, 'share');
+    if (this.on.onFruit) this.on.onFruit('start', this.eating.name, what);
   }
   // 마을 식탁 접시 (items: [{id, name, kind, items, cook}] 최근 4개)
   setDishTable(list) {
@@ -1451,8 +1458,10 @@ export class Village {
     if (from) pts.sort((a, q) => Math.hypot(a.x - from.x, a.z - from.z) - Math.hypot(q.x - from.x, q.z - from.z));
     return pts[0];
   }
-  benchTaken(seat) {
+  // noNpc: 마을 친구 NPC가 앉은 자리는 세지 않는다 (NPC가 스스로 물어볼 때)
+  benchTaken(seat, noNpc = false) {
     for (const r of this.remotes.values()) if (r.pin && r.pin.kind === 'bench' && r.pin.seat === seat) return true;
+    if (!noNpc && this.villagers && this.villagers.seatTaken(seat)) return true;
     return false;
   }
   walkToBench(i) {
@@ -1597,7 +1606,7 @@ export class Village {
     const bites = [0.85, 1.35, 1.85];
     while (e.bites < 3 && e.t >= bites[e.bites]) {
       e.bites++;
-      if (e.what === 'fruit' || e.what === 'share') e.held.scale.setScalar(1 - e.bites * 0.3);
+      if (e.what === 'fruit' || e.what === 'share' || e.what === 'npc') e.held.scale.setScalar(1 - e.bites * 0.3);
       if (this.on.onFruit) this.on.onFruit('bite', e.name, e.what);
     }
     if (e.t >= 2.3) this.finishEat();
@@ -1610,7 +1619,7 @@ export class Village {
     this.player.pose = null;
     resetLimbs(this.player);
     this.player.celebrate();
-    if (e.what === 'dish' || e.what === 'share') disposeObj(e.held);
+    if (e.what === 'dish' || e.what === 'share' || e.what === 'npc') disposeObj(e.held);
     if (this.on.onFruit) this.on.onFruit('done', e.name, e.what);
   }
   cancelEat() {
@@ -1620,7 +1629,7 @@ export class Village {
     if (this.player) { this.player.drop(); if (this.player.pose && this.player.pose.eat) this.player.pose = null; resetLimbs(this.player); }
     // 다 못 먹은 열매는 나무로 돌아간다
     if (e.bites === 0 && e.f) { e.f.alive = true; e.f.grow = 1; this.setFruit(e.f); }
-    if (e.what === 'dish' || e.what === 'share') disposeObj(e.held);
+    if (e.what === 'dish' || e.what === 'share' || e.what === 'npc') disposeObj(e.held);
     if (this.on.onFruit) this.on.onFruit('stop', e.name, e.what);
   }
   tickFruit(dt) {
@@ -2591,6 +2600,7 @@ export class Village {
       if (p.type === 'building') { this.walkTo(p.id); return; }
       if (p.type === 'board') { this.walkTo('board'); return; }
       if (p.type === 'npc') { this.walkToNpc(); return; }
+      if (p.type === 'villager') { if (this.villagers) this.villagers.walkTo(p.i); return; }
       if (p.type === 'bench') { this.walkToBench(p.i); return; }
       if (p.type === 'fruit') { this.walkToFruit(p.i); return; }
       if (p.type === 'pet') { this.petAnimal(p.i); return; }
@@ -3100,6 +3110,7 @@ export class Village {
       const T = this.park.now();
       this.park.update(T, dt);
       if (this.critters) this.critters.update(T, dt);
+      if (this.villagers) this.villagers.update(T, dt);
       this.updateFollowers(dt);
       if (this.pool) this.pool.update(T, dt);
       if (this.bugs) this.bugs.update(T, dt);
