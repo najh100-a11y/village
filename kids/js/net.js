@@ -10,7 +10,7 @@ export const PHRASES = {
 export const EMOTES = { heart: '❤️', clap: '👏', smile: '😊', wave: '👋', pray: '🙏', star: '⭐' };
 // 놀이기구를 타며 외치는 말 (말하기 판에는 나오지 않는다)
 export const SHOUTS = { yay: '야호!', beep: '빵빵!', yum: '냠냠!' };
-const EVENTS = ['mv', 'st', 'say', 'chat', 'dm', 'done', 'av', 'inv', 'invr', 'act', 'fish', 'art', 'dish', 'ob', 'fw', 'ate', 'bug', 'jp', 'gift', 'hm', 'hinv'];
+const EVENTS = ['mv', 'st', 'say', 'chat', 'dm', 'done', 'av', 'inv', 'invr', 'act', 'fish', 'art', 'dish', 'ob', 'fw', 'ate', 'bug', 'jp', 'gift', 'hm', 'hinv', 'pc', 'share'];
 export const GAME_KINDS = ['omok', 'cook', 'ark'];
 export const ACTS = ['', 'fish', 'omok', 'cook', 'art', 'memory', 'qt', 'copy', 'watch', 'ferris', 'viking', 'carousel', 'bumper', 'bench', 'eat', 'bug', 'home', 'coaster', 'swim', 'sea', 'visit', 'dig', 'skip', 'ark'];
 const ID_RE = /^[A-Za-z0-9-]{1,64}$/;
@@ -40,6 +40,7 @@ export function clean(type, p) {
   // 나눔 수레: s 나눔 바구니 번호, e 1이면 먹었다(0이면 새로 올렸다)
   if (type === 'share') return Number.isSafeInteger(p.s) && p.s > 0 ? { s: p.s, e: p.e === 1 ? 1 : 0 } : null;
   if (type === 'jp') return {}; // 폴짝 뛰었다
+  if (type === 'pc') return p.k === 'hug' || p.k === 'feed' ? { k: p.k } : null; // 애완동물 돌보기 (안아 주기, 먹이 주기)
   // 불꽃놀이: 종류와 쏜 자리
   if (type === 'fw') return ['fw_spark', 'fw_flower', 'fw_heart'].includes(p.k) && num(p.x) && num(p.z) ? { k: p.k, x: p.x, z: p.z } : null;
   // 마을 식탁 요리를 먹었다 (d: 요리 번호)

@@ -14,7 +14,7 @@ import { ACT_ICON, ACT_TEXT, fishById, recipeById, RECIPES, FISH } from './play-
 import { BUGS, bugById, bugIcon, catchChance, RARITY_TEXT } from './bugs.js';
 import { TREASURES, treasureById, treasureIcon, treasureShadow, TREASURE_RARITY, BOTTLE_NOTES } from './beach-data.js';
 import { FIREWORKS, FW_IDS, fireworkIcon } from './fireworks.js';
-import { PET_ITEMS, PET_IDS } from './critters.js';
+import { PET_ITEMS, PET_IDS, PET_FOOD } from './critters.js';
 import { HOME_ITEMS, HOME_IDS, ZONE_NAMES, HARVEST, CROP_IDS } from './homeitems.js';
 import { itemThumb, avatarThumb } from './home.js';
 import { WARDROBE, WARDROBE_IDS } from './wardrobe.js';
@@ -111,7 +111,8 @@ async function boot() {
       else if (what === 'stop') { setActivity(''); munchSaid = false; }
       else if (what === 'empty') toast('이 나무 열매는 다 땄어요. 조금 있으면 다시 열려요!', 2600);
     },
-    onPet: (r) => petSound(r.kind),
+    onPet: (r) => { if (r.busy) return; petSound(r.kind); if (r.mine) showPetBar(); },
+    onPetCare: (e) => onPetCare(e),
     onBug: (i, kind) => onBug(i, kind),
     onNet: (on) => setActivity(on ? 'bug' : ''),
     onDig: (i) => onDig(i),
@@ -849,6 +850,8 @@ async function startNet() {
         if (p.to === (state.me && state.me.id)) checkGifts(true);
       } else if (type === 'jp') {
         village.remoteJump(id);
+      } else if (type === 'pc') {
+        village.remotePetCare(id, p.k);
       } else if (type === 'dish') {
         dishAt = 0;
         refreshDishes();
@@ -1203,6 +1206,59 @@ function petIcon(id) {
 function petSound(kind) {
   if (kind === 'cat') sfx.meow(); else if (kind === 'rabbit') sfx.hop(); else if (kind === 'chick') sfx.peep(); else if (kind === 'parrot') sfx.squawk(); else sfx.bark();
 }
+// ---------- 내 애완동물 돌보기: 누르면 아래에 '안아 주기', '먹이 주기' 단추가 잠깐 나온다 ----------
+let petBar = null, petBarTimer = 0;
+function myPetKind() { const it = state.me && state.me.pet; return it && PET_ITEMS[it] ? PET_ITEMS[it].kind : ''; }
+function myPetCall() {
+  const it = state.me && state.me.pet;
+  const n = petName(it);
+  return n || (PET_ITEMS[it] ? PET_ITEMS[it].name : '애완동물');
+}
+function showPetBar() {
+  const kind = myPetKind();
+  if (!kind) return;
+  const food = PET_FOOD[kind];
+  if (!petBar) {
+    petBar = h('div', { class: 'pet-bar', hidden: true, role: 'group', 'aria-label': '애완동물 돌보기' });
+    document.body.append(petBar);
+  }
+  petBar.replaceChildren(
+    h('span', { class: 'pb-name' }, myPetCall()),
+    h('button', { type: 'button', onclick: () => doPetCare('hug') }, h('span', { 'aria-hidden': 'true' }, '🤗'), ' 안아 주기'),
+    h('button', { type: 'button', onclick: () => doPetCare('feed') }, h('span', { 'aria-hidden': 'true' }, food.icon), ' 먹이 주기'),
+    h('button', { type: 'button', class: 'pb-x', 'aria-label': '닫기', onclick: hidePetBar }, '×'));
+  petBar.hidden = false;
+  document.body.classList.add('pet-bar-on');
+  clearTimeout(petBarTimer);
+  petBarTimer = setTimeout(hidePetBar, 7000);
+}
+function hidePetBar() {
+  clearTimeout(petBarTimer);
+  if (petBar) petBar.hidden = true;
+  document.body.classList.remove('pet-bar-on');
+}
+function doPetCare(what) {
+  hidePetBar();
+  const r = village.careForPet(what);
+  if (r === 'ok') { if (net) net.send('pc', { k: what }); return; }
+  if (r === 'pool') toast('물 밖으로 나와서 돌봐 줄 수 있어요.', 2400);
+  else if (r === 'busy') toast('지금 하던 일을 마치고 다시 해 봐요.', 2400);
+  else toast("데리고 다니는 애완동물이 없어요. 가방의 '우리 집 친구'에서 데리고 다닐 수 있어요.", 3200);
+}
+// 돌보는 동안 소리와 알림 (내 애완동물만)
+function onPetCare(e) {
+  if (!e.mine) return;
+  if (e.phase === 'hug') petSound(e.kind);
+  else if (e.phase === 'eat') sfx.pop();
+  else if (e.phase === 'bite') sfx.munch();
+  else if (e.phase === 'done') {
+    sfx.success();
+    const name = myPetCall();
+    if (e.what === 'hug') toast(`${josa(name, '을', '를')} 꼭 안아 줬어요! ${e.kind === 'dog' ? '좋아서 꼬리를 흔들어요.' : '무척 좋아해요.'}`, 2600);
+    else toast(`${josa(name, '이', '가')} ${josa(PET_FOOD[e.kind].name, '을', '를')} 맛있게 먹었어요!`, 2600);
+  }
+}
+
 // 아이가 지어 준 애완동물 이름
 function petName(id) { return (id && state.petNames && state.petNames[id]) || ''; }
 function setPetNames(names) {
@@ -1342,7 +1398,8 @@ function showNews() {
   if (state.features.ark) news.push(['ark', '새 소식! 수영장 섬 북쪽 노아의 방주에서 동물 짝 맞추기를 해요. 혼자 해도 되고, 친구와 겨뤄도 돼요.']);
   if (state.features.sea) news.push(['seafight', '새 소식! 바다 낚시가 1인칭이 되었어요. 물고기가 물면 바늘이 초록 칸에 올 때 ‘감기!’를 눌러 끌어와요. 줄이 팽팽하면 ‘줄 풀기’를 눌러요.']);
   if (state.features.farm) news.push(['farm2', "새 소식! 밭의 채소와 열매는 며칠에 걸쳐 자라요. 거둔 것은 수확 바구니에 모였다가, 마을 식탁 옆 '나눔 수레'에서 친구들과 나눠 먹거나 열매 상점에서 팔 수 있어요."]);
-  news.push(['npc', '새 소식! 마을에 친구 넷(봄이, 하람이, 튼튼이, 노을이)이 이사 왔어요. 눌러서 하이파이브, 가위바위보를 하고 간식도 나눠 먹어 봐요.']);
+  news.push(['npc', '새 소식! 섬마다 마을 친구가 살아요(마을 섬 봄이, 놀이동산 섬 튼튼이, 수영장 섬 노을이). 눌러서 하이파이브, 가위바위보를 하고 간식도 나눠 먹어 봐요.']);
+  if (state.features.pets) news.push(['petcare', '새 소식! 데리고 다니는 애완동물을 누르면 안아 주거나 먹이를 줄 수 있어요.']);
   if (state.features.petname) news.push(['petname', '새 소식! 애완동물에게 이름을 지어 줄 수 있어요(가방에서). 내 말을 따라 하는 앵무새도 열매 상점에 왔어요.']);
   news.unshift(['guide', "새 소식! 오른쪽 '마을 지도' 단추를 누르면 어디에 무엇이 있고 무엇을 할 수 있는지 볼 수 있어요. 가고 싶은 곳을 고르면 그곳까지 걸어가요."]);
   // 이 기기로 처음 들어왔으면 지난 소식을 한꺼번에 띄우지 않고 마을 지도만 알려 준다
@@ -1872,7 +1929,7 @@ function openVillager(i) {
   const hv = HARVEST[d.snack];
   function home() {
     body.replaceChildren(...[head,
-      h('p', { class: 'npc-line' }, `“${TALK[vg.actOf(i)] || TALK.walk}”`),
+      h('p', { class: 'npc-line' }, `“${vg.talkOf ? vg.talkOf(i) : TALK.walk}”`),
       h('div', { class: 'npc-acts' },
         btn('👋 하이파이브', () => { after = () => highFive(); modal.close(); }),
         btn('✌️ 가위바위보', () => rps()),

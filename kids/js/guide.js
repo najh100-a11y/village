@@ -35,11 +35,6 @@ const CAT = {
   play: { name: '놀이', color: '#2F86C9' },
   ride: { name: '놀이기구', color: '#CF4F94' },
 };
-const ACT_TEXT = {
-  walk: '걸어가는 중', hold: '나를 보고 있어요', chat: '친구와 이야기하는 중', fish: '연못에서 낚시하는 중', jump: '줄넘기하는 중',
-  eat: '열매 나무 옆에서 열매 먹는 중', toss: '공 주고받는 중', sit: '벤치에서 쉬는 중', table: '마을 식탁에서 밥 먹는 중',
-  look: '그림 공방 앞에서 그림 구경하는 중', dance: '광장에서 다 같이 춤추는 중', recite: '암송의 집 앞에서 말씀 외우는 중',
-};
 const UNLOCK = { qt: '묵상의 숲으로', memory: '암송의 집으로', library: '필사 도서관으로' };
 
 // 섬 둘레 (마을 섬은 world.js islandRadius, 작은 섬은 isles.js makeIsle과 같은 식)
@@ -160,8 +155,9 @@ export function createGuide(o) {
   function npcSpot(i) {
     const d = VILLAGERS[i], vg = v.villagers;
     const p = npcPos(i);
-    return { id: `npc${i}`, npc: i, isle: 'main', cat: 'town', icon: '🌱', name: d.name, short: d.about,
-      lines: [d.about, p && ACT_TEXT[p.act] ? `지금: ${ACT_TEXT[p.act]}` : null, '가까이 가서 누르면 하이파이브, 가위바위보를 하고 간식도 나눠 먹어요.'].filter(Boolean),
+    const doing = vg && vg.doingText ? vg.doingText(p) : '';
+    return { id: `npc${i}`, npc: i, isle: d.isle || 'main', cat: 'town', icon: '🌱', name: d.name, short: d.about,
+      lines: [d.about, doing ? `지금: ${doing}` : null, '가까이 가서 누르면 하이파이브, 가위바위보를 하고 간식도 나눠 먹어요.'].filter(Boolean),
       go: vg ? { t: 'npc', i } : null, goText: '같이 놀러 가기' };
   }
   function npcPos(i) {
@@ -420,7 +416,7 @@ export function createGuide(o) {
     }
     return h('div', { class: 'gm-card', style: `--cat:${CAT[sp.cat].color}` },
       h('div', { class: 'gm-head' }, h('span', { class: 'gm-ico', 'aria-hidden': 'true' }, sp.icon),
-        h('div', {}, h('b', {}, sp.name), h('span', { class: 'gm-where' }, sp.npc != null ? '마을 친구' : `${ISLE_NAME[sp.isle]} · ${CAT[sp.cat].name}`))),
+        h('div', {}, h('b', {}, sp.name), h('span', { class: 'gm-where' }, sp.npc != null ? `마을 친구 · ${ISLE_NAME[sp.isle]}` : `${ISLE_NAME[sp.isle]} · ${CAT[sp.cat].name}`))),
       st ? h('p', { class: `gm-st ${st.cls}` }, st.text) : null,
       sp.now ? h('p', { class: 'gm-now' }, sp.now) : null,
       h('ul', { class: 'gm-lines' }, sp.lines.map((l) => h('li', {}, l))),
@@ -484,9 +480,9 @@ export function createGuide(o) {
   function pick(id, fromList) {
     sel = id;
     if (fromList) { lastTree = null; lastDig = null; }
-    // 목록에서 고르면 그곳이 있는 섬을 크게 본다 (마을 친구는 마을 섬)
+    // 목록에서 고르면 그곳이 있는 섬을 크게 본다 (마을 친구는 사는 섬)
     const sp = id.startsWith('npc') ? null : spots.find((s) => s.id === id);
-    const isle = sp ? sp.isle : 'main';
+    const isle = sp ? sp.isle : (VILLAGERS[+id.slice(3)] || {}).isle || 'main';
     if (fromList && isle !== view) setView(isle, true);
     redrawPins();
     els.card.replaceChildren(card());
@@ -529,7 +525,7 @@ export function createGuide(o) {
         const items = spots.filter(f);
         return items.length ? h('section', {}, h('h3', {}, title), h('div', { class: 'gm-rows' }, items.map(row))) : null;
       }),
-      v.villagers ? h('section', {}, h('h3', {}, '마을 친구 (🌱 이름표, 마을을 돌아다녀요)'), h('div', { class: 'gm-rows' }, VILLAGERS.map((d, i) => row(npcSpot(i))))) : null);
+      v.villagers ? h('section', {}, h('h3', {}, '마을 친구 (섬마다 한 명, 🌱 이름표)'), h('div', { class: 'gm-rows' }, VILLAGERS.map((d, i) => row(npcSpot(i))))) : null);
   }
 
   // ---------- 열기 ----------

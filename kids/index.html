@@ -391,6 +391,23 @@ button.g-chip:active { transform: scale(.96); }
 .fight-line[data-level="2"] i.on { background: #F49A4C; }
 .fight-line[data-level="3"] i.on { background: #EF4A3E; }
 .fight-box .g-chip:disabled { opacity: .45; }
+/* ---------- 내 애완동물 돌보기 (누르면 잠깐 나오는 단추 줄) ---------- */
+.pet-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(22px + env(safe-area-inset-bottom)); z-index: 12; display: flex; align-items: center; gap: 4px; padding: 5px 5px 5px 14px; background: rgba(255, 253, 247, .96); border: 3px solid #fff; border-radius: 999px; box-shadow: 0 6px 18px rgba(70, 50, 30, .22); max-width: calc(100% - 24px); }
+.pet-bar[hidden], body.in-game .pet-bar, body.map-view .pet-bar, body.home-editing .pet-bar, #hud[hidden] ~ .pet-bar { display: none !important; }
+.pet-bar .pb-name { font-family: var(--display); font-size: 15px; color: var(--ink-soft); margin-right: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 7em; }
+.pet-bar button { border: 0; border-radius: 999px; padding: 9px 15px; font-family: var(--display); font-size: 17px; background: #FFE9C7; color: var(--ink); cursor: pointer; white-space: nowrap; touch-action: manipulation; }
+.pet-bar button:active { transform: scale(.96); }
+.pet-bar .pb-x { background: transparent; font-size: 24px; line-height: 1; padding: 6px 10px; color: var(--ink-soft); }
+body.pet-bar-on #hint { display: none !important; }
+body.at-home .pet-bar { bottom: calc(96px + env(safe-area-inset-bottom)); }
+@media (max-width: 560px) {
+  .pet-bar { bottom: calc(92px + env(safe-area-inset-bottom)); padding-left: 10px; }
+  html.touch .pet-bar { bottom: calc(250px + env(safe-area-inset-bottom)); }
+  body.at-home .pet-bar { bottom: calc(160px + env(safe-area-inset-bottom)); }
+  html.touch body.at-home .pet-bar { bottom: calc(316px + env(safe-area-inset-bottom)); }
+  .pet-bar button { padding: 8px 11px; font-size: 15px; }
+  .pet-bar .pb-name { font-size: 13px; max-width: 4.5em; }
+}
 /* ---------- 마을 지도 (어디에 무엇이 있는지) ---------- */
 .view-ctl .zc.guide { position: relative; background: var(--sun); box-shadow: 0 4px 0 var(--sun-deep), 0 8px 18px rgba(70, 50, 30, .18); }
 .view-ctl .zc.guide svg { color: var(--apple-deep); }

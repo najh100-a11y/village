@@ -143,6 +143,45 @@ export const PET_ITEMS = {
 };
 // 눌렀을 때 하는 말
 export const PET_SOUND = { dog: '멍멍!', cat: '야옹~', rabbit: '깡충!', chick: '삐약삐약!', parrot: '안녕! 안녕!' };
+// 먹이 주기: 동물마다 주는 것 (그릇에 담아 바닥에 놓아 준다. 열매나 수확 바구니는 쓰지 않는다)
+export const PET_FOOD = {
+  dog: { icon: '🦴', name: '뼈다귀 간식', color: '#F3E2C4' },
+  cat: { icon: '🐟', name: '생선 간식', color: '#8EC3E6' },
+  rabbit: { icon: '🥕', name: '당근', color: '#F28C28' },
+  chick: { icon: '🌾', name: '모이', color: '#E8C547' },
+  parrot: { icon: '🌻', name: '해바라기씨', color: '#5B4632' },
+};
+// 돌보기 시간 (초)
+export const CARE_SEC = { hug: 3.6, feed: 5.0 };
+function petBowl(kind) {
+  const g = new THREE.Group();
+  const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.12, 0.09, 16), toon(kind === 'cat' ? '#F6A2C4' : kind === 'dog' ? '#5FA9E0' : '#FFFDF7'));
+  bowl.position.y = 0.045;
+  g.add(bowl);
+  const food = new THREE.Group();
+  const col = toon(PET_FOOD[kind].color);
+  if (kind === 'rabbit') {
+    for (const [x, z, r] of [[-0.05, 0.02, 0.5], [0.05, -0.03, -0.4]]) {
+      const c = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.2, 8), col);
+      c.rotation.set(Math.PI / 2, 0, r);
+      c.position.set(x, 0.1, z);
+      food.add(c);
+    }
+  } else {
+    const n = kind === 'dog' ? 3 : 7;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const m = new THREE.Mesh(new THREE.SphereGeometry(kind === 'dog' ? 0.05 : 0.035, 8, 6), col);
+      m.position.set(Math.cos(a) * 0.07, 0.1, Math.sin(a) * 0.07);
+      if (kind === 'dog' || kind === 'cat') m.scale.set(1.5, 0.8, 0.9);
+      food.add(m);
+    }
+  }
+  g.add(food);
+  g.userData.food = food;
+  return g;
+}
+function disposeTree(o) { o.traverse((m) => { if (m.geometry) m.geometry.dispose(); }); o.removeFromParent(); }
 export const PET_IDS = Object.keys(PET_ITEMS);
 
 function makeRabbit(d) {
@@ -361,6 +400,8 @@ export class Follower {
     if (this.bubble) this.bubble.el.remove();
     if (this.tag) this.tag.remove();
     if (this.hearts) for (const hh of this.hearts) hh.el.remove();
+    if (this.care && this.care.bowl) disposeTree(this.care.bowl);
+    this.care = null;
   }
   // 아이가 지어 준 이름 (머리 위 작은 이름표)
   setName(name) {
@@ -391,10 +432,104 @@ export class Follower {
     (this.hearts || (this.hearts = [])).push({ el, pos: this.root.position.clone(), life: 1.3 });
     return this.def.kind;
   }
+  // ---------- 돌보기: 안아 주기(hug), 먹이 주기(feed) ----------
+  // owner: 주인 root. 안아 주기는 주인 가슴 앞에 안기고, 먹이 주기는 주인 앞 바닥에 그릇을 놓으면 다가가서 먹는다
+  startCare(what, owner) {
+    if (!owner || !CARE_SEC[what]) return false;
+    this.endCare(true);
+    const k = this.def.kind, o = owner.position, yaw = owner.rotation.y;
+    const c = { what, t: 0, dur: CARE_SEC[what], heartT: 0.2, said: false };
+    if (what === 'feed') {
+      const bowl = petBowl(k);
+      const bx = o.x + Math.sin(yaw) * 0.85, bz = o.z + Math.cos(yaw) * 0.85;
+      bowl.position.set(bx, 0, bz);
+      bowl.visible = false; // 주인이 내려놓는 순간에 보인다
+      (this.root.parent || this.v.scene).add(bowl);
+      c.bowl = bowl;
+      // 그릇 옆(주인이 보는 쪽에서 오른쪽)에서 그릇을 보고 먹는다. 옆모습이 보이게
+      c.eatAt = { x: bx + Math.cos(yaw) * 0.42 * this.side, z: bz - Math.sin(yaw) * 0.42 * this.side };
+    }
+    this.care = c;
+    this.react = 0;
+    this.trail = [];
+    return true;
+  }
+  // 그만 (quiet: 하트 없이). 안겨 있었으면 주인 옆에 내려온다
+  endCare(quiet = false) {
+    const c = this.care;
+    if (!c) return;
+    this.care = null;
+    if (c.bowl) disposeTree(c.bowl);
+    const r = this.root;
+    if (c.what === 'hug') { r.position.y = 0; this.v.resolve(r.position); r.position.y = 0; } // 주인 앞에 내려온다
+    this.legs[0].rotation.x = this.legs[1].rotation.x = 0;
+    this.head.rotation.x = 0;
+    this.body.position.y = 0;
+    this.body.rotation.x = 0;
+    if (!quiet) { this.hop = 1; this.react = 1.2; this.addHeart(); }
+  }
+  addHeart() {
+    const el = this.v.makeLabel('💕', 'kv-heart' + (this.ownerId === 'me' ? ' home-ok' : ''));
+    (this.hearts || (this.hearts = [])).push({ el, pos: this.root.position.clone(), life: 1.3 });
+  }
+  tickCare(dt, owner, wait) {
+    const c = this.care, r = this.root, pos = r.position, k = this.def.kind, t = this.v.time;
+    c.t += dt;
+    const cb = this.v.on && this.v.on.onPetCare;
+    const tell = (phase) => { if (cb) cb({ phase, what: c.what, kind: k, mine: this.ownerId === 'me' }); };
+    if (wait && c.what === 'hug') { this.endCare(); return 0; } // 주인이 놀이를 시작하면 내려온다
+    if (c.what === 'hug') {
+      // 주인 가슴 앞, 주인과 같은 쪽을 본다 (화면 쪽으로 얼굴이 보이게)
+      const o = owner.position, yaw = owner.rotation.y;
+      pos.set(o.x + Math.sin(yaw) * 0.42, o.y + (k === 'parrot' ? 0.98 : k === 'chick' ? 0.95 : 0.82), o.z + Math.cos(yaw) * 0.42);
+      r.rotation.y = yaw;
+      this.body.position.y = 0;
+      this.body.rotation.x = k === 'parrot' ? 0 : -0.25; // 살짝 기대어 안긴다
+      this.legs[0].rotation.x = this.legs[1].rotation.x = k === 'parrot' ? 0 : 0.7; // 다리는 아래로
+      this.head.rotation.x = Math.sin(t * 2.2) * 0.12;
+      if (k === 'parrot') { this.fly = 0; this.wings[0].rotation.z = -0.1; this.wings[1].rotation.z = 0.1; }
+      if (k === 'dog') this.tail.rotation.y = Math.sin(t * 18) * 0.6;
+      else if (k === 'cat') this.tail.rotation.z = Math.sin(t * 2.5) * 0.4;
+      c.heartT -= dt;
+      if (c.heartT <= 0) { c.heartT = 1.1; this.addHeart(); }
+      if (!c.said && c.t > 0.5) { c.said = true; tell('hug'); } // 말풍선 없이 소리만 (얼굴을 가리지 않게)
+    } else {
+      // 먹이: 주인이 그릇을 놓으면(0.6초) 그릇 옆으로 가서 먹는다
+      if (c.t > 0.6 && c.bowl && !c.bowl.visible) c.bowl.visible = true;
+      pos.y = 0;
+      this.body.position.y = 0;
+      if (k === 'parrot') { this.fly = 0; this.wings[0].rotation.z = -0.1; this.wings[1].rotation.z = 0.1; }
+      const dx = c.eatAt.x - pos.x, dz = c.eatAt.z - pos.z, d = Math.hypot(dx, dz);
+      if (c.t > 0.6 && d > 0.05) {
+        const step = Math.min(d, 2.6 * dt);
+        pos.x += (dx / d) * step; pos.z += (dz / d) * step;
+        r.rotation.y = turn(r.rotation.y, Math.atan2(dx, dz), dt * 10);
+        this.walk += dt * 16;
+        const sw = Math.sin(this.walk) * 0.5;
+        this.legs[0].rotation.x = sw; this.legs[1].rotation.x = -sw;
+      } else if (c.t > 0.6) {
+        // 그릇을 보고 콕콕 (먹는 만큼 그릇이 빈다)
+        const b = c.bowl.position;
+        r.rotation.y = turn(r.rotation.y, Math.atan2(b.x - pos.x, b.z - pos.z), dt * 8);
+        this.legs[0].rotation.x = this.legs[1].rotation.x = 0;
+        this.head.rotation.x = 0.45 + Math.max(0, Math.sin(t * 11)) * 0.3;
+        if (k === 'dog') this.tail.rotation.y = Math.sin(t * 16) * 0.6;
+        if (!c.eatStart) { c.eatStart = c.t; tell('eat'); }
+        const f = Math.min(1, (c.t - c.eatStart) / Math.max(0.5, c.dur - c.eatStart - 0.4));
+        const food = c.bowl.userData.food;
+        food.scale.setScalar(Math.max(0.05, 1 - f));
+        if (!c.said && c.t - c.eatStart > 0.8) { c.said = true; this.say('냠냠!'); tell('bite'); }
+      }
+    }
+    if (c.t >= c.dur) { const what = c.what; this.endCare(); if (cb) cb({ phase: 'done', what, kind: k, mine: this.ownerId === 'me' }); return 0; }
+    return c.what === 'hug' ? 0.5 : 0; // 안겨 있으면 하트와 이름표를 주인 머리 위쪽에서 띄운다
+  }
+
   // owner: 주인 root, wait: 주인이 놀이 중이면 그 자리에서 기다린다
   update(dt, owner, wait) {
     const v = this.v, r = this.root, pos = r.position;
     if (!owner) return;
+    if (this.care) { const lift = this.tickCare(dt, owner, wait); this.tickLabels(dt, lift); return; }
     const o = owner.position;
     const yaw = owner.rotation.y;
     // 주인 뒤쪽 옆자리
@@ -474,6 +609,11 @@ export class Follower {
       // 병아리는 가끔 땅을 콕콕
       this.head.rotation.x = k === 'chick' && !moving && Math.sin(t * 1.3) > 0.85 ? 0.5 : (k === 'dog' && sit ? 0.15 : 0);
     }
+    this.tickLabels(dt, lift);
+  }
+  // 따라 하는 말, 말풍선, 이름표, 하트
+  tickLabels(dt, lift) {
+    const v = this.v, pos = this.root.position, k = this.def.kind;
     if (this.echoQ) {
       this.echoQ.at -= dt;
       if (this.echoQ.at <= 0) { this.say(this.echoQ.text); this.echoQ = null; this.hop = Math.max(this.hop, 0.6); }
@@ -485,7 +625,7 @@ export class Follower {
     }
     if (this.tag) {
       // 이름표 (말풍선이 떠 있을 때와 1인칭으로 볼 때는 감춘다)
-      const show = this.root.visible && !this.bubble && !v.fp;
+      const show = this.root.visible && !this.bubble && !v.fp && !(this.care && this.care.what === 'hug');
       if (show) v.placeLabel(this.tag, pos, (k === 'parrot' ? 0.8 : k === 'chick' ? 0.62 : k === 'rabbit' ? 0.82 : 0.95) + lift);
       else this.tag.style.display = 'none';
     }
