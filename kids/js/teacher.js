@@ -686,7 +686,45 @@ function renderVerses() {
   $('#verseList').replaceChildren(...data.verses.map((v) => verseEditor(v)));
 }
 
+// 내 선생님 주민 열매: 로그인한 선생님 자신의 주민만 바꾼다 (아이들 열매는 그대로)
+function renderMyFruits() {
+  const box = $('#myFruitBox');
+  if (!box) return;
+  const r = data.my_resident;
+  const title = h('h3', {}, '내 선생님 주민 열매');
+  if (!r) {
+    box.replaceChildren(title, h('p', { class: 'note' }, "아직 선생님 주민이 없어요. 위쪽 '선생님으로 마을 들어가기'를 한 번 누르면 주민이 생기고 열매 100개를 받아요. 그다음부터 여기서 열매 개수를 바꿀 수 있어요."));
+    return;
+  }
+  const MAX = 9999;
+  const input = h('input', { type: 'number', id: 'myFruitIn', min: '0', max: String(MAX), step: '1', inputmode: 'numeric', value: String(r.fruits) });
+  const err = h('p', { class: 'err', role: 'alert' });
+  let busy = false;
+  const set = async (n) => {
+    if (busy) return;
+    err.textContent = '';
+    if (!Number.isInteger(n) || n < 0 || n > MAX) { err.textContent = `열매 개수는 소수점 없이 0부터 ${MAX}까지 적어 주세요.`; return; }
+    busy = true;
+    try {
+      const res = await call('kids_t_set_my_fruits', { p_fruits: n }, err);
+      r.fruits = res.fruits;
+      renderMyFruits();
+      toast(`선생님 주민 열매를 ${res.fruits}개로 바꿨어요.`);
+    } catch (e) { /* err에 보인다 */ } finally { busy = false; }
+  };
+  const form = h('form', { class: 'set', novalidate: true, onsubmit: (e) => { e.preventDefault(); set(Number(input.value)); } },
+    h('label', { class: 'field' }, h('span', {}, `열매 개수 (0~${MAX})`), input),
+    h('button', { class: 'btn btn-go', type: 'submit' }, '이 개수로 바꾸기'));
+  box.replaceChildren(title,
+    h('p', { class: 'now' }, `${r.village_name || '마을 이름을 아직 정하지 않은 주민'} · 지금 열매 `, h('b', {}, `${r.fruits}개`)),
+    form,
+    h('div', { class: 'quick' }, [10, 50, 100].map((k) => h('button', { class: 'btn btn-sm', type: 'button', onclick: () => set(Math.min(MAX, r.fruits + k)) }, `+${k}`))),
+    err,
+    h('p', { class: 'note' }, '로그인한 선생님 자신의 주민 열매만 바꿔요. 아이들 열매는 바뀌지 않아요. 선생님 주민으로 마을에 들어가 있는 동안 바꿨다면, 마을 화면으로 돌아가면 바뀐 개수로 보여요.'));
+}
+
 function renderTeachers() {
+  renderMyFruits();
   $('#teacherList').replaceChildren(...data.teachers.map((t) => h('div', { class: 'trow' },
     h('div', {}, h('b', {}, t.name), h('span', { class: 'pill', style: 'margin-left:8px' }, t.login_id), t.id === data.me.id ? h('span', { class: 'pill green', style: 'margin-left:6px' }, '나') : null),
     t.id === data.me.id ? null : confirmButton('지우기', '정말 지우기', async () => {

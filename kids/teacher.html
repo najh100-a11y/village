@@ -165,6 +165,13 @@ dialog::backdrop { background: rgba(60, 45, 30, .35); }
 .cardline { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; background: #fff; border: 2px dashed var(--leaf); border-radius: 16px; padding: 12px 16px; font-family: var(--display); font-size: 20px; }
 .cardline span { font-family: var(--body); font-size: 14px; color: var(--ink-soft); }
 .teachers { display: grid; gap: 8px; }
+.my-fruit { display: grid; gap: 10px; }
+.my-fruit h3 { margin: 0; font-family: var(--display); font-weight: 400; }
+.my-fruit p { margin: 0; }
+.my-fruit .now b { font-family: var(--display); font-weight: 400; font-size: 22px; color: var(--apple); }
+.my-fruit .set { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+.my-fruit .set .field { margin: 0; flex: 0 1 180px; }
+.my-fruit .quick { display: flex; flex-wrap: wrap; gap: 6px; }
 .trow { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: #fff; border: 2px solid var(--line); border-radius: 14px; padding: 10px 14px; }
 
 /* 주간 계획 */
@@ -336,6 +343,7 @@ dialog::backdrop { background: rgba(60, 45, 30, .35); }
 
     <section id="tab-teachers" hidden>
       <div class="bar"><h2>선생님 계정</h2></div>
+      <div class="card my-fruit" id="myFruitBox" style="margin-bottom:18px"></div>
       <div class="teachers" id="teacherList" style="margin-bottom:18px"></div>
       <div class="grid2">
         <form class="card" id="teacherForm" style="display:grid;gap:12px">

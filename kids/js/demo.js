@@ -1434,6 +1434,15 @@ export class DemoBackend {
       }),
     };
   }
+  // 선생님 자신의 주민 열매 개수 정하기 (서버 kids_t_set_my_fruits와 같다)
+  kids_t_set_my_fruits({ p_token, p_fruits }) {
+    const tid = this.session(p_token, 'teacher');
+    if (!Number.isInteger(p_fruits) || p_fruits < 0 || p_fruits > 9999) fail('BAD_FRUITS');
+    const r = this.db.children.find((c) => c.teacher === tid);
+    if (!r) fail('NO_RESIDENT');
+    r.fruits = p_fruits;
+    return { ok: true, fruits: r.fruits };
+  }
   kids_t_set_village({ p_token, p_chat_open, p_free_today }) {
     this.session(p_token, 'teacher');
     const v = this.villageConf();

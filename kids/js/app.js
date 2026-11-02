@@ -2240,6 +2240,8 @@ function updateHud() {
 }
 
 // 서버의 열매 수로 화면을 맞춘다 (선생님이 도장을 찍어 준 뒤 등)
+// 다른 탭(선생님 화면 등)에 다녀오면 열매 수를 다시 읽는다 (선생님이 주민 열매를 바꿨을 수 있다)
+document.addEventListener('visibilitychange', () => { if (!document.hidden && state.me && state.token && !$('#hud').hidden) refreshFruits(); });
 function refreshFruits() {
   rpc('kids_me', { p_token: token() }).then((m) => { if (m && Number.isFinite(m.fruits)) setFruits(m.fruits); }).catch(() => { /* 다음에 */ });
 }
