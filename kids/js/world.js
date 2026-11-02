@@ -210,7 +210,7 @@ function signMesh(text, width, opts) {
 }
 
 // 길: 꺾은선 목록 (x, z)
-const PATHS = [
+export const PATHS = [
   [[0, 32.5], [0, 6], [0, 1]], // 남쪽 끝은 놀이동산 섬 다리
   [[-2.5, -5.5], [-6.5, -7.8], [-9.3, -9.4]],
   [[2.5, -5.5], [6.5, -7.8], [9.3, -9.4]],
@@ -221,8 +221,8 @@ const PATHS = [
   [[0, 11], [5, 12.9], [9.4, 14.4]], // 놀이 마당으로
   [[9, 1.0], [14, -4.5], [22, -5.5], [34, -4.0]], // 동쪽 끝은 수영장 섬 다리
 ];
-const PLAZA = { x: 0, z: -2.5, r: 5.4 };
-const YARD = { x: 11.2, z: 16.4, r: 3.4 }; // 놀이 마당
+export const PLAZA = { x: 0, z: -2.5, r: 5.4 };
+export const YARD = { x: 11.2, z: 16.4, r: 3.4 }; // 놀이 마당
 
 function distToSeg(px, pz, ax, az, bx, bz) {
   const dx = bx - ax, dz = bz - az;
@@ -238,7 +238,7 @@ function nearPath(x, z, pad) {
   return false;
 }
 
-function islandRadius(a) {
+export function islandRadius(a) {
   return 32.6 + 1.1 * Math.sin(3 * a + 0.4) + 0.7 * Math.sin(7 * a + 1.3) + 0.4 * Math.sin(11 * a);
 }
 
@@ -2746,6 +2746,16 @@ export class Village {
     if (!d || !this.player) return;
     this.target = { pos: d.pos.clone(), action: () => this.enter(id) };
     this.reportMove(d.pos.x, d.pos.z);
+  }
+  // 마을 지도에서 고른 곳으로 걸어간다 (face: 닿으면 바라볼 방향, after: 닿으면 부를 것)
+  walkToPoint(x, z, face = null, after = null) {
+    if (!this.player || this.mode !== 'play' || this.atHome) return false;
+    const pos = new THREE.Vector3(x, 0, z);
+    this.resolve(pos);
+    this.target = { pos, action: () => { if (face != null) this.player.root.rotation.y = face; if (after) after(); } };
+    this.showTapMark(pos);
+    this.reportMove(pos.x, pos.z);
+    return true;
   }
   // 친구 옆으로 걸어가기
   walkToFriend(id) {

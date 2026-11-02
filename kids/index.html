@@ -391,6 +391,95 @@ button.g-chip:active { transform: scale(.96); }
 .fight-line[data-level="2"] i.on { background: #F49A4C; }
 .fight-line[data-level="3"] i.on { background: #EF4A3E; }
 .fight-box .g-chip:disabled { opacity: .45; }
+/* ---------- 마을 지도 (어디에 무엇이 있는지) ---------- */
+.view-ctl .zc.guide { position: relative; background: var(--sun); box-shadow: 0 4px 0 var(--sun-deep), 0 8px 18px rgba(70, 50, 30, .18); }
+.view-ctl .zc.guide svg { color: var(--apple-deep); }
+.view-ctl .zc.guide span { white-space: nowrap; letter-spacing: -.4px; color: var(--ink); }
+.view-ctl .zc.guide.fresh::after { content: ''; position: absolute; top: -5px; right: -5px; width: 15px; height: 15px; border-radius: 50%; background: var(--apple); border: 2px solid #fff; animation: gmBlink 1.4s ease-in-out infinite; }
+@keyframes gmBlink { 50% { transform: scale(1.3); } }
+body.in-game .view-ctl .zc.guide, body.home-editing .view-ctl .zc.guide { display: none; }
+/* 낮은 가로 화면(휴대폰 눕힘): 오른쪽 단추 줄을 위쪽 메뉴 바로 아래부터 작게 놓아 점프·달리기 단추와 겹치지 않게 */
+@media (max-height: 500px) and (orientation: landscape) {
+  .view-ctl { top: calc(84px + env(safe-area-inset-top)); transform: none; gap: 4px; }
+  .view-ctl .zc, .view-reset { width: 54px; min-height: 40px; padding: 3px 0; border-width: 2px; }
+  .view-ctl .zc svg, .view-reset svg { width: 22px; height: 22px; }
+  .view-ctl .zc span, .view-reset span { font-size: 10.5px; }
+  #toast { max-width: calc(100% - 180px); }
+}
+@media (max-height: 400px) and (orientation: landscape) {
+  .view-ctl { top: calc(80px + env(safe-area-inset-top)); gap: 3px; }
+  .view-ctl .zc span, .view-reset span { display: none; }
+  .view-ctl .zc, .view-reset { min-height: 32px; padding: 2px 0; }
+  .view-ctl .zc svg, .view-reset svg { width: 20px; height: 20px; }
+}
+.modal.map-sheet .sheet { width: min(1000px, 100%); }
+.gm { display: grid; gap: 12px; }
+.gm-intro { margin: 0; color: var(--ink-soft); font-size: 15px; }
+.gm-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.gm-tabs button { border: 3px solid #fff; background: #fff; border-radius: 999px; padding: 6px 14px; font-family: var(--display); font-size: 15px; color: var(--ink-soft); box-shadow: 0 3px 0 var(--line); cursor: pointer; touch-action: manipulation; }
+.gm-tabs button[aria-pressed="true"] { background: var(--leaf); color: #fff; box-shadow: 0 3px 0 var(--leaf-deep); }
+@media (max-width: 400px) { .gm-tabs button { padding: 5px 10px; font-size: 14px; } .gm-intro { font-size: 14px; } }
+.gm-wrap { display: grid; gap: 12px; align-items: start; scroll-margin-top: 8px; }
+@media (min-width: 780px) { .gm-wrap { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); } }
+.gm-map { background: #5FC3E6; border-radius: 22px; overflow: hidden; border: 3px solid #fff; box-shadow: 0 5px 0 var(--line); }
+.gm-svg { display: block; width: 100%; height: auto; max-height: 64vh; font-family: var(--display); -webkit-user-select: none; user-select: none; }
+.gm-svg text { pointer-events: none; }
+.gm-svg.all .gm-land { cursor: zoom-in; }
+.gm-svg .gm-isle { pointer-events: auto; cursor: zoom-in; fill: var(--ink); paint-order: stroke; stroke: #FFFDF7; stroke-linejoin: round; }
+.gm-emo { text-anchor: middle; dominant-baseline: central; }
+.gm-lbl, .gm-note, .gm-n { fill: var(--ink); paint-order: stroke; stroke: #FFFDF7; stroke-linejoin: round; }
+.gm-note { fill: #7A5233; }
+.gm-pin { cursor: pointer; outline: none; }
+.gm-pin .gm-dot { fill: #FFFDF7; }
+.gm-pin.shut .gm-dot { fill: #EFE8DA; }
+.gm-pin .gm-ring, .gm-pin .gm-hit { fill: transparent; stroke: none; }
+.gm-pin.on .gm-ring, .gm-pin:focus-visible .gm-ring { fill: rgba(255, 228, 120, .9); stroke: #fff; }
+.gm-pin.tree.on .gm-hit { fill: rgba(255, 228, 120, .9); }
+.gm-pin.dig .gm-spark { display: none; }
+.gm-pin.dig.shine .gm-spark { display: inline; }
+.gm-pin.dig.on circle { stroke: var(--sun-deep); }
+.gm-me-t { fill: #fff; text-anchor: middle; dominant-baseline: central; }
+.gm-pulse { fill: rgba(239, 100, 97, .4); transform-box: fill-box; transform-origin: center; animation: gmPulse 1.8s ease-out infinite; }
+@keyframes gmPulse { from { transform: scale(.7); opacity: 1; } to { transform: scale(2); opacity: 0; } }
+.gm-side { min-width: 0; }
+.gm-card { background: #fff; border-radius: 22px; padding: 14px 16px; box-shadow: 0 5px 0 var(--line); border-top: 6px solid var(--cat, var(--leaf)); display: grid; gap: 9px; scroll-margin-bottom: 12px; }
+.gm-card p { margin: 0; }
+.gm-head { display: flex; align-items: center; gap: 10px; }
+.gm-ico { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 50%; background: #FFF8E6; border: 3px solid var(--cat, var(--leaf)); font-size: 23px; line-height: 1; flex: none; }
+.gm-ico.small { width: 36px; height: 36px; font-size: 18px; border-width: 2px; }
+.gm-head b { display: block; font-family: var(--display); font-weight: 400; font-size: 20px; color: var(--ink); }
+.gm-where { font-size: 13px; color: var(--ink-soft); }
+.gm-st { font-size: 14px; padding: 6px 10px; border-radius: 12px; }
+.gm-st.ok { background: #E7F6DF; color: #2F7A3A; }
+.gm-st.lock { background: #FFF1D6; color: #8B5A12; }
+.gm-st.soon { background: #EEF1F5; color: #5B6878; }
+.gm-now { font-family: var(--display); color: var(--leaf-deep); font-size: 15px; }
+.gm-lines { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 15px; line-height: 1.45; }
+.gm-reward { font-size: 14px; background: #FFF4F0; border-radius: 12px; padding: 6px 10px; line-height: 1.45; }
+.gm-reward b { font-family: var(--display); font-weight: 400; color: var(--apple-deep); }
+.gm-subs { display: grid; gap: 8px; }
+.gm-sub { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; background: var(--paper); border-radius: 14px; padding: 8px 10px; }
+.gm-sub b { display: block; font-family: var(--display); font-weight: 400; }
+.gm-sub span { font-size: 14px; color: var(--ink-soft); line-height: 1.4; }
+.gm-card .row { justify-content: flex-start; flex-wrap: wrap; }
+.gm-hello .gm-big { font-family: var(--display); font-size: 19px; color: var(--leaf-deep); }
+.gm-me-dot { display: inline-block; width: 14px; height: 14px; border-radius: 50%; background: #EF6461; border: 2px solid #fff; box-shadow: 0 0 0 2px rgba(239, 100, 97, .35); vertical-align: -2px; }
+.gm-tip { font-size: 14px; color: var(--ink-soft); }
+.gm-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--ink-soft); }
+.gm-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.gm-legend .lg { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
+.gm-legend .lg.npc { background: #DDF3D3; border: 2px solid #3E8F4A; }
+.gm-legend .lg.friend { background: #3C8DD0; border: 2px solid #fff; box-shadow: 0 0 0 1px #9CC6E8; }
+.gm-legend .lg.cat { background: #FFFDF7; border: 3px solid; }
+.gm-list { display: grid; gap: 14px; }
+.gm-list h3 { margin: 0 0 6px; font-family: var(--display); font-weight: 400; font-size: 17px; color: var(--leaf-deep); }
+.gm-rows { display: grid; gap: 7px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.gm-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; text-align: left; background: #fff; border: 0; border-left: 5px solid var(--cat); border-radius: 14px; padding: 8px 10px; box-shadow: 0 3px 0 var(--line); cursor: pointer; color: var(--ink); touch-action: manipulation; }
+.gm-row:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--line); }
+.gm-row-t { min-width: 0; }
+.gm-row-t b { display: block; font-family: var(--display); font-weight: 400; font-size: 16px; }
+.gm-row-t span { display: block; font-size: 13px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gm-row-st { font-size: 15px; }
 @media (prefers-reduced-motion: reduce) { .fight-bar.shake { animation: none; } }
 @keyframes sparkle { from { opacity: .35; } to { opacity: 1; } }
 /* 곤충 잡은 소식, 가방, 열매 상점 */
@@ -997,6 +1086,7 @@ body.home-editing .pad, body.home-editing .jump-btn, body.home-editing #hud .hud
 <div id="prompt" hidden><button id="promptBtn" class="bubble" type="button"><span id="promptName"></span><b id="promptAct">들어가기</b></button></div>
 <div id="hint" hidden>가고 싶은 곳을 눌러요 · 화면을 끌면 빙글 돌아가요</div>
 <div id="viewCtl" class="view-ctl">
+  <button id="btnGuide" class="zc guide" type="button" title="마을 지도" aria-label="마을 지도: 어디에 무엇이 있는지 보기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21.5s-6.6-6.1-6.6-11.2a6.6 6.6 0 0 1 13.2 0c0 5.1-6.6 11.2-6.6 11.2z" fill="currentColor" opacity=".25" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/><circle cx="12" cy="10.3" r="2.5" fill="currentColor"/></svg><span>마을 지도</span></button>
   <button id="btnZoomIn" class="zc" type="button" aria-label="가까이 보기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/></svg></button>
   <button id="btnZoomOut" class="zc" type="button" aria-label="멀리 보기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/></svg></button>
   <button id="btnMap" class="zc map" type="button" aria-label="섬 전체 보기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 6.5 9 4.5l6 2 5.5-2v13l-5.5 2-6-2-5.5 2z" fill="currentColor" opacity=".22"/><path d="M3.5 6.5 9 4.5l6 2 5.5-2v13l-5.5 2-6-2-5.5 2zM9 4.5v13M15 6.5v13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg><span>섬 전체</span></button>

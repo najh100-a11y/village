@@ -26,6 +26,7 @@ import { initSound, startMusic, stopMusic, setScene, sfx, cycleSound, soundMode 
 import { h, modal, toast, confetti, josa } from './ui.js';
 import { drawFaceIcon, normalizeAvatar, defaultAvatar } from './face.js';
 import { VILLAGERS, TALK } from './villagers.js';
+import { createGuide } from './guide.js';
 
 const $ = (s) => document.querySelector(s);
 const state = { token: store.get('token'), me: null, people: new Map(), today: null, features: {}, dms: new Map(), unread: 0 };
@@ -38,7 +39,7 @@ let memory = null;
 let qt = null;
 let copy = null;
 let net = null;
-let hub = null, art = null, play3d = null, homeUI = null;
+let hub = null, art = null, play3d = null, homeUI = null, guide = null;
 const online = new Set();
 let hintShown = false;
 
@@ -184,6 +185,15 @@ async function boot() {
     openMail: () => (mailOk() ? openMail() : null),
     onCrops: (c) => setCrops(c), openBasket: () => openBasket(),
   });
+  // 마을 지도: 어디에 무엇이 있고 무엇을 할 수 있는지 (누르면 그곳으로 걸어간다)
+  guide = createGuide({
+    village, openSheet, toast,
+    ctx: () => ({ features: state.features || {}, today: state.today || {}, verse: memory ? memory.current() : null, open: playOpen(), hint: unlockHint(), opens: opensNow(), people: state.people }),
+    close: () => modal.close(),
+    isGuest: () => !!(homeUI && homeUI.guest),
+    before: async () => { modal.close(); if (village.atHome) await homeUI.exit(); },
+    findFriend: (id) => findFriend(id),
+  });
   bindUi();
   if (state.token) {
     try {
@@ -223,6 +233,13 @@ function bindUi() {
   $('#btnZoomIn').addEventListener('click', () => village.zoomStep(-1));
   $('#btnZoomOut').addEventListener('click', () => village.zoomStep(1));
   $('#btnMap').addEventListener('click', () => village.toggleMap());
+  $('#btnGuide').addEventListener('click', () => {
+    $('#btnGuide').classList.remove('fresh');
+    try { localStorage.setItem('kv.guideSeen', '1'); } catch (e) { /* 그대로 */ }
+    $('#sayPanel').hidden = true;
+    guide.open();
+  });
+  try { if (!localStorage.getItem('kv.guideSeen')) $('#btnGuide').classList.add('fresh'); } catch (e) { /* 그대로 */ }
   setupPad();
   $('#onlineCount').addEventListener('click', () => openFriends());
   $('#btnSound').addEventListener('click', () => { cycleSound(); drawSoundBtn(); toast({ all: '음악과 효과음을 켰어요', sfx: '음악은 끄고 효과음만 들려요', off: '소리를 모두 껐어요' }[soundMode()]); });
@@ -526,7 +543,9 @@ function measureSafe() {
     }
   }
   const ctl = seen($('#viewCtl'));
-  if (ctl) s.right = Math.max(s.right, W - ctl.left + 8);
+  // 오른쪽 단추 줄: 세로면 오른쪽을, 낮은 가로 화면에서 가로로 놓였으면 위쪽을 비운다
+  if (ctl && ctl.width > ctl.height) s.top = Math.max(s.top, ctl.bottom + 8);
+  else if (ctl) s.right = Math.max(s.right, W - ctl.left + 8);
   return s;
 }
 
@@ -1325,6 +1344,16 @@ function showNews() {
   if (state.features.farm) news.push(['farm2', "새 소식! 밭의 채소와 열매는 며칠에 걸쳐 자라요. 거둔 것은 수확 바구니에 모였다가, 마을 식탁 옆 '나눔 수레'에서 친구들과 나눠 먹거나 열매 상점에서 팔 수 있어요."]);
   news.push(['npc', '새 소식! 마을에 친구 넷(봄이, 하람이, 튼튼이, 노을이)이 이사 왔어요. 눌러서 하이파이브, 가위바위보를 하고 간식도 나눠 먹어 봐요.']);
   if (state.features.petname) news.push(['petname', '새 소식! 애완동물에게 이름을 지어 줄 수 있어요(가방에서). 내 말을 따라 하는 앵무새도 열매 상점에 왔어요.']);
+  news.unshift(['guide', "새 소식! 오른쪽 '마을 지도' 단추를 누르면 어디에 무엇이 있고 무엇을 할 수 있는지 볼 수 있어요. 가고 싶은 곳을 고르면 그곳까지 걸어가요."]);
+  // 이 기기로 처음 들어왔으면 지난 소식을 한꺼번에 띄우지 않고 마을 지도만 알려 준다
+  let firstHere = false;
+  try { firstHere = !Object.keys(localStorage).some((k) => k.startsWith('kv.news.')); } catch (e) { firstHere = false; }
+  if (firstHere) {
+    notice("어서 와요! 오른쪽 '마을 지도'를 누르면 어디에 무엇이 있고 무엇을 할 수 있는지 볼 수 있어요.", 6000, () => {
+      try { for (const [k] of news) localStorage.setItem(`kv.news.${k}`, '1'); } catch (e) { /* 다음에 또 */ }
+    });
+    return;
+  }
   const fresh = news.filter(([k]) => { try { return !localStorage.getItem(`kv.news.${k}`); } catch (e) { return false; } });
   fresh.forEach(([k, text]) => notice(text, 5200, () => { try { localStorage.setItem(`kv.news.${k}`, '1'); } catch (e) { /* 다음에 또 */ } }));
 }
@@ -1921,6 +1950,13 @@ function houseText(r) {
   return `🏡 ${owner ? `${owner.name}네` : '친구'} 집에 놀러 갔어요`;
 }
 
+// 친구 찾아가기: 친구가 어느 집 안에 있으면 그 집으로, 아니면 마을에서 친구 옆으로
+async function findFriend(id) {
+  const r = village.remotes.get(id);
+  if (state.features.visit && state.features.home && r && r.house) { goVisit(r.house); return; }
+  modal.close(); if (play3d.active) play3d.stop(); if (village.atHome) await homeUI.exit(); village.walkToFriend(id);
+}
+
 function openFriends() {
   const list = [...online].map((id) => state.people.get(id)).filter(Boolean);
   const visitOk = !!(state.features.visit && state.features.home);
@@ -1940,11 +1976,7 @@ function openFriends() {
         state.features.gift ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: async () => { if (!shopData) await loadShop(); openGift(p.id); } }, '🎁 선물') : null,
         games.has(p.id) ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => { modal.close(); play3d.omokWatch(p.id); } }, '👀 구경하기') : null,
         visitOk ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => goVisit(p.id) }, '🏠 집에 놀러 가기') : null,
-        h('button', { class: 'btn btn-plain btn-small', type: 'button', onclick: async () => {
-          // 친구가 어느 집 안에 있으면 그 집으로, 아니면 마을에서 친구 옆으로
-          if (visitOk && r && r.house) { goVisit(r.house); return; }
-          modal.close(); if (play3d.active) play3d.stop(); if (village.atHome) await homeUI.exit(); village.walkToFriend(p.id);
-        } }, '찾아가기')));
+        h('button', { class: 'btn btn-plain btn-small', type: 'button', onclick: () => findFriend(p.id) }, '찾아가기')));
   });
   openSheet(`지금 마을에 있는 친구 ${list.length}명`, h('div', { class: 'talk friends' },
     mailOk() ? h('div', { class: 'row' }, h('button', { class: 'btn btn-go btn-small', type: 'button', onclick: () => openMail() },
@@ -2246,10 +2278,12 @@ function onNpc() {
   else if (t.qt || cur) { lines.push('오늘 할 일을 벌써 다 했구나. 정말 멋지다! 친구들 글에 응원도 보내 봐.'); lines.push('남쪽 다리를 건너면 놀이동산 섬이야. 친구랑 회전목마나 바이킹을 타도 좋아. 동쪽 다리 건너 수영장 섬에서 헤엄쳐도 좋고!'); if (state.features.sea) lines.push('남동쪽 바닷가 나루터에서 배를 타고 바다 낚시를 할 수도 있어! 갈매기가 맴도는 곳에 물고기 떼가 있대.'); if (state.features.beach) lines.push('수영장 섬 모래밭에서 반짝이는 곳을 파면 보물이 나와. 물수제비 터와 노아의 방주도 거기 있어!'); }
   else lines.push('마을을 천천히 둘러보렴. 남쪽 다리를 건너면 놀이동산 섬, 동쪽 다리를 건너면 수영장 섬이야. 열매가 달린 나무를 누르면 열매를 따 먹을 수 있어.');
   if (state.features.feedback) lines.push('마을에 바라는 게 있거나 이상한 곳을 찾았니? 내 옆 건의함에 적어 주면 선생님께 꼭 전할게.');
+  lines.push("마을 어디에 무엇이 있는지 궁금하면 '마을 지도'를 열어 봐. 가고 싶은 곳을 고르면 거기까지 데려다줄게.");
   openSheet('숲지기 솔', h('div', { class: 'talk' },
     lines.map((l) => h('p', { class: 'talk-line' }, l)),
     h('div', { class: 'row' },
       h('button', { class: 'btn btn-soft', type: 'button', onclick: () => modal.close() }, '고마워요'),
+      h('button', { class: 'btn btn-soft', type: 'button', onclick: () => { modal.close(); guide.open(); } }, '🗺️ 마을 지도'),
       state.features.feedback ? h('button', { class: 'btn btn-soft', type: 'button', onclick: () => { modal.close(); openSuggest(); } }, '건의함에 쓰기') : null,
       go ? h('button', { class: 'btn btn-go', type: 'button', onclick: () => { modal.close(); village.walkTo(go[1]); } }, go[0]) : null)), 'talk-sheet');
 }
