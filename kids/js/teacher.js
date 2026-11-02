@@ -108,6 +108,20 @@ function bind() {
       loginDone(r.token);
     } catch (e2) { err.textContent = message(e2); }
   });
+  // 선생님 주민으로 마을에 들어가기: 처음이면 서버가 주민을 만들고 열매 100개를 준다
+  $('#villageGo').addEventListener('click', async () => {
+    const btn = $('#villageGo');
+    btn.disabled = true;
+    try {
+      const r = await rpc('kids_t_village_enter', { p_token: token });
+      store.set('token', r.token);
+      if (r.new) store.set('tv.new', '1'); // 마을에서 '열매 100개를 드렸어요'를 한 번 알린다
+      location.href = 'index.html' + location.search; // 체험판(?demo)이면 체험판 마을로
+    } catch (e) {
+      toast(message(e));
+      btn.disabled = false;
+    }
+  });
   $('#logoutBtn').addEventListener('click', async () => {
     try { await rpc('kids_logout', { p_token: token }); } catch (e) { /* 무시 */ }
     logoutLocal();

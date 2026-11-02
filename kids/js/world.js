@@ -1656,14 +1656,15 @@ export class Village {
   }
 
   // ---------- 함께 접속한 친구들 ----------
-  addRemote(id, data, name) {
+  // teacher: 선생님 주민이면 이름표 앞에 '선생님' 표시가 붙는다
+  addRemote(id, data, name, teacher = false) {
     let r = this.remotes.get(id);
-    if (r) { r.av.setData(data); r.name = name; this.drawRemoteTag(r); return r; }
+    if (r) { r.av.setData(data); r.name = name; r.tag.classList.toggle('kv-teacher', !!teacher); this.drawRemoteTag(r); return r; }
     const av = new Avatar(data);
     const start = new THREE.Vector3(0, 0, 11);
     av.root.position.copy(start);
     this.scene.add(av.root);
-    r = { id, av, name, act: '', tag: this.makeLabel(name, 'kv-tag kv-friend'), target: null, stuck: 0 };
+    r = { id, av, name, act: '', tag: this.makeLabel(name, 'kv-tag kv-friend' + (teacher ? ' kv-teacher' : '')), target: null, stuck: 0 };
     this.remotes.set(id, r);
     return r;
   }
@@ -1808,9 +1809,10 @@ export class Village {
     av.celebrate();
   }
   // 내 머리 위 이름표
-  setMyName(name) {
+  setMyName(name, teacher = false) {
     if (!this.myTag) this.myTag = this.makeLabel(name || '', 'kv-tag kv-me home-ok');
     this.myTag.textContent = name || '';
+    this.myTag.classList.toggle('kv-teacher', !!teacher);
   }
   // 내 집 안에 있을 때 친구들에게는 마을 '내 집' 문 앞에 있는 것으로 보인다
   playerPos() {

@@ -265,6 +265,7 @@ export class DemoBackend {
   cleared(me) {
     if (this.playFree()) return true;
     const c = this.child(me);
+    if (c.teacher) return true; // 선생님 주민은 늘 열려 있다
     const s = startOfToday(), t = today(), wk = weekOf(t), vId = this.currentVerse();
     const m = vId && c.memory[vId];
     if (this.db.qtEntries.some((e) => e.child === me && e.day === t)) return true;
@@ -304,7 +305,7 @@ export class DemoBackend {
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true }; }
   // 쪽지함: 친구별 마지막 쪽지와 안 읽은 수 (최근 30일)
   kids_dm_box({ p_token }) {
     const me = this.session(p_token, 'child');
@@ -670,7 +671,7 @@ export class DemoBackend {
     const c = this.child(this.session(p_token, 'child'));
     c.last_seen_at = nowIso();
     return { id: c.id, login_id: c.login_id, name: c.name, village_name: c.village_name, avatar: c.avatar, fruits: c.fruits, pet: c.pet || null,
-      is_birthday: c.birthdate.slice(5) === iso(new Date()).slice(5) };
+      teacher: !!c.teacher, is_birthday: !c.teacher && c.birthdate.slice(5) === iso(new Date()).slice(5) };
   }
   kids_save_avatar({ p_token, p_avatar, p_village_name }) {
     const c = this.child(this.session(p_token, 'child'));
@@ -708,7 +709,7 @@ export class DemoBackend {
   }
   kids_village({ p_token }) {
     this.session(p_token, 'child');
-    return { room: 'demo', people: this.db.children.filter((c) => c.village_name && c.avatar).map((c) => ({ id: c.id, name: c.village_name, avatar: c.avatar, pet: c.pet || null })) };
+    return { room: 'demo', people: this.db.children.filter((c) => c.village_name && c.avatar).map((c) => ({ id: c.id, name: c.village_name, avatar: c.avatar, pet: c.pet || null, teacher: !!c.teacher })) };
   }
   kids_today({ p_token }) {
     const me = this.session(p_token, 'child');
@@ -1037,13 +1038,28 @@ export class DemoBackend {
     if (!t || t.pw !== p_password) return { ok: false, error: 'LOGIN_FAILED' };
     return { ok: true, token: this.newSession('teacher', t.id) };
   }
+  // 선생님 주민으로 마을에 들어가기 (서버 kids_t_village_enter와 같다): 처음이면 주민을 만들고 열매 100개
+  kids_t_village_enter({ p_token }) {
+    const tid = this.session(p_token, 'teacher');
+    const t = this.db.teachers.find((x) => x.id === tid);
+    let c = this.db.children.find((x) => x.teacher === tid);
+    const isNew = !c;
+    if (!c) {
+      c = { id: 'tv' + tid, login_id: '#teacher-' + t.login_id, pin: null, name: t.name, birthdate: today(), consent_date: today(),
+        village_name: null, avatar: null, fruits: 100, last_seen_at: nowIso(), memory: {}, teacher: tid };
+      this.db.children.push(c);
+    }
+    c.last_seen_at = nowIso();
+    return { ok: true, new: isNew, token: this.newSession('child', c.id) };
+  }
   kids_t_overview({ p_token }) {
     const tid = this.session(p_token, 'teacher');
     const me = this.db.teachers.find((t) => t.id === tid);
     const cur = this.currentVerse();
     return {
       me: { id: me.id, login_id: me.login_id, name: me.name },
-      children: [...this.db.children].sort((a, b) => a.name.localeCompare(b.name, 'ko')).map((c) => ({
+      my_resident: (() => { const r = this.db.children.find((c) => c.teacher === tid); return r ? { village_name: r.village_name, fruits: r.fruits, last_seen_at: r.last_seen_at } : null; })(),
+      children: [...this.db.children].filter((c) => !c.teacher).sort((a, b) => a.name.localeCompare(b.name, 'ko')).map((c) => ({
         id: c.id, login_id: c.login_id, name: c.name, birthdate: c.birthdate, consent_date: c.consent_date, village_name: c.village_name,
         avatar: c.avatar, fruits: c.fruits, last_seen_at: c.last_seen_at, locked: false,
         joined_self: !!c.joined_self, consent_checked: c.consent_checked !== false,

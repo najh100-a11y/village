@@ -95,6 +95,8 @@ button { font: inherit; color: inherit; }
 .err { min-height: 1.4em; margin: 0; color: var(--apple-deep); font-weight: 700; text-align: center; }
 .note { margin: 0; padding: 10px 14px; border-radius: 14px; background: var(--paper-2); color: var(--ink-soft); font-size: 15px; line-height: 1.55; }
 .small-link { justify-self: center; color: var(--ink-soft); font-size: 14px; }
+.small-link { margin: 0; text-align: center; }
+.small-link a, .link-btn { color: var(--ink-soft); font: inherit; text-decoration: underline; background: none; border: 0; padding: 6px 2px; cursor: pointer; }
 
 /* 상단 HUD */
 #hud { position: fixed; top: 0; left: 0; right: 0; z-index: 10; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; padding: calc(12px + env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 0 max(14px, env(safe-area-inset-left)); pointer-events: none; }
@@ -309,6 +311,8 @@ html.touch body.in-game.pad-game .pad { bottom: calc(150px + env(safe-area-inset
 html.touch body.in-game.pad-game .chat-log { bottom: calc(310px + env(safe-area-inset-bottom)); }
 html.touch .chat-log { bottom: calc(190px + env(safe-area-inset-bottom)); }
 .kv-tag.kv-me { background: rgba(229, 96, 47, .9); }
+.kv-tag.kv-teacher::before { content: '선생님'; display: inline-block; margin: 0 6px 0 -5px; padding: 1px 7px 0; border-radius: 999px; background: #fff3c4; color: #8a5a00; font-size: 12px; line-height: 1.5; vertical-align: 1px; }
+.t-badge { display: inline-block; margin-left: 6px; padding: 1px 8px 0; border-radius: 999px; background: #fff3c4; color: #8a5a00; font-size: 12px; font-weight: 700; vertical-align: 2px; }
 /* ---------- 마을 안 3D 놀이 화면 ---------- */
 #gameUi { position: fixed; inset: 0; z-index: 12; pointer-events: none; }
 #gameUi .g-top, #gameUi .g-bottom, #gameUi .g-panel, #gameUi .g-label, #gameUi button { pointer-events: auto; }
@@ -938,7 +942,20 @@ body.home-editing .pad, body.home-editing .jump-btn, body.home-editing #hud .hud
     <button class="btn btn-go" id="loginGo" type="submit">마을로 들어가기</button>
     <button class="btn btn-sun" id="demoGo" type="button" hidden>체험 아이디로 들어가기</button>
     <button class="btn btn-soft" id="joinOpen" type="button" hidden>처음 왔어요! 가입하기</button>
-    <a class="small-link" href="teacher.html">선생님 화면</a>
+    <p class="small-link"><button class="link-btn" id="tvOpen" type="button">선생님으로 마을 들어가기</button> · <a href="teacher.html">선생님 화면</a></p>
+  </form>
+  <form class="login-card teacher-card" id="tvForm" autocomplete="off" hidden>
+    <div class="brand">
+      <img class="brand-logo small" src="icons/logo-256.png" alt="" width="84" height="84">
+      <h1>선생님으로 들어가기</h1>
+      <p>선생님 아이디로 마을 주민이 되어 아이들과 함께 놀아요</p>
+    </div>
+    <p class="note" id="tvDemoNote" hidden>체험판 선생님 아이디는 선생님, 비밀번호는 demo1234예요.</p>
+    <label class="field"><span>선생님 아이디</span><input id="tvId" autocapitalize="off" autocomplete="username" spellcheck="false" maxlength="40" enterkeyhint="next"></label>
+    <label class="field"><span>선생님 비밀번호</span><input id="tvPw" type="password" autocomplete="current-password" maxlength="100" enterkeyhint="go"></label>
+    <p class="err" id="tvErr" role="alert"></p>
+    <button class="btn btn-go" id="tvGo" type="submit">마을로 들어가기</button>
+    <button class="btn btn-plain" id="tvBack" type="button">돌아가기</button>
   </form>
   <form class="login-card join-card" id="joinForm" autocomplete="off" hidden>
     <div class="brand">

@@ -27,6 +27,8 @@ import { drawFaceIcon, normalizeAvatar, defaultAvatar } from './face.js';
 
 const $ = (s) => document.querySelector(s);
 const state = { token: store.get('token'), me: null, people: new Map(), today: null, features: {}, dms: new Map(), unread: 0 };
+// 선생님 주민 이름 옆 작은 표시
+const tBadge = (p) => (p && p.teacher ? h('span', { class: 't-badge' }, '선생님') : null);
 const observes = new Map(); // 오목 구경: 친구 id → 가장 최근 판
 let village = null;
 let maker = null;
@@ -195,6 +197,9 @@ function bindUi() {
   $('#demoGo').addEventListener('click', () => login('체험', '1234'));
   $('#joinOpen').addEventListener('click', () => showJoin(true));
   $('#joinBack').addEventListener('click', () => showJoin(false));
+  $('#tvOpen').addEventListener('click', () => showTeacherLogin(true));
+  $('#tvBack').addEventListener('click', () => showTeacherLogin(false));
+  $('#tvForm').addEventListener('submit', (e) => { e.preventDefault(); teacherEnter(); });
   $('#joinForm').addEventListener('submit', (e) => { e.preventDefault(); join(); });
   $('#promptBtn').addEventListener('click', () => {
     const id = $('#prompt').dataset.id;
@@ -335,6 +340,50 @@ function afterLogin() {
   $('#login').hidden = true;
   if (!state.me.avatar || !state.me.village_name) openMaker(true);
   else enterVillage(true);
+}
+
+// ---------- 선생님으로 들어가기 ----------
+// 선생님 아이디와 비밀번호로 확인한 뒤, 그 선생님의 마을 주민으로 들어간다 (처음이면 서버가 주민을 만들고 열매 100개를 준다).
+// 선생님 화면 로그인은 이 기기에 남기지 않는다 (마을 주민으로만 들어온다).
+function showTeacherLogin(on) {
+  $('#loginForm').hidden = on;
+  $('#joinForm').hidden = true;
+  $('#tvForm').hidden = !on;
+  $('#tvErr').textContent = '';
+  $('#tvDemoNote').hidden = !DEMO;
+  setTimeout(() => $(on ? '#tvId' : '#loginId').focus({ preventScroll: true }), 50);
+}
+
+async function teacherEnter() {
+  const err = $('#tvErr');
+  err.textContent = '';
+  const id = $('#tvId').value.trim(), pw = $('#tvPw').value;
+  if (!id || !pw) { err.textContent = '선생님 아이디와 비밀번호를 써 주세요.'; return; }
+  const btn = $('#tvGo');
+  btn.disabled = true;
+  btn.textContent = '들어가는 중…';
+  try {
+    const r = await rpc('kids_teacher_login', { p_login_id: id, p_password: pw });
+    if (!r || !r.ok) {
+      err.textContent = r && r.error === 'LOCKED' ? '여러 번 틀려서 15분 동안 잠겼어요.' : message({ code: r && r.error });
+      return;
+    }
+    let res;
+    try { res = await rpc('kids_t_village_enter', { p_token: r.token }); }
+    finally { rpc('kids_logout', { p_token: r.token }).catch(() => { /* 저절로 끝난다 */ }); }
+    state.token = res.token;
+    store.set('token', res.token);
+    await loadMe();
+    $('#tvPw').value = '';
+    showTeacherLogin(false);
+    state.welcomeFruits = !!res.new;
+    afterLogin();
+  } catch (e) {
+    err.textContent = message(e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '마을로 들어가기';
+  }
 }
 
 // ---------- 직접 가입 ----------
@@ -580,7 +629,7 @@ function showLocked() {
 let qtCard = null;
 function showQtNudge() {
   const t = state.today;
-  if (!t || !t.qt || t.qt.done || qtCard) return;
+  if (!t || !t.qt || t.qt.done || qtCard || (state.me && state.me.teacher)) return;
   const streak = t.qt_streak || 0;
   const close = () => { if (qtCard === card) { card.remove(); qtCard = null; } };
   const lead = streak >= 2 ? `묵상 ${streak}일째 이어 가고 있어요! 오늘도 이어 가요.` : '오늘의 묵상이 기다리고 있어요.';
@@ -606,7 +655,7 @@ async function enterVillage(greet) {
   state.todayChecked = false;
   village.setPlayer(me.avatar);
   village.setHome(me.village_name, normalizeAvatar(me.avatar));
-  village.setMyName(me.village_name);
+  village.setMyName(me.village_name, me.teacher);
   village.setPet('me', me.pet || null);
   village.setMode('play');
   village.viewChanged();
@@ -639,6 +688,12 @@ async function enterVillage(greet) {
         h('p', { class: 'note' }, '— 숲지기 솔과 진숲 마을 친구들'),
         h('div', { class: 'row' }, h('button', { class: 'btn btn-go', type: 'button', onclick: () => modal.close() }, '고마워요!'))), 'talk-sheet');
     }, 700);
+  } else if (greet && me.teacher) {
+    if (store.get('tv.new')) { state.welcomeFruits = true; store.del('tv.new'); }
+    const call = /님$/.test(me.village_name) ? me.village_name : `${me.village_name} 선생님`; // '목사님'이면 그대로
+    toast(state.welcomeFruits ? `숲지기 솔: ${call}, 어서 오세요! 선생님 열매 ${me.fruits}개를 드렸어요.`
+      : `숲지기 솔: 어서 오세요, ${call}!`, state.welcomeFruits ? 4600 : 3200);
+    state.welcomeFruits = false;
   } else if (greet) {
     toast(`숲지기 솔: 어서 와, ${josa(me.village_name, '아', '야')}!`, 3200);
   }
@@ -679,7 +734,7 @@ async function startNet() {
       if (!p || net !== n) return;
       online.add(id);
       showCount();
-      village.addRemote(id, p.avatar, p.name);
+      village.addRemote(id, p.avatar, p.name, p.teacher);
       village.setPet(id, p.pet || null);
       n.announce();
     },
@@ -695,7 +750,7 @@ async function startNet() {
       if ((type === 'inv' || type === 'invr' || type === 'hinv') && p.to !== (state.me && state.me.id)) return;
       const person = await ensurePerson(id);
       if (!person || net !== n) return;
-      if (!online.has(id)) { online.add(id); showCount(); village.addRemote(id, person.avatar, person.name); village.setPet(id, person.pet || null); }
+      if (!online.has(id)) { online.add(id); showCount(); village.addRemote(id, person.avatar, person.name, person.teacher); village.setPet(id, person.pet || null); }
       if (type === 'mv') village.remoteMove(id, p);
       else if (type === 'st') village.remoteStop(id, p);
       else if (type === 'say') {
@@ -769,7 +824,7 @@ async function startNet() {
       } else if (type === 'av') {
         try { await fetchPeople(true); } catch (e) { return; }
         const np = state.people.get(id);
-        if (np) { village.addRemote(id, np.avatar, np.name); village.setPet(id, np.pet || null); }
+        if (np) { village.addRemote(id, np.avatar, np.name, np.teacher); village.setPet(id, np.pet || null); }
       }
     },
   });
@@ -1270,7 +1325,7 @@ function giftRows(shop) {
     const cv = h('canvas', { width: 80, height: 80, class: 'fl-face', 'aria-hidden': 'true' });
     drawFaceIcon(cv, normalizeAvatar(p.avatar));
     return h('button', { class: 'gift-person', type: 'button', disabled: !left || !shop.fruits, onclick: () => openGift(p.id) },
-      cv, h('b', {}, p.name), online.has(p.id) ? h('small', {}, '지금 마을에 있어요') : null);
+      cv, h('b', {}, p.name, tBadge(p)), online.has(p.id) ? h('small', {}, '지금 마을에 있어요') : null);
   }));
   if (people.length) out.push(grid);
   return out;
@@ -1299,7 +1354,7 @@ function openGift(id) {
   };
   draw();
   openSheet('열매 선물하기', h('div', { class: 'talk gift' },
-    h('div', { class: 'gift-to' }, face, h('div', {}, h('b', {}, p.name), h('p', { class: 'note' }, left ? `오늘은 열매 ${left}개까지 보낼 수 있어요.` : '오늘은 더 보낼 수 없어요.'))),
+    h('div', { class: 'gift-to' }, face, h('div', {}, h('b', {}, p.name, tBadge(p)), h('p', { class: 'note' }, left ? `오늘은 열매 ${left}개까지 보낼 수 있어요.` : '오늘은 더 보낼 수 없어요.'))),
     h('h4', {}, '몇 개 보낼까요?'), nums, h('h4', {}, '함께 보낼 말'), msgs, sum,
     h('div', { class: 'row' }, h('button', { class: 'btn btn-plain', type: 'button', onclick: () => modal.close() }, '다음에'), send)), 'talk-sheet');
 }
@@ -1482,7 +1537,7 @@ function openFriends() {
     const swimAs = act === 'swim' && STROKE_LIST[r.actSeat] ? `${STROKE_LIST[r.actSeat][2]}으로 ` : ''; // 배영으로 수영하는 중
     const unread = (state.dms.get(p.id) || []).filter((m) => !m.mine && !m.read).length;
     return h('div', { class: 'fl-row' }, face,
-      h('div', { class: 'fl-main' }, h('b', {}, p.name), h('span', {}, houseText(r) || (act ? `${ACT_ICON[act] || ''} ${swimAs}${ACT_TEXT[act] || ''}` : '마을을 걷고 있어요'))),
+      h('div', { class: 'fl-main' }, h('b', {}, p.name, tBadge(p)), h('span', {}, houseText(r) || (act ? `${ACT_ICON[act] || ''} ${swimAs}${ACT_TEXT[act] || ''}` : '마을을 걷고 있어요'))),
       h('div', { class: 'fl-acts' },
         dmOk ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => openDm(p.id) }, unread ? `💌 쪽지 (${unread})` : '💌 쪽지') : null,
         state.features.gift ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: async () => { if (!shopData) await loadShop(); openGift(p.id); } }, '🎁 선물') : null,
@@ -1684,7 +1739,7 @@ function openMail() {
       threads.length ? h('div', { class: 'fl-list' }, threads) : h('p', { class: 'fb-empty' }, '아직 주고받은 쪽지가 없어요.'),
       canSend ? h('div', { class: 'sub-head' }, h('h3', {}, '쪽지 쓰기'), h('p', {}, '마을에 없는 친구에게도 보낼 수 있어요')) : null,
       canSend ? (people.length ? h('div', { class: 'gift-people' }, people.map((p) => h('button', { class: 'gift-person', type: 'button', onclick: () => openDm(p.id) },
-        face(p.avatar), h('b', {}, p.name), online.has(p.id) ? h('small', {}, '지금 마을에 있어요') : null))) : h('p', { class: 'fb-empty' }, '아직 마을 친구가 없어요.'))
+        face(p.avatar), h('b', {}, p.name, tBadge(p)), online.has(p.id) ? h('small', {}, '지금 마을에 있어요') : null))) : h('p', { class: 'fb-empty' }, '아직 마을 친구가 없어요.'))
         : h('p', { class: 'note' }, '지금은 선생님이 글 대화를 쉬게 해 두어서 쪽지를 보낼 수 없어요. 받은 쪽지는 읽을 수 있어요.'),
       h('p', { class: 'note' }, '쪽지는 둘만 보이지만, 안전을 위해 선생님은 볼 수 있어요. 쪽지는 30일 동안 남아요.'));
   });
@@ -1903,7 +1958,7 @@ async function openMaker(first) {
   if (result) {
     village.setPlayer(state.me.avatar);
     village.setHome(state.me.village_name, normalizeAvatar(state.me.avatar));
-    village.setMyName(state.me.village_name);
+    village.setMyName(state.me.village_name, state.me.teacher);
     if (net) net.send('av', {});
   }
   if (first && !result) return;

@@ -49,6 +49,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .logo h1 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 26px; color: var(--leaf-deep); line-height: 1.1; }
 .logo small { display: block; font-family: var(--body); font-size: 14px; color: var(--ink-soft); }
 .me { display: flex; align-items: center; gap: 10px; color: var(--ink-soft); }
+#meName { white-space: nowrap; }
+@media (max-width: 480px) { .me { flex-wrap: wrap; gap: 8px; } #villageGo .long { display: none; } }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 0 18px; border-radius: 999px; border: 2px solid transparent; font-family: var(--display); font-size: 17px; cursor: pointer; background: var(--paper); border-color: var(--line); white-space: nowrap; }
 a.btn { text-decoration: none; color: inherit; }
 .btn:hover { background: var(--paper-2); }
@@ -219,7 +221,7 @@ dialog::backdrop { background: rgba(60, 45, 30, .35); }
       <img src="icons/favicon-64.png" alt="" width="40" height="40" style="border-radius:10px">
       <h1>모여라 진숲 어린이 마을<small>선생님 화면</small></h1>
     </div>
-    <div class="me" id="meBox" hidden><span id="meName"></span><a class="btn btn-sm" href="index.html">마을 보기</a><button class="btn btn-sm" id="logoutBtn" type="button">로그아웃</button></div>
+    <div class="me" id="meBox" hidden><span id="meName"></span><button class="btn btn-sm" id="villageGo" type="button" title="선생님 주민으로 마을에 들어가요"><span class="long">선생님으로 </span>마을 들어가기</button><button class="btn btn-sm" id="logoutBtn" type="button">로그아웃</button></div>
   </header>
 
   <section id="setupView" class="card narrow" hidden>

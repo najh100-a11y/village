@@ -134,7 +134,7 @@ export function createHomeUI(o) {
       const inHouse = here.has(p.id);
       const recent = Date.now() - (invited.get(p.id) || 0) < 20000;
       return h('div', { class: 'fl-row' },
-        h('div', { class: 'fl-main' }, h('b', {}, p.name), h('span', {}, inHouse ? '우리 집에 와 있어요' : recent ? '방금 불렀어요' : '')),
+        h('div', { class: 'fl-main' }, h('b', {}, p.name, p.teacher ? h('span', { class: 't-badge' }, '선생님') : null), h('span', {}, inHouse ? '우리 집에 와 있어요' : recent ? '방금 불렀어요' : '')),
         h('div', { class: 'fl-acts' }, h('button', {
           class: 'btn btn-go btn-small', type: 'button', disabled: inHouse || recent,
           onclick: () => {
