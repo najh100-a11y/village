@@ -18,7 +18,7 @@ import { HomeSpace, HOME_O, buildCrop } from './home.js';
 import { Villagers } from './villagers.js';
 import { Sea } from './sea.js';
 import { Beach, makeShovel, digPoseAt, remoteDigPose, DIG_SPOTS } from './beach.js';
-import { buildBoardIsle, BG_TABLES } from './boardisle.js';
+import { buildBoardIsle, BG_TABLES, BG_GAPS } from './boardisle.js';
 import { BOARD_ISLE } from './isles.js';
 // 내 집(따로 된 장면) 근처 좌표인지: 마을 친구와 동물은 늘 마을 좌표라서 좌표로 가른다
 const nearHome = (p) => Math.abs(p.x - HOME_O.x) < 200 && Math.abs(p.z - HOME_O.z) < 200;
@@ -528,7 +528,8 @@ export class Village {
     this.obstacles.push({ t: 'b', x, z, hw, hd, c: Math.cos(rot), s: Math.sin(rot) });
     this.obsGrid = null;
   }
-  addObstacleCircle(x, z, r) { this.obstacles.push({ t: 'c', x, z, r }); this.obsGrid = null; }
+  // hard: 길 그물을 이을 때도 비켜 간다 (작은 기둥·소품. 나무처럼 작은 것은 길 그물에서 눈감아 준다)
+  addObstacleCircle(x, z, r, hard = false) { this.obstacles.push({ t: 'c', x, z, r, hard }); this.obsGrid = null; }
   // 길 찾기를 빠르게: 장애물을 4×4 칸에 나눠 둔다
   obsNear(x, z) {
     const C = 4;
@@ -2995,7 +2996,7 @@ export class Village {
   // soft: 나무·가로등처럼 작은 동그라미는 걸으면서 비켜 갈 수 있으니 보지 않는다
   standable(x, z, pad = PR + 0.03, soft = false) {
     for (const o of this.obsNear(x, z)) {
-      if (o.t === 'c') { if ((!soft || o.r > 0.7) && Math.hypot(x - o.x, z - o.z) < o.r + pad) return false; continue; }
+      if (o.t === 'c') { if ((!soft || o.r > 0.7 || o.hard) && Math.hypot(x - o.x, z - o.z) < o.r + pad) return false; continue; }
       const wx = x - o.x, wz = z - o.z;
       const lx = wx * o.c - wz * o.s, lz = wx * o.s + wz * o.c;
       if (Math.abs(lx) < o.hw + pad && Math.abs(lz) < o.hd + pad) return false;
@@ -3038,7 +3039,9 @@ export class Village {
       const a = (k / n) * Math.PI * 2;
       add(BOARD_ISLE.x + Math.cos(a) * r, BOARD_ISLE.z + Math.sin(a) * r);
     }
-    for (const t of BG_TABLES) add(t.x + t.dx * 1.35, t.z + t.dz * 1.35);
+    // 탁자마다 문 앞과 조금 더 바깥, 이웃한 두 집 사이 (집 옆을 가로지르지 않고 돌아가게)
+    for (const t of BG_TABLES) { add(t.x + t.dx * 1.35, t.z + t.dz * 1.35); add(t.x + t.dx * 2.9, t.z + t.dz * 2.9); }
+    for (const deg of BG_GAPS) { const a = (deg * Math.PI) / 180; add(BOARD_ISLE.x + Math.cos(a) * 7.4, BOARD_ISLE.z + Math.sin(a) * 7.4); }
     for (const u of [-1.0, 3.5, 8.0, 12.5]) { const q = pierPoint(u, 0); add(q.x, q.z); } // 바다 낚시 나루터
     // 큰 네모(집, 놀이기구) 모서리 바깥: 이 점들로 집 뒤를 돌아간다
     for (const o of this.obstacles) {
@@ -3449,6 +3452,8 @@ export class Village {
           const across = Math.abs(rx * cdz - rz * cdx);
           if (along > -0.5 && along < Math.min(cdist, fr + 7) && across < fr + 0.6) want = f.lo || 0.32;
         }
+        // 지붕만 있는 작은 집(보드게임 섬)은 내가 그 안에 들어가도 흐리게
+        if (f.near && Math.hypot(f.x - pp.x, f.z - pp.z) < f.near) want = f.lo || 0.32;
       }
       if (Math.abs(f.op - want) > 0.01) {
         f.op += (want - f.op) * Math.min(1, dt * 8);

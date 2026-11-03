@@ -4,7 +4,7 @@
 // 장소를 누르면 하는 일과 열매, 지금 열렸는지가 나오고 '여기로 가기'로 그곳까지 걸어간다.
 import { h } from './ui.js';
 import { PARK_ISLE, POOL_ISLE, BOARD_ISLE, BRIDGES, PIER, JETTY, pierPoint, regionOf } from './isles.js';
-import { BG_TABLES } from './boardisle.js';
+import { BG_TABLES, PAD_R } from './boardisle.js';
 import { PATHS, PLAZA, YARD, islandRadius } from './world.js';
 import { POOL } from './pool.js';
 import { DIG_SPOTS } from './beach.js';
@@ -253,7 +253,7 @@ export function createGuide(o) {
       g.append(sv('line', { x1: B.x + 4.5, y1: B.z, x2: B.x + B.r + 1, y2: B.z, stroke: '#E9D2A6', 'stroke-width': 2.6, 'stroke-linecap': 'round' }));
       g.append(sv('circle', { cx: B.x, cy: B.z, r: ring, fill: 'none', stroke: '#E9D2A6', 'stroke-width': 2.2 }));
       g.append(sv('circle', { cx: B.x, cy: B.z, r: 3.4, fill: '#D9C9A8' }));
-      for (const t of BG_TABLES) g.append(sv('circle', { cx: n2(t.x), cy: n2(t.z), r: 1.9, fill: '#E9D2A6' }));
+      for (const t of BG_TABLES) g.append(sv('circle', { cx: n2(t.x), cy: n2(t.z), r: PAD_R, fill: t.pad, stroke: t.color, 'stroke-width': 0.25 }));
     }
     // 건물과 놀이기구 바닥 (부딪히는 자리를 그대로: 큰 네모와 큰 동그라미)
     for (const ob of v.obstacles || []) {
