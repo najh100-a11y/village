@@ -80,8 +80,8 @@ export class WeatherFx {
     this.clouds = [];
     for (let i = 0; i < 14; i++) {
       const m = new THREE.Mesh(cloudGeo(rand), this.cloudMatW);
-      const a = rand() * TAU, d = 20 + rand() * 60;
-      m.position.set(Math.cos(a) * d + 22, 30 + rand() * 8, Math.sin(a) * d + 30); // 섬 셋의 가운데 둘레
+      const a = rand() * TAU, d = 20 + rand() * 64;
+      m.position.set(Math.cos(a) * d, 30 + rand() * 8, Math.sin(a) * d + 30); // 섬 넷의 가운데 둘레
       m.userData.sp = 0.5 + rand() * 0.6;
       m.castShadow = false;
       m.receiveShadow = false;
@@ -176,7 +176,7 @@ export class WeatherFx {
     for (const c of this.clouds) {
       if (!c.visible) continue;
       c.position.x += c.userData.sp * (0.6 + Math.abs(this.wind) * 2) * dt;
-      if (c.position.x > 107) c.position.x -= 170;
+      if (c.position.x > 96) c.position.x -= 192;
     }
     // 번개: 천둥번개일 때 6~16초마다 두 번 번쩍, 조금 뒤에 우르릉
     if (this.kind === 'storm') {

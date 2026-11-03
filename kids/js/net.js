@@ -11,8 +11,8 @@ export const EMOTES = { heart: '❤️', clap: '👏', smile: '😊', wave: '�
 // 놀이기구를 타며 외치는 말 (말하기 판에는 나오지 않는다)
 export const SHOUTS = { yay: '야호!', beep: '빵빵!', yum: '냠냠!' };
 const EVENTS = ['mv', 'st', 'say', 'chat', 'dm', 'done', 'av', 'inv', 'invr', 'act', 'fish', 'art', 'dish', 'ob', 'fw', 'ate', 'bug', 'jp', 'gift', 'hm', 'hinv', 'pc', 'share'];
-export const GAME_KINDS = ['omok', 'cook', 'ark'];
-export const ACTS = ['', 'fish', 'omok', 'cook', 'art', 'memory', 'qt', 'copy', 'watch', 'ferris', 'viking', 'carousel', 'bumper', 'bench', 'eat', 'bug', 'home', 'coaster', 'swim', 'sea', 'visit', 'dig', 'skip', 'ark'];
+export const GAME_KINDS = ['omok', 'cook', 'ark', 'bg_fruit', 'bg_n77', 'bg_code', 'bg_mancala', 'bg_yut', 'bg_dots'];
+export const ACTS = ['', 'fish', 'omok', 'cook', 'art', 'memory', 'qt', 'copy', 'watch', 'ferris', 'viking', 'carousel', 'bumper', 'bench', 'eat', 'bug', 'home', 'coaster', 'swim', 'sea', 'visit', 'dig', 'skip', 'ark', 'bgame'];
 const ID_RE = /^[A-Za-z0-9-]{1,64}$/;
 const GID_RE = /^[a-z0-9]{8,12}$/;
 const WORD_RE = /^[a-z]{2,12}$/;
@@ -21,7 +21,7 @@ const PET_RE = /^pet_[a-z]{2,10}$/;
 // 받은 메시지를 믿을 수 있는 모양으로만 걸러 낸다
 export function clean(type, p) {
   if (!p || typeof p !== 'object') return null;
-  const num = (v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 100; // 섬 셋을 다 담는 넓이
+  const num = (v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 100; // 섬 넷을 다 담는 넓이
   // r: 1이면 달리는 중
   if (type === 'mv') return num(p.x) && num(p.z) && num(p.tx) && num(p.tz) ? { x: p.x, z: p.z, tx: p.tx, tz: p.tz, ...(p.r === 1 ? { r: 1 } : {}) } : null;
   if (type === 'st') return num(p.x) && num(p.z) ? { x: p.x, z: p.z } : null;
@@ -341,7 +341,7 @@ class DemoNet {
     const bot = this.bots.find((b) => b.id === id);
     if (!bot) return;
     bot.busy = on;
-    this.h.onMsg('act', bot.id, { a: on ? kind : '' });
+    this.h.onMsg('act', bot.id, { a: on ? (String(kind).startsWith('bg_') ? 'bgame' : kind) : '' });
     if (on) this.h.onMsg('st', bot.id, { x: bot.pos[0], z: bot.pos[1] });
   }
   openGame(gid, onMsg, onReady) {

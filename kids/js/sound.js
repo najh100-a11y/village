@@ -368,4 +368,8 @@ export const sfx = {
   unreel: play(() => { noise({ dur: 0.35, vol: 0.06, freq: 2600, freq2: 1500, q: 1.2 }); }),
   tug: play(() => { tone({ f: 150, f2: 90, type: 'triangle', dur: 0.14, vol: 0.12 }); noise({ dur: 0.09, vol: 0.08, freq: 600, q: 0.8, kind: 'lowpass' }); }),
   snap: play(() => { noise({ dur: 0.05, vol: 0.3, freq: 4200, q: 2, kind: 'highpass' }); tone({ f: 900, f2: 180, type: 'triangle', dur: 0.25, vol: 0.1, delay: 0.03 }); }),
+  // 보드게임 섬: 종(땡!), 카드 넘기기, 윷가락 떨어지는 소리
+  bell: play(() => { tone({ f: 2093, dur: 1.1, vol: 0.12 }); tone({ f: 3136, dur: 0.7, vol: 0.05 }); tone({ f: 4186, dur: 0.4, vol: 0.03 }); tone({ f: 1046, type: 'triangle', dur: 0.5, vol: 0.05 }); }),
+  card: play(() => { noise({ dur: 0.08, vol: 0.12, freq: 2600, freq2: 4600, q: 0.9 }); tone({ f: 420, f2: 300, type: 'triangle', dur: 0.05, vol: 0.05, delay: 0.05 }); }),
+  clack: play(() => { for (let i = 0; i < 4; i++) { const d = 0.32 + i * rnd(0.05, 0.09); noise({ dur: 0.035, vol: 0.22, freq: rnd(1800, 2800), q: 2, delay: d }); tone({ f: rnd(240, 340), type: 'triangle', dur: 0.06, vol: 0.08, delay: d }); } }),
 };

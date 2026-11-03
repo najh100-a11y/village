@@ -1,6 +1,6 @@
 // 진숲 어린이 마을 — 섬과 다리
-// 큰 마을 섬 남쪽에 놀이동산 섬, 동쪽에 수영장 섬이 있고 나무 다리로 이어진다.
-// 걸을 수 있는 곳은 섬 셋과 다리 둘을 합친 곳이다.
+// 큰 마을 섬 남쪽에 놀이동산 섬, 동쪽에 수영장 섬, 서쪽에 보드게임 섬이 있고 나무 다리로 이어진다.
+// 걸을 수 있는 곳은 섬 넷과 다리 셋을 합친 곳이다.
 import * as THREE from './three.module.min.js';
 import { toon, toonGradient } from './avatar.js';
 import { mergeStatic } from './merge.js';
@@ -8,14 +8,16 @@ import { mergeStatic } from './merge.js';
 export const MAIN_WALK = 30.2; // 마을 섬에서 걸을 수 있는 반지름
 export const PARK_ISLE = { x: 0, z: 62.5, r: 20.5, walk: 18.9, seed: 3 }; // 범퍼카 장이 넓어서 섬도 넉넉하게
 export const POOL_ISLE = { x: 56, z: -4, r: 13.5, walk: 12.0, seed: 7 };
+export const BOARD_ISLE = { x: -56, z: -4, r: 14, walk: 12.5, seed: 11 }; // 보드게임 섬 (수영장 섬과 마주 보는 서쪽)
 // 다리 (걷는 곳은 x0~x1, z0~z1 네모)
 export const BRIDGES = [
   { id: 'park', x0: -1.1, x1: 1.1, z0: 29.0, z1: 44.2, deck: [32.2, 42.8], along: 'z' },
   { id: 'pool', x0: 29.0, x1: 44.6, z0: -5.1, z1: -2.9, deck: [33.4, 43.3], along: 'x' },
+  { id: 'board', x0: -44.6, x1: -29.0, z0: -5.1, z1: -2.9, deck: [-43.3, -33.4], along: 'x' },
 ];
-// 지도 전체를 볼 때 바라보는 가운데와 반 너비 (섬 셋과 둘레 얕은 물까지)
-export const WORLD_CENTER = { x: 19, z: 27 };
-export const WORLD_HALF = { w: 53, h: 61 };
+// 지도 전체를 볼 때 바라보는 가운데와 반 너비 (섬 넷과 둘레 얕은 물까지)
+export const WORLD_CENTER = { x: 0, z: 27 };
+export const WORLD_HALF = { w: 72, h: 61 };
 
 // 바다 낚시 나루터: 마을 섬 남동쪽(45도) 바닷가에서 바다로 곧게 뻗은 나무 다리.
 // (x, z)는 섬 안쪽 시작점, (ux, uz)는 바다 쪽 방향. 길이 len, 걷는 반너비 hw. 끝 end만큼은 hw2로 넓은 마당(배 타는 곳)이다.
@@ -34,29 +36,38 @@ export function onPier(x, z, m = 0) {
 export const JETTY = { x0: 65.4, x1: 75.6, z: -4.8, hw: 0.8 };
 export function onJetty(x, z, m = 0) { return x >= JETTY.x0 - m && x <= JETTY.x1 + m && Math.abs(z - JETTY.z) <= JETTY.hw + m; }
 
-// 섬과 다리를 한 줄로 놓으면: 놀이동산 섬 - 다리 - 마을 섬 - 다리 - 수영장 섬
-// 서로 다른 곳으로 갈 때는 다리 끝을 거쳐 간다.
-const CHAIN = ['park', 'b-park', 'main', 'b-pool', 'pool'];
-const LINKS = [{ x: 0, z: 43.8 }, { x: 0, z: 29.6 }, { x: 29.6, z: -4 }, { x: 44.4, z: -4 }];
+// 작은 섬은 모두 마을 섬과 다리 하나로 이어진다 (놀이동산 섬은 남쪽, 수영장 섬은 동쪽, 보드게임 섬은 서쪽)
+// 서로 다른 곳으로 갈 때는 다리 끝을 거쳐 간다. isle: 작은 섬 쪽 다리 끝, main: 마을 섬 쪽 다리 끝
+const LEGS = {
+  park: { isle: { x: 0, z: 43.8 }, main: { x: 0, z: 29.6 } },
+  pool: { isle: { x: 44.4, z: -4 }, main: { x: 29.6, z: -4 } },
+  board: { isle: { x: -44.4, z: -4 }, main: { x: -29.6, z: -4 } },
+};
 export function regionOf(x, z) {
   if (Math.hypot(x - PARK_ISLE.x, z - PARK_ISLE.z) <= PARK_ISLE.walk + 0.3) return 'park';
   if (Math.hypot(x - POOL_ISLE.x, z - POOL_ISLE.z) <= POOL_ISLE.walk + 0.3 || onJetty(x, z, 0.3)) return 'pool';
+  if (Math.hypot(x - BOARD_ISLE.x, z - BOARD_ISLE.z) <= BOARD_ISLE.walk + 0.3) return 'board';
   if (Math.hypot(x, z) <= MAIN_WALK + 0.3) return 'main';
   for (const b of BRIDGES) if (x >= b.x0 - 0.3 && x <= b.x1 + 0.3 && z >= b.z0 - 0.3 && z <= b.z1 + 0.3) return 'b-' + b.id;
   return 'main';
 }
 // (fx, fz)에서 (tx, tz)로 갈 때 거쳐 갈 다리 끝들 (같은 곳이면 빈 목록)
 export function route(fx, fz, tx, tz) {
-  const i = CHAIN.indexOf(regionOf(fx, fz)), j = CHAIN.indexOf(regionOf(tx, tz));
+  const a = regionOf(fx, fz), b = regionOf(tx, tz);
+  if (a === b) return [];
+  const isle = (r) => (r.startsWith('b-') ? r.slice(2) : r);
+  // 같은 작은 섬과 그 다리 사이
+  if (a !== 'main' && b !== 'main' && isle(a) === isle(b)) return [LEGS[isle(a)].isle];
   const out = [];
-  if (i < j) for (let k = i; k < j; k++) out.push(LINKS[k]);
-  else for (let k = i - 1; k >= j; k--) out.push(LINKS[k]);
+  if (a !== 'main') { if (!a.startsWith('b-')) out.push(LEGS[a].isle); out.push(LEGS[isle(a)].main); }
+  if (b !== 'main') { out.push(LEGS[isle(b)].main); if (!b.startsWith('b-')) out.push(LEGS[b].isle); }
   return out;
 }
 
 // p(x, z)를 걸을 수 있는 가장 가까운 곳으로 옮긴다
 export function clampWalk(p) {
-  const circles = [{ x: 0, z: 0, r: MAIN_WALK }, { x: PARK_ISLE.x, z: PARK_ISLE.z, r: PARK_ISLE.walk }, { x: POOL_ISLE.x, z: POOL_ISLE.z, r: POOL_ISLE.walk }];
+  const circles = [{ x: 0, z: 0, r: MAIN_WALK }, { x: PARK_ISLE.x, z: PARK_ISLE.z, r: PARK_ISLE.walk }, { x: POOL_ISLE.x, z: POOL_ISLE.z, r: POOL_ISLE.walk },
+    { x: BOARD_ISLE.x, z: BOARD_ISLE.z, r: BOARD_ISLE.walk }];
   for (const c of circles) if (Math.hypot(p.x - c.x, p.z - c.z) <= c.r) return p;
   for (const b of BRIDGES) if (p.x >= b.x0 && p.x <= b.x1 && p.z >= b.z0 && p.z <= b.z1) return p;
   if (onPier(p.x, p.z) || onJetty(p.x, p.z)) return p;

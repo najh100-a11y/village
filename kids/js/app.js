@@ -26,6 +26,7 @@ import { initSound, startMusic, stopMusic, setScene, sfx, cycleSound, soundMode,
 import { createWeather, KINDS as WX_KINDS, KIND_IDS as WX_IDS, iconOf as wxIcon, WEATHER_CREDIT } from './weather.js';
 import { h, modal, toast, confetti, josa } from './ui.js';
 import { drawFaceIcon, normalizeAvatar, defaultAvatar } from './face.js';
+import { BG_IDS, BG_INFO, bgIdOf, bgKind } from './boardgames.js';
 import { VILLAGERS, TALK } from './villagers.js';
 import { createGuide } from './guide.js';
 
@@ -70,7 +71,7 @@ async function boot() {
       const p = $('#prompt');
       if (!d) { p.hidden = true; return; }
       $('#promptName').textContent = d.name;
-      $('#promptAct').textContent = { board: '보기', fish: '낚시하기', skip: '던지기', ark: '놀기', omok: '두기', cook: '요리하기', art: '그리기', ferris: '타기', viking: '타기', carousel: '타기', bumper: '타기', coaster: '타기', 'home-exit': '나가기', 'home-closet': '옷 갈아입기', suggest: '건의하기' }[d.id] || '들어가기';
+      $('#promptAct').textContent = d.id.startsWith('bg_') ? '하기' : { board: '보기', fish: '낚시하기', skip: '던지기', ark: '놀기', omok: '두기', cook: '요리하기', art: '그리기', ferris: '타기', viking: '타기', carousel: '타기', bumper: '타기', coaster: '타기', 'home-exit': '나가기', 'home-closet': '옷 갈아입기', suggest: '건의하기' }[d.id] || '들어가기';
       p.dataset.id = d.id;
       p.hidden = false;
     },
@@ -162,7 +163,9 @@ async function boot() {
     isBusy: () => (!$('#maker').hidden || $('#hud').hidden ? true : !playOpen() ? 'locked' : false),
     onLockedInvite: (from, kind) => {
       const p = state.people.get(from);
-      if (p) toast(`${josa(p.name, '이가', '가')} ${{ omok: '오목', ark: '방주 짝 맞추기', cook: '요리' }[kind] || '놀이'}를 같이 하재요. ${unlockHint()} 놀 수 있어요!`, 3800);
+      const bid = bgIdOf(kind);
+      const what = bid ? BG_INFO[bid].name : { omok: '오목', ark: '방주 짝 맞추기', cook: '요리' }[kind] || '놀이';
+      if (p) toast(`${josa(p.name, '이가', '가')} ${josa(what, '을', '를')} 같이 하재요. ${unlockHint()} 놀 수 있어요!`, 3800);
     },
     onAccept: (kind, session) => openGameWith(kind, session),
   });
@@ -180,6 +183,8 @@ async function boot() {
     onOmokState: (st) => { if (net) net.send('ob', st); },
     getObserve: (id) => { const o = observes.get(id); return o && Date.now() - o.at < 30000 ? o.st : null; },
     watchable: () => watchableGames(),
+    getMe: () => state.me,
+    getPerson: (id) => state.people.get(id),
   });
   village.decorateRemote = (r, act, hint) => play3d.decorateRemote(r, act, hint);
   homeUI = createHomeUI({
@@ -525,6 +530,8 @@ const GAMES = {
   fish: () => play3d.fishing(), sea: () => play3d.seaFishing(), omok: () => play3d.omokMenu(), cook: () => play3d.cookMenu(), art: () => play3d.easel(),
   skip: () => play3d.skipping(), ark: () => play3d.arkMenu(),
   ferris: () => play3d.ride('ferris'), viking: () => play3d.ride('viking'), carousel: () => play3d.ride('carousel'), bumper: () => play3d.ride('bumper'), coaster: () => play3d.ride('coaster'),
+  // 보드게임 섬 탁자 여섯 (문 이름 bg_fruit 등)
+  ...Object.fromEntries(BG_IDS.map((id) => [bgKind(id), () => play3d.boardOpen(id)])),
 };
 let benchTold = false, munchSaid = false, jumpSent = 0;
 // 불꽃 소리 크기: 내 주민에게서 멀수록 작게 (가까우면 1, 45m쯤이면 0.3)
@@ -1598,6 +1605,7 @@ function showNews() {
   if (state.features.pets3) news.push(['pets3', "새 소식! 애완동물을 세 마리까지 데리고 다닐 수 있어요. 가방의 '우리 집 친구'에서 열매 15개(반값)에 다시 팔거나 친구에게 선물할 수도 있어요."]);
   if (state.features.petname) news.push(['petname', '새 소식! 애완동물에게 이름을 지어 줄 수 있어요(가방에서). 내 말을 따라 하는 앵무새도 열매 상점에 왔어요.']);
   news.push(['weather', "새 소식! 마을 날씨가 대구의 지금 날씨를 따라 바뀌어요. 대구에 비가 오면 마을에도 비가, 눈이 오면 눈이 내려요. 위쪽 열매 옆의 날씨를 누르면 자세히 볼 수 있어요."]);
+  news.push(['boardisle', '새 소식! 마을 서쪽 다리를 건너면 보드게임 섬이 있어요. 과일 종 치기, 77 피하기, 숫자 암호, 만칼라, 윷놀이, 땅따먹기를 숲지기 솔이나 친구와 1:1로 해 봐요.']);
   news.push(['clothes2', "새 소식! 옷장('꾸미기')에 옷이 많이 늘었어요. 이제 상의와 하의를 따로 골라 입어요. 치마, 반바지, 청바지, 한복 저고리와 한복 치마, 패딩, 야구 점퍼도 있어요."]);
   news.unshift(['guide', "새 소식! 오른쪽 '마을 지도' 단추를 누르면 어디에 무엇이 있고 무엇을 할 수 있는지 볼 수 있어요. 가고 싶은 곳을 고르면 그곳까지 걸어가요."]);
   // 이 기기로 처음 들어왔으면 지난 소식을 한꺼번에 띄우지 않고 마을 지도만 알려 준다
@@ -2586,7 +2594,9 @@ async function openGameWith(kind, session) {
   if (village.atHome) await homeUI.exit();
   hideHint();
   $('#sayPanel').hidden = true;
-  if (kind === 'omok') play3d.omok({ session });
+  const bid = bgIdOf(kind);
+  if (bid) play3d.boardGame(bid, { session, opts: session.extra });
+  else if (kind === 'omok') play3d.omok({ session });
   else if (kind === 'ark') play3d.ark({ session });
   else play3d.cook({ recipe: recipeById(session.extra) || RECIPES[0], session });
 }

@@ -15,6 +15,8 @@ import { createSkipGame, SKIP_STANDS, SKIP_FACE } from './beach.js';
 import { createArkGame, ARK_SEATS } from './ark.js';
 import { SEA_Y, SEA_SPOTS, MOOR, BOARD, BOAT_FACE, HARBOR, seatOf, seaRoute, seaBlock, shoreGap, nearSchool } from './sea.js';
 import { onPier, PIER } from './isles.js';
+import { BG_TABLES, bgTable } from './boardisle.js';
+import { boardMenu, mountBoardGame } from './boardgames.js';
 
 // ---------- 도우미 ----------
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -682,6 +684,13 @@ export function createPlay3D(ctx) {
     if (act === 'omok') {
       const s = nearest(omokSeats(), p);
       if (s && s.d < 1.6) v.pinRemote(r.id, { x: s.x, y: SEAT_Y, z: s.z, rot: s.rot, pose: seatPose({}), auto: true });
+      return;
+    }
+    if (act === 'bgame') {
+      // 보드게임 섬: 자리 번호 = 탁자 번호 * 2 + (0 바깥 의자, 1 안쪽 의자)
+      const t = BG_TABLES[r.actSeat >> 1];
+      const s = t && t.seats[r.actSeat & 1];
+      if (s) v.pinRemote(r.id, { x: s.x, y: SEAT_Y, z: s.z, rot: s.rot, pose: seatPose({}), auto: true });
       return;
     }
     if (r.pin && r.pin.auto) v.unpinRemote(r.id);
@@ -3259,7 +3268,68 @@ export function createPlay3D(ctx) {
     menuTok: { next: () => ++menuTok, is: (t) => t === menuTok }, myId: () => (ctx.myId ? ctx.myId() : null), seatPose, SEAT_Y, onCelebrate,
     rpc, getToken, lost, features: () => (ctx.features ? ctx.features() : {}) });
 
+  // =====================================================================
+  // 보드게임 섬: 탁자 의자에 앉고, 놀이 화면을 덮어 띄운다 (마을은 잠시 멈춘다)
+  // =====================================================================
+  function boardOpen(id) {
+    boardMenu(id, { hub, onlineFriends, onStart: (gid, how) => boardGame(gid, how) });
+  }
+  function boardGame(id, { session = null, level = 'normal', opts = null } = {}) {
+    stopAll();
+    const t = bgTable(id);
+    if (!t) return;
+    const side = session && !session.bot && !session.host ? 1 : 0;
+    const mine = t.seats[side], theirs = t.seats[1 - side];
+    const meSt = { reach: 0, cheer: 0 }, opSt = { reach: 0, cheer: 0 };
+    let guideSave = null, handle = null;
+    const game = {
+      cam: camAt({ x: t.x, z: t.z, rot: t.rot }, [2.4, 2.6, 0], [0, 0.8, 0], 1.2),
+      camSpeed: 2.5,
+      state: () => (handle ? handle.state() : null),
+      stop() {
+        if (handle) { try { handle.stop(); } catch (e) { console.error(e); } handle = null; }
+        if (session && !session.closed) session.close();
+        if (session) v.unpinRemote(session.peer);
+        if (guideSave) {
+          const gd = v.guide;
+          gd.root.position.copy(guideSave.pos);
+          gd.root.rotation.y = guideSave.rot;
+          gd.pose = guideSave.pose;
+          guideSave = null;
+        }
+        v.setPaused(false);
+      },
+    };
+    cur = { id: 'bgame', game };
+    v.enterGame(game);
+    v.placePlayer(mine.x, mine.z, mine.rot, SEAT_Y);
+    v.player.pose = seatPose(meSt);
+    if (!session) {
+      const gd = v.guide;
+      guideSave = { pos: gd.root.position.clone(), rot: gd.root.rotation.y, pose: gd.pose };
+      gd.root.position.set(theirs.x, SEAT_Y, theirs.z);
+      gd.root.rotation.y = theirs.rot;
+      gd.pose = seatPose(opSt);
+    } else v.pinRemote(session.peer, { x: theirs.x, y: SEAT_Y, z: theirs.z, rot: theirs.rot, pose: seatPose(opSt) });
+    setActivity('bgame', t.i * 2 + side);
+    setScene('game');
+    const me = ctx.getMe ? ctx.getMe() : null;
+    const peer = session && ctx.getPerson ? ctx.getPerson(session.peer) : null;
+    handle = mountBoardGame(id, {
+      session, level, opts,
+      meName: '나', meAv: me && me.avatar,
+      oppAv: peer && peer.avatar,
+      onExit: () => stopAll(),
+      onCelebrate,
+      onCheer: (k) => { if (k === 'me') meSt.cheer = 2.6; else if (k === 'opp') opSt.cheer = 2.6; else if (k === 'reach-me') meSt.reach = 1; else if (k === 'reach-opp') opSt.reach = 1; },
+    });
+    // 놀이 화면이 마을을 덮으므로 마을 그리기는 잠시 쉰다 (휴대폰 전지를 아낀다)
+    v.setPaused(true);
+  }
+
   return {
+    boardOpen, boardGame,
+    get boardState() { return cur && cur.id === 'bgame' && cur.game.state ? cur.game.state() : null; },
     ride: rides.ride,
     fishing, seaFishing, omokMenu, omok, omokWatch, cookMenu, cook, cookFree, easel, artSaved,
     skipping: skip.skipping, arkMenu: arkGame.arkMenu, ark: arkGame.ark, arkBoard: arkGame.arkBoard,

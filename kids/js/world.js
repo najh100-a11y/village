@@ -18,6 +18,8 @@ import { HomeSpace, HOME_O, buildCrop } from './home.js';
 import { Villagers } from './villagers.js';
 import { Sea } from './sea.js';
 import { Beach, makeShovel, digPoseAt, remoteDigPose, DIG_SPOTS } from './beach.js';
+import { buildBoardIsle, BG_TABLES } from './boardisle.js';
+import { BOARD_ISLE } from './isles.js';
 // 내 집(따로 된 장면) 근처 좌표인지: 마을 친구와 동물은 늘 마을 좌표라서 좌표로 가른다
 const nearHome = (p) => Math.abs(p.x - HOME_O.x) < 200 && Math.abs(p.z - HOME_O.z) < 200;
 
@@ -235,7 +237,11 @@ export const PATHS = [
   [[0, 10.5], [-3, 11.7], [-5.4, 12.7]], // 연못 낚시터로
   [[0, 11], [5, 12.9], [9.4, 14.4]], // 놀이 마당으로
   [[9, 1.0], [14, -4.5], [22, -5.5], [34, -4.0]], // 동쪽 끝은 수영장 섬 다리
+  [[-9, 1.2], [-14, -4.5], [-22, -5.5], [-34, -4.0]], // 서쪽 끝은 보드게임 섬 다리 (나중에 낸 길)
 ];
+// 나중에 낸 길: 나무·덤불·돌·꽃은 이 길이 없던 때와 같은 자리에 두고, 이 길 위에 있던 것만 뺀다 (마을 숲 모습이 바뀌지 않게)
+const NEW_PATHS = [PATHS[PATHS.length - 1]];
+const OLD_PATHS = PATHS.slice(0, -1);
 export const PLAZA = { x: 0, z: -2.5, r: 5.4 };
 export const YARD = { x: 11.2, z: 16.4, r: 3.4 }; // 놀이 마당
 
@@ -244,10 +250,10 @@ function distToSeg(px, pz, ax, az, bx, bz) {
   const t = Math.max(0, Math.min(1, ((px - ax) * dx + (pz - az) * dz) / (dx * dx + dz * dz)));
   return Math.hypot(px - (ax + t * dx), pz - (az + t * dz));
 }
-function nearPath(x, z, pad) {
-  if (Math.hypot(x - PLAZA.x, z - PLAZA.z) < PLAZA.r + pad) return true;
-  if (Math.hypot(x - YARD.x, z - YARD.z) < YARD.r + pad) return true;
-  for (const p of PATHS) for (let i = 0; i < p.length - 1; i++) {
+function nearPath(x, z, pad, paths = PATHS, places = true) {
+  if (places && Math.hypot(x - PLAZA.x, z - PLAZA.z) < PLAZA.r + pad) return true;
+  if (places && Math.hypot(x - YARD.x, z - YARD.z) < YARD.r + pad) return true;
+  for (const p of paths) for (let i = 0; i < p.length - 1; i++) {
     if (distToSeg(x, z, p[i][0], p[i][1], p[i + 1][0], p[i + 1][1]) < 1.2 + pad) return true;
   }
   return false;
@@ -381,6 +387,15 @@ export class Village {
     this.buildNature();
     this.sea = new Sea(this, { signMesh }); // 나무를 심은 뒤에 짓는다 (나무 자리가 바뀌지 않게)
     this.beach = new Beach(this); // 수영장 섬 보물 캐기 자리와 물수제비 터
+    buildBoardIsle(this, { signMesh }); // 보드게임 섬 (서쪽 다리 건너)
+    {
+      const sg = this.postSign('보드게임 섬', 1.7);
+      sg.position.set(-27.0, 0, -1.6);
+      sg.rotation.y = Math.PI / 2;
+      mergeStatic(sg);
+      this.scene.add(sg);
+      this.addObstacleCircle(-27.0, -1.6, 0.15);
+    }
     this.critters = new Critters(this);
     this.critters.onSound = (kind, soft) => this.on.onCritterSound && this.on.onCritterSound(kind, soft);
     this.bugs = new Bugs(this);
@@ -902,6 +917,10 @@ export class Village {
       }
       this.placeBuilding('qt', g, { x: -17.8, z: 1.1, rot: 0.85, hw: 3.9, hd: 3.9, doorZ: 5.2, name: '묵상의 숲', fade: 4.6 });
       this.addObstacleCircle(-17.8 - Math.sin(0.85) * 6.4, 1.1 - Math.cos(0.85) * 6.4, 1.0);
+      // 묵상 나무는 크고 잎이 겹쳐서, 뒤(보드게임 섬 가는 길)에 선 아이가 보이게 더 흐리게 한다
+      const qf = this.fadeables[this.fadeables.length - 1];
+      qf.pts = [[-17.8, 1.1, 4.6], [-17.8 - Math.sin(0.85) * 6.4, 1.1 - Math.cos(0.85) * 6.4, 3.4]];
+      qf.lo = 0.14;
     }
 
     // 내 집
@@ -1835,9 +1854,12 @@ export class Village {
     const crownGeo2 = new THREE.SphereGeometry(0.75, 14, 10);
     const coneGeo = [new THREE.ConeGeometry(1.3, 1.6, 10), new THREE.ConeGeometry(1.05, 1.4, 10), new THREE.ConeGeometry(0.75, 1.2, 10)];
     const fruitGeo = new THREE.SphereGeometry(0.15, 10, 8);
+    const ghosts = []; // 새 길 때문에 뺀 것들 (자리 계산에는 있는 것처럼 둔다)
+    const onNew = (x, z, pad) => nearPath(x, z, pad, NEW_PATHS, false);
     const blocked = (x, z, pad) => {
       if (Math.hypot(x, z) > 29.5) return true;
-      if (nearPath(x, z, pad)) return true;
+      if (nearPath(x, z, pad, OLD_PATHS)) return true;
+      for (const c of ghosts) if (Math.hypot(x - c.x, z - c.z) < c.r + 1.4 + pad) return true;
       for (const c of this.noTree) if (Math.hypot(x - c.x, z - c.z) < c.r + pad) return true;
       if (Math.hypot(x + 9.5, z - 13) < 5.5) return true;
       if (Math.hypot(x, z - 9) < 4) return true;
@@ -1887,6 +1909,8 @@ export class Village {
       t.position.set(x, 0, z);
       t.scale.setScalar(s);
       t.rotation.y = r() * Math.PI * 2;
+      // 새 길에서 2.4 안쪽, 또는 카메라 쪽(남쪽)으로 3.6 안쪽 나무는 뺀다 (길을 걷는 아이를 가리지 않게)
+      if (onNew(x, z, 1.2) || onNew(x, z - 1.2, 1.2)) { ghosts.push({ x, z, r: 0.38 * s }); continue; }
       inst.addGroup(t);
       this.addObstacleCircle(x, z, 0.38 * s);
       if (!isPine) this.treeSpots.push([x, z, s]);
@@ -1908,6 +1932,7 @@ export class Village {
       b.children[1].scale.setScalar(0.75);
       if (n % 3 === 0) for (let k = 0; k < 4; k++) b.add(m(fruitGeo, toon('#F6A2C4'), Math.cos(k * 1.6) * 0.5, 0.55, Math.sin(k * 1.6) * 0.45));
       b.position.set(x, 0, z);
+      if (onNew(x, z, 0.6)) { ghosts.push({ x, z, r: 0.6 }); continue; }
       inst.addGroup(b);
       this.addObstacleCircle(x, z, 0.6);
     }
@@ -1921,6 +1946,7 @@ export class Village {
       const rk = m(rockGeo, rockM, x, 0.2, z);
       rk.scale.set(1 + r() * 0.6, 0.6 + r() * 0.4, 1 + r() * 0.5);
       rk.rotation.y = r() * 3;
+      if (onNew(x, z, 0.6)) { ghosts.push({ x, z, r: 0.55 }); continue; }
       inst.addGroup(rk);
       this.addObstacleCircle(x, z, 0.55);
     }
@@ -1951,14 +1977,16 @@ export class Village {
     const spots = [];
     for (let i = 0; i < 4000 && spots.length < 190; i++) {
       const cx = (r() - 0.5) * 58, cz = (r() - 0.5) * 58;
-      if (Math.hypot(cx, cz) > 28.5 || nearPath(cx, cz, 0.15) || Math.hypot(cx + 9.5, cz - 13) < 4.3) continue;
+      if (Math.hypot(cx, cz) > 28.5 || nearPath(cx, cz, 0.15, OLD_PATHS) || Math.hypot(cx + 9.5, cz - 13) < 4.3) continue;
       if (this.obstacles.some((o) => Math.hypot(cx - o.x, cz - o.z) < (o.t === 'b' ? Math.max(o.hw, o.hd) + 0.6 : o.r + 0.3))) continue;
-      const near = nearPath(cx, cz, 1.6);
+      if (ghosts.some((o) => Math.hypot(cx - o.x, cz - o.z) < o.r + 0.3)) continue;
+      const near = nearPath(cx, cz, 1.6, OLD_PATHS);
       if (!near && r() < 0.65) continue;
       const col = flowerCols[Math.floor(r() * flowerCols.length)];
-      this.flowerSpots.push([cx, cz]);
+      const cut = onNew(cx, cz, 0.6);
+      if (!cut) this.flowerSpots.push([cx, cz]);
       const n = 2 + Math.floor(r() * 4);
-      for (let k = 0; k < n; k++) spots.push([cx + (r() - 0.5) * 1.2, cz + (r() - 0.5) * 1.2, col]);
+      for (let k = 0; k < n; k++) { const fx = cx + (r() - 0.5) * 1.2, fz = cz + (r() - 0.5) * 1.2; if (!cut) spots.push([fx, fz, col]); }
     }
     const petals = new THREE.InstancedMesh(petalGeo, toon('#FFFFFF'), spots.length * 5);
     const centers = new THREE.InstancedMesh(centerGeo, toon('#F4C542'), spots.length);
@@ -1986,7 +2014,8 @@ export class Village {
     let ti = 0;
     for (let i = 0; i < 3000 && ti < 500; i++) {
       const x = (r() - 0.5) * 58, z = (r() - 0.5) * 58;
-      if (Math.hypot(x, z) > 29 || nearPath(x, z, 0.1)) continue;
+      if (Math.hypot(x, z) > 29 || nearPath(x, z, 0.1, OLD_PATHS)) continue;
+      if (onNew(x, z, 0.1)) continue;
       if (i % 5 === 0) this.grassSpots.push([x, z]);
       for (let k = 0; k < 3 && ti < 500; k++) {
         mat4.makeRotationZ((k - 1) * 0.35);
@@ -2517,7 +2546,7 @@ export class Village {
 
   // ---------- 시점 ----------
   viewNow() { return this.mode === 'play' ? this.view.play : this.mode === 'game' ? this.view.game : null; }
-  // 지도 보기: 줌이 MAP_FROM을 넘으면 점점 섬 전체를 내려다보고, MAP_ZOOM에서 섬 셋이 다 들어온다
+  // 지도 보기: 줌이 MAP_FROM을 넘으면 점점 섬 전체를 내려다보고, MAP_ZOOM에서 섬 넷이 다 들어온다
   canMap() { return this.atHome ? false : this.mode === 'play' || (this.mode === 'game' && !!(this.game && this.game.cam && this.game.cam.map)); }
   setZoom(z) {
     const v = this.viewNow();
@@ -2535,8 +2564,8 @@ export class Village {
     this.viewChanged();
   }
   isMapView() { const v = this.viewNow(); return !!v && this.canMap() && v.zoom > mapFrom(this.mode) + 0.2; }
-  // 섬 셋이 화면에 다 들어오는 거리 (화면 비율, 돌린 방향, 높이각에 따라)
-  // 화면 가장자리 단추들이 가리는 너비 (px). 지도 보기는 그 안쪽 칸에 섬 셋을 맞춘다
+  // 섬 넷이 화면에 다 들어오는 거리 (화면 비율, 돌린 방향, 높이각에 따라)
+  // 화면 가장자리 단추들이 가리는 너비 (px). 지도 보기는 그 안쪽 칸에 섬 넷을 맞춘다
   setSafe(s) { this.safe = s; }
   safeRect() {
     const el = this.renderer.domElement;
@@ -3003,7 +3032,13 @@ export class Village {
         for (let j = 1; j <= m; j++) add(x0 + ((x1 - x0) * j) / (m + 1), z0 + ((z1 - z0) * j) / (m + 1));
       }
     }
-    for (const [x, z] of [[0, 29.6], [0, 37], [0, 43.8], [29.6, -4], [37, -4], [44.4, -4]]) add(x, z);
+    for (const [x, z] of [[0, 29.6], [0, 37], [0, 43.8], [29.6, -4], [37, -4], [44.4, -4], [-29.6, -4], [-37, -4], [-44.4, -4]]) add(x, z);
+    // 보드게임 섬: 가운데 마당 둘레와 탁자 바깥 둘레
+    for (const [r, n] of [[3.6, 8], [10.4, 14]]) for (let k = 0; k < n; k++) {
+      const a = (k / n) * Math.PI * 2;
+      add(BOARD_ISLE.x + Math.cos(a) * r, BOARD_ISLE.z + Math.sin(a) * r);
+    }
+    for (const t of BG_TABLES) add(t.x + t.dx * 1.35, t.z + t.dz * 1.35);
     for (const u of [-1.0, 3.5, 8.0, 12.5]) { const q = pierPoint(u, 0); add(q.x, q.z); } // 바다 낚시 나루터
     // 큰 네모(집, 놀이기구) 모서리 바깥: 이 점들로 집 뒤를 돌아간다
     for (const o of this.obstacles) {
@@ -3108,7 +3143,7 @@ export class Village {
         }
       }
     }
-    clampWalk(p); // 섬 셋과 다리 위에서만 걷는다
+    clampWalk(p); // 섬 넷과 다리 위에서만 걷는다
   }
 
   // ---------- 시간 ----------
@@ -3408,15 +3443,19 @@ export class Village {
     for (const f of this.fadeables) {
       let want = 1;
       if (pp && f !== this.noFade) {
-        const rx = f.x - pp.x, rz = f.z - pp.z;
-        const along = rx * cdx + rz * cdz;
-        const across = Math.abs(rx * cdz - rz * cdx);
-        if (along > -0.5 && along < Math.min(cdist, f.r + 7) && across < f.r + 0.6) want = 0.32;
+        for (const [fx, fz, fr] of f.pts || [[f.x, f.z, f.r]]) {
+          const rx = fx - pp.x, rz = fz - pp.z;
+          const along = rx * cdx + rz * cdz;
+          const across = Math.abs(rx * cdz - rz * cdx);
+          if (along > -0.5 && along < Math.min(cdist, fr + 7) && across < fr + 0.6) want = f.lo || 0.32;
+        }
       }
       if (Math.abs(f.op - want) > 0.01) {
         f.op += (want - f.op) * Math.min(1, dt * 8);
         for (const mt of f.mats) {
-          mt.transparent = f.op < 0.99 || mt.userData.base < 1;
+          // 불투명으로 만든 셰이더는 알파를 1로 고정하므로(three.js OPAQUE), 투명으로 바꿀 때는 다시 만들게 한다
+          const tr = f.op < 0.99 || mt.userData.base < 1;
+          if (mt.transparent !== tr) { mt.transparent = tr; mt.needsUpdate = true; }
           mt.opacity = f.op * (mt.userData.base ?? 1);
           mt.depthWrite = f.op > 0.99;
         }

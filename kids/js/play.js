@@ -4,7 +4,11 @@ import { h, josa } from './ui.js';
 import { drawFaceIcon, normalizeAvatar } from './face.js';
 import { sfx } from './sound.js';
 
-const KIND_ASK = { omok: '오목 한 판 두자고 해요!', cook: '같이 요리하자고 해요!', ark: '노아의 방주 짝 맞추기 하자고 해요!' };
+const KIND_ASK = {
+  omok: '오목 한 판 두자고 해요!', cook: '같이 요리하자고 해요!', ark: '노아의 방주 짝 맞추기 하자고 해요!',
+  bg_fruit: '보드게임 섬에서 과일 종 치기 하자고 해요!', bg_n77: '보드게임 섬에서 77 피하기 하자고 해요!', bg_code: '보드게임 섬에서 숫자 암호 맞히기 하자고 해요!',
+  bg_mancala: '보드게임 섬에서 만칼라 하자고 해요!', bg_yut: '보드게임 섬에서 윷놀이 하자고 해요!', bg_dots: '보드게임 섬에서 땅따먹기(점 잇기) 하자고 해요!',
+};
 const newGid = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]).join('') + Date.now().toString(36).slice(-4);
 
 // 받는 쪽에서 메시지를 한 번만 처리하고, 보내는 쪽은 받았다는 대답이 올 때까지 다시 보낸다

@@ -3,7 +3,8 @@
 // 땅, 길, 다리, 건물 자리는 마을을 짓는 값(world.js, isles.js, pool.js, park.js)을 그대로 써서 그린다.
 // 장소를 누르면 하는 일과 열매, 지금 열렸는지가 나오고 '여기로 가기'로 그곳까지 걸어간다.
 import { h } from './ui.js';
-import { PARK_ISLE, POOL_ISLE, BRIDGES, PIER, JETTY, pierPoint, regionOf } from './isles.js';
+import { PARK_ISLE, POOL_ISLE, BOARD_ISLE, BRIDGES, PIER, JETTY, pierPoint, regionOf } from './isles.js';
+import { BG_TABLES } from './boardisle.js';
 import { PATHS, PLAZA, YARD, islandRadius } from './world.js';
 import { POOL } from './pool.js';
 import { DIG_SPOTS } from './beach.js';
@@ -26,9 +27,19 @@ const VIEWS = [
   { id: 'main', name: '마을 섬', tab: '마을 섬', box: [-31, -28, 64, 63], r: 2.6 },
   { id: 'park', name: '놀이동산 섬', tab: '놀이동산', box: [-27, 36, 54, 54], r: 2.2 },
   { id: 'pool', name: '수영장 섬', tab: '수영장', box: [38, -21, 42, 36], r: 1.75 },
-  { id: 'all', name: '전체', tab: '전체', box: [-36, -34, 116, 127], r: 3.4 },
+  { id: 'board', name: '보드게임 섬', tab: '보드게임', box: [-76, -22, 42, 36], r: 1.6 },
+  { id: 'all', name: '전체', tab: '전체', box: [-78, -34, 158, 127], r: 3.6 },
 ];
-const ISLE_NAME = { main: '마을 섬', park: '놀이동산 섬', pool: '수영장 섬' };
+const ISLE_NAME = { main: '마을 섬', park: '놀이동산 섬', pool: '수영장 섬', board: '보드게임 섬' };
+// 보드게임 섬 탁자 (지도에 쓰는 소개)
+const BG_SPOTS = {
+  fruit: ['🔔', '같은 과일 다섯 개면 종 치기', ['펼쳐진 카드 두 장에 같은 과일이 꼭 다섯 개면 가운데 종을 먼저 쳐요. 다섯 개가 아닌데 치면 카드 한 장을 줘요.', '3분 동안 하고, 카드가 많은 사람이 이겨요.']],
+  yut: ['🎋', '윷 던지고 말 옮기기', ['도·개·걸·윷·모와 빽도로 말을 옮기고, 모서리에 멈추면 지름길로 가요.', '말 2개나 4개로 할 수 있어요.']],
+  n77: ['🃏', '11의 배수와 77 피하기', ['카드를 한 장씩 내며 합계를 더해요. 11, 22, 33… 이나 77 이상이 되면 생명을 잃어요.']],
+  code: ['🔢', '숨은 숫자 타일 맞히기', ['0~11 숫자 타일을 작은 수부터 늘어놓고, 친구의 숨은 타일 숫자를 추리해서 맞혀요.']],
+  mancala: ['🪨', '돌 놓아 창고에 모으기', ['구멍의 돌을 한 알씩 놓아 가며 내 창고에 더 많이 모아요. 창고에 쏙 들어가면 한 번 더!']],
+  dots: ['✏️', '점 잇기로 땅 차지하기', ['점과 점 사이에 선을 그어 네모를 닫으면 내 땅이 되고 한 번 더 그어요.']],
+};
 const CAT = {
   word: { name: '말씀', color: '#E8714F' },
   town: { name: '마을', color: '#3E8F4A' },
@@ -151,6 +162,12 @@ export function createGuide(o) {
         '혼자 하면 쉬움(12장), 보통(16장), 어려움(20장)을 고르고, 친구와 하면 20장으로 번갈아 뒤집어요.',
         F.arkboard ? '혼자 하기 기록은 이번 주 기록판에 올라가요. 난이도마다 가장 빠른 10명이 보이고, 일요일마다 새로 시작해요.' : null].filter(Boolean),
       go: { t: 'door', id: 'ark' } });
+    // 보드게임 섬: 탁자 여섯
+    for (const t of BG_TABLES) {
+      const [icon, short, lines] = BG_SPOTS[t.id];
+      add({ id: 'bg_' + t.id, isle: 'board', cat: 'play', icon, name: t.name, short, x: t.x + t.dx * 0.6, z: t.z + t.dz * 0.6, lbl: t.dz < -0.3 ? 'n' : t.dz > 0.3 ? 's' : t.dx > 0 ? 'e' : 'w', lock: true,
+        lines: [...lines, '숲지기 솔(쉬움·보통·어려움)이나 마을 친구와 1:1로 해요.'], go: { t: 'door', id: 'bg_' + t.id } });
+    }
     return L;
   }
   // 마을 친구 (자리는 놀이동산과 같은 시계로 정해진다)
@@ -179,6 +196,7 @@ export function createGuide(o) {
     const g = regionOf(p.x, p.z);
     if (g === 'b-park') return p.z > 36 ? 'park' : 'main';
     if (g === 'b-pool') return p.x > 38 ? 'pool' : 'main';
+    if (g === 'b-board') return p.x < -38 ? 'board' : 'main';
     return g;
   }
 
@@ -195,7 +213,8 @@ export function createGuide(o) {
     const g = sv('g', { class: 'gm-base', 'aria-hidden': 'true' });
     g.append(sv('rect', { x: -80, y: -80, width: 200, height: 210, fill: '#5FC3E6' }));
     const isles = [[0, 0, islandRadius, 39.5, 47, '#8DCC5F', 'main'], [PARK_ISLE.x, PARK_ISLE.z, isleRad(PARK_ISLE), PARK_ISLE.r + 4.5, PARK_ISLE.r + 10, '#8DCC5F', 'park'],
-      [POOL_ISLE.x, POOL_ISLE.z, isleRad(POOL_ISLE), POOL_ISLE.r + 4.5, POOL_ISLE.r + 10, '#EDCF92', 'pool']];
+      [POOL_ISLE.x, POOL_ISLE.z, isleRad(POOL_ISLE), POOL_ISLE.r + 4.5, POOL_ISLE.r + 10, '#EDCF92', 'pool'],
+      [BOARD_ISLE.x, BOARD_ISLE.z, isleRad(BOARD_ISLE), BOARD_ISLE.r + 4.5, BOARD_ISLE.r + 10, '#8DCC5F', 'board']];
     for (const [x, z, , , sh] of isles) g.append(sv('circle', { cx: x, cy: z, r: sh, fill: '#8FDDF0' }));
     for (const [x, z, , sd] of isles) g.append(sv('circle', { cx: x, cy: z, r: sd, fill: '#F3E2B4' }));
     // 나루터와 물수제비 다리 (모래 위, 땅 아래)
@@ -228,6 +247,14 @@ export function createGuide(o) {
     g.append(sv('rect', { x: P.x - dx, y: P.z - dz, width: dx * 2, height: dz * 2, rx: 0.5, fill: '#ECE7DC', stroke: '#CFC6B4', 'stroke-width': 0.2 }));
     g.append(sv('rect', { x: P.x - nx, y: P.z - dz - 0.75, width: nx * 2, height: 1.25, rx: 0.4, fill: '#ECE7DC' }));
     g.append(sv('rect', { x: P.x - P.hw, y: P.z - P.hd, width: P.hw * 2, height: P.hd * 2, fill: '#2E9BD0' }));
+    // 보드게임 섬: 다리에서 오는 길, 탁자 둘레 길, 가운데 돌 마당 (boardisle.js와 같은 값)
+    {
+      const B = BOARD_ISLE, ring = Math.hypot(BG_TABLES[0].x - B.x, BG_TABLES[0].z - B.z);
+      g.append(sv('line', { x1: B.x + 4.5, y1: B.z, x2: B.x + B.r + 1, y2: B.z, stroke: '#E9D2A6', 'stroke-width': 2.6, 'stroke-linecap': 'round' }));
+      g.append(sv('circle', { cx: B.x, cy: B.z, r: ring, fill: 'none', stroke: '#E9D2A6', 'stroke-width': 2.2 }));
+      g.append(sv('circle', { cx: B.x, cy: B.z, r: 3.4, fill: '#D9C9A8' }));
+      for (const t of BG_TABLES) g.append(sv('circle', { cx: n2(t.x), cy: n2(t.z), r: 1.9, fill: '#E9D2A6' }));
+    }
     // 건물과 놀이기구 바닥 (부딪히는 자리를 그대로: 큰 네모와 큰 동그라미)
     for (const ob of v.obstacles || []) {
       if (ob.t === 'b' && ob.hw * ob.hd > 2) {
@@ -302,7 +329,7 @@ export function createGuide(o) {
     }
     // 섬 이름 (전체 보기)
     if (all) {
-      for (const [id, x, z] of [['main', -20, -25], ['park', 0, 89.5], ['pool', 56, 15.5]]) {
+      for (const [id, x, z] of [['main', -20, -25], ['park', 0, 89.5], ['pool', 56, 15.5], ['board', -56, 16]]) {
         const t = sv('text', { class: 'gm-isle', x, y: z, 'text-anchor': 'middle', 'font-size': 4.2, 'stroke-width': 1.1, 'data-isle': id }, ISLE_NAME[id]);
         t.addEventListener('click', () => setView(id));
         g.append(t);
@@ -312,9 +339,12 @@ export function createGuide(o) {
       if (view === 'main') {
         g.append(sv('text', { class: 'gm-note', x: -1.8, y: 32.4, 'text-anchor': 'end', 'font-size': n2(R * 0.7), 'stroke-width': n2(R * 0.7 * 0.3) }, '놀이동산 섬 가는 다리'));
         g.append(sv('text', { class: 'gm-note', x: 31.2, y: -6.6, 'text-anchor': 'end', 'font-size': n2(R * 0.7), 'stroke-width': n2(R * 0.7 * 0.3) }, '수영장 섬 가는 다리'));
+        g.append(sv('text', { class: 'gm-note', x: -31.2, y: -6.6, 'text-anchor': 'start', 'font-size': n2(R * 0.7), 'stroke-width': n2(R * 0.7 * 0.3) }, '보드게임 섬 가는 다리'));
       } else if (view === 'park') {
         g.append(sv('text', { class: 'gm-note', x: 1.8, y: 40.2, 'font-size': n2(R * 0.72), 'stroke-width': n2(R * 0.72 * 0.3) }, '마을 섬 가는 다리'));
         g.append(sv('text', { class: 'gm-note', x: 0, y: 46.4, 'text-anchor': 'middle', 'font-size': n2(R * 0.72), 'stroke-width': n2(R * 0.72 * 0.3) }, '놀이동산 입구'));
+      } else if (view === 'board') {
+        g.append(sv('text', { class: 'gm-note', x: -39, y: -6.2, 'text-anchor': 'end', 'font-size': n2(R * 0.72), 'stroke-width': n2(R * 0.72 * 0.3) }, '마을 섬 가는 다리'));
       } else if (view === 'pool') {
         g.append(sv('text', { class: 'gm-note', x: 39, y: -6.2, 'font-size': n2(R * 0.72), 'stroke-width': n2(R * 0.72 * 0.3) }, '마을 섬 가는 다리'));
         g.append(sv('text', { class: 'gm-note', x: 56, y: -8.9, 'text-anchor': 'middle', 'font-size': n2(R * 0.62), 'stroke-width': n2(R * 0.62 * 0.3) }, '선베드'));
@@ -514,6 +544,7 @@ export function createGuide(o) {
       [`놀이 마당 ${c.open ? '(오늘은 열려 있어요)' : `(${c.hint} 열려요)`}`, (s) => s.cat === 'play' && s.isle === 'main'],
       ['놀이동산 섬 (남쪽 다리 건너)', (s) => s.isle === 'park'],
       ['수영장 섬 (동쪽 다리 건너)', (s) => s.isle === 'pool'],
+      ['보드게임 섬 (서쪽 다리 건너)', (s) => s.isle === 'board'],
     ];
     const row = (sp) => {
       const st = status(sp, c);
@@ -547,7 +578,7 @@ export function createGuide(o) {
       if (view === 'all' && land) setView(land.dataset.isle);
     });
     const tabs = h('div', { class: 'gm-tabs', role: 'group', 'aria-label': '지도 보는 곳' },
-      VIEWS.map((x) => h('button', { type: 'button', 'data-v': x.id, 'aria-pressed': x.id === view ? 'true' : 'false', 'aria-label': x.id === 'all' ? '섬 셋 모두 보기' : `${x.name} 보기`, onclick: () => setView(x.id) }, x.tab)));
+      VIEWS.map((x) => h('button', { type: 'button', 'data-v': x.id, 'aria-pressed': x.id === view ? 'true' : 'false', 'aria-label': x.id === 'all' ? '섬 넷 모두 보기' : `${x.name} 보기`, onclick: () => setView(x.id) }, x.tab)));
     const cardBox = h('div', { class: 'gm-side', 'aria-live': 'polite' });
     const wrap = h('div', { class: 'gm-wrap' }, h('div', { class: 'gm-map' }, svg), cardBox);
     const legend = h('div', { class: 'gm-legend', 'aria-hidden': 'true' },
