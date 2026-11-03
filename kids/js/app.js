@@ -22,7 +22,8 @@ import { GIFT, GIFT_MSGS } from './economy.js';
 import { fishCanvas } from './fishing.js';
 import { createHomeUI } from './homeui.js';
 import { REWARD } from './economy.js';
-import { initSound, startMusic, stopMusic, setScene, sfx, cycleSound, soundMode } from './sound.js';
+import { initSound, startMusic, stopMusic, setScene, sfx, cycleSound, soundMode, setRain } from './sound.js';
+import { createWeather, KINDS as WX_KINDS, KIND_IDS as WX_IDS, iconOf as wxIcon, WEATHER_CREDIT } from './weather.js';
 import { h, modal, toast, confetti, josa } from './ui.js';
 import { drawFaceIcon, normalizeAvatar, defaultAvatar } from './face.js';
 import { VILLAGERS, TALK } from './villagers.js';
@@ -113,6 +114,7 @@ async function boot() {
     },
     onPet: (r) => { if (r.busy) return; petSound(r.kind); if (r.mine) showPetBar(r.item); },
     onPetCare: (e) => onPetCare(e),
+    onThunder: () => sfx.thunder(),
     onBug: (i, kind) => onBug(i, kind),
     onNet: (on) => setActivity(on ? 'bug' : ''),
     onDig: (i) => onDig(i),
@@ -711,6 +713,7 @@ async function enterVillage(greet) {
   startNet();
   startMusic();
   setScene('village');
+  startWeather();
   if (greet && me.is_birthday) {
     setTimeout(() => {
       confetti();
@@ -1594,6 +1597,8 @@ function showNews() {
   if (state.features.pets) news.push(['petcare', '새 소식! 데리고 다니는 애완동물을 누르면 안아 주거나 먹이를 줄 수 있어요.']);
   if (state.features.pets3) news.push(['pets3', "새 소식! 애완동물을 세 마리까지 데리고 다닐 수 있어요. 가방의 '우리 집 친구'에서 열매 15개(반값)에 다시 팔거나 친구에게 선물할 수도 있어요."]);
   if (state.features.petname) news.push(['petname', '새 소식! 애완동물에게 이름을 지어 줄 수 있어요(가방에서). 내 말을 따라 하는 앵무새도 열매 상점에 왔어요.']);
+  news.push(['weather', "새 소식! 마을 날씨가 대구의 지금 날씨를 따라 바뀌어요. 대구에 비가 오면 마을에도 비가, 눈이 오면 눈이 내려요. 위쪽 열매 옆의 날씨를 누르면 자세히 볼 수 있어요."]);
+  news.push(['clothes2', "새 소식! 옷장('꾸미기')에 옷이 많이 늘었어요. 이제 상의와 하의를 따로 골라 입어요. 치마, 반바지, 청바지, 한복 저고리와 한복 치마, 패딩, 야구 점퍼도 있어요."]);
   news.unshift(['guide', "새 소식! 오른쪽 '마을 지도' 단추를 누르면 어디에 무엇이 있고 무엇을 할 수 있는지 볼 수 있어요. 가고 싶은 곳을 고르면 그곳까지 걸어가요."]);
   // 이 기기로 처음 들어왔으면 지난 소식을 한꺼번에 띄우지 않고 마을 지도만 알려 준다
   let firstHere = false;
@@ -2457,6 +2462,72 @@ function openMail() {
 }
 
 // ---------- 화면 ----------
+// ---------- 대구 지금 날씨: 마을 하늘, 비·눈, 빗소리 (js/weather.js, Open-Meteo.com) ----------
+let weather = null;
+function startWeather() {
+  if (weather) { weather.start(); return; }
+  weather = createWeather({ onChange: applyWeather });
+  $('#hudWeather').addEventListener('click', openWeather);
+  if (DEMO) applyWeather(null); // 체험판은 날씨를 못 받아도 날씨 단추를 보여서 미리 보기를 할 수 있게
+  weather.start();
+}
+function applyWeather(w) {
+  const chip = $('#hudWeather');
+  const prev = state.weather;
+  state.weather = w;
+  if (!w) {
+    chip.hidden = !DEMO;
+    chip.textContent = '🌤️ 날씨';
+    village.setWeather('clear');
+    setRain(0);
+    return;
+  }
+  village.setWeather(w.kind, w.level, w.wind || 0);
+  const wet = ['drizzle', 'rain', 'storm'].includes(w.kind);
+  setRain(wet ? (w.kind === 'drizzle' ? 0.35 : 0.5 + w.level * 0.5) : 0);
+  chip.hidden = false;
+  chip.textContent = `${wxIcon(w)} ${Number.isFinite(w.temp) ? `${Math.round(w.temp)}°` : WX_KINDS[w.kind].name}`;
+  chip.setAttribute('aria-label', `대구 지금 날씨: ${w.label || WX_KINDS[w.kind].name}${Number.isFinite(w.temp) ? `, ${Math.round(w.temp)}도` : ''}. 눌러서 자세히 보기`);
+  // 마을에 있는 동안 날씨가 바뀌면 한 번 알려 준다 (체험판 미리 보기는 빼고)
+  if (prev && !w.preview && !prev.preview && prev.kind !== w.kind && state.me && !$('#hud').hidden) {
+    toast(`${wxIcon(w)} 대구 날씨가 '${w.label || WX_KINDS[w.kind].name}'(으)로 바뀌었어요. ${WX_KINDS[w.kind].line}`, 4200);
+  }
+}
+function fmtClock(ms) {
+  const d = new Date(ms);
+  return `${d.getHours() < 12 ? '오전' : '오후'} ${((d.getHours() + 11) % 12) + 1}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+function openWeather() {
+  const w = weather && weather.now();
+  const body = h('div', { class: 'talk wx-sheet' });
+  if (!w) {
+    body.append(h('p', {}, '아직 대구 날씨를 받지 못했어요. 인터넷이 연결되면 15분 안에 다시 받아요.'));
+    if (DEMO) body.append(h('p', { class: 'note' }, '체험판을 여는 곳에 따라 날씨를 받지 못할 수 있어요. 아래에서 날씨를 골라 미리 볼 수 있어요.'));
+  }
+  else {
+    const k = WX_KINDS[w.kind];
+    body.append(
+      h('div', { class: 'wx-head' }, h('span', { class: 'wx-big', 'aria-hidden': 'true' }, wxIcon(w)),
+        h('div', {}, h('b', {}, `대구 지금 날씨: ${w.label || k.name}`),
+          h('p', {}, [Number.isFinite(w.temp) ? `기온 ${w.temp.toFixed(1)}°C` : null, Number.isFinite(w.wind) && !w.preview ? `바람 초속 ${w.wind.toFixed(1)}m` : null].filter(Boolean).join(' · ')))),
+      h('p', { class: 'talk-line' }, k.line),
+      w.preview ? h('p', { class: 'note' }, '체험판에서 고른 날씨를 보여 주고 있어요.')
+        : h('p', { class: 'note' }, `${fmtClock(w.fetchedAt)}에 받은 날씨예요. 15분마다 새로 받아요. 기상 모델로 계산한 값이라 실제 하늘과 조금 다를 수 있어요.`),
+      h('p', { class: 'wx-credit' }, '날씨 정보: ', h('a', { href: WEATHER_CREDIT.url, target: '_blank', rel: 'noopener' }, WEATHER_CREDIT.text),
+        ' (', h('a', { href: WEATHER_CREDIT.licenseUrl, target: '_blank', rel: 'noopener' }, WEATHER_CREDIT.license), ')'));
+  }
+  if (DEMO) {
+    // 체험판: 여러 날씨를 미리 볼 수 있다
+    const now = w && w.preview ? w.kind : null;
+    body.append(h('h4', {}, '날씨 바꿔 보기 (체험판)'),
+      h('div', { class: 'wx-pick' }, ...WX_IDS.map((id) => h('button', { class: 'chip', type: 'button', 'aria-pressed': String(now === id),
+        onclick: () => { weather.preview(id); openWeather(); } }, `${WX_KINDS[id].icon} ${WX_KINDS[id].name}`)),
+        h('button', { class: 'chip', type: 'button', 'aria-pressed': String(!now), onclick: () => { weather.preview(null); openWeather(); } }, '진짜 대구 날씨')));
+  }
+  body.append(h('div', { class: 'row' }, h('button', { class: 'btn btn-go', type: 'button', onclick: () => modal.close() }, '알겠어요')));
+  openSheet('마을 날씨', body, 'talk-sheet');
+}
+
 function updateHud() {
   const me = state.me;
   $('#hudName').textContent = me.village_name || '';
@@ -2542,6 +2613,15 @@ function onEnter(id) {
   }
 }
 
+// 숲지기 솔의 날씨 이야기 (대구 지금 날씨)
+const SOL_WX = {
+  drizzle: '지금 대구에 이슬비가 와서 마을에도 보슬보슬 내리고 있어. 밖에 나갈 때는 우산 챙기렴!',
+  rain: '지금 대구에 비가 와서 마을에도 비가 내려. 비 오는 날엔 우산 꼭 챙기고, 미끄러운 길 조심해!',
+  snow: '대구에 눈이 와서 마을에도 하얀 눈이 내려! 나가서 놀 땐 따뜻하게 입으렴.',
+  storm: '지금 대구에 천둥번개가 쳐서 마을에도 번쩍번쩍해. 진짜로 천둥이 치면 밖에 나가지 말고 안전한 집 안에 있어야 해.',
+  fog: '대구에 안개가 껴서 마을도 뿌옇네. 길을 건널 때는 더 조심하렴!',
+  clear: null, partly: null, cloudy: null,
+};
 function onNpc() {
   const me = state.me;
   const t = state.today || {};
@@ -2550,6 +2630,8 @@ function onNpc() {
   const lines = [];
   if (me.is_birthday) lines.push(`${name}, 생일 축하해! 오늘은 마을이 더 반짝이는 것 같아.`);
   else lines.push(`안녕, ${name}!${t.theme ? ` 이번 주 이야기는 '${t.theme}'이야.` : ''}`);
+  const wx = state.weather;
+  if (wx && SOL_WX[wx.kind]) lines.push(SOL_WX[wx.kind]);
   let go = null;
   if (!playOpen()) {
     const o = opensNow();
@@ -2703,6 +2785,7 @@ async function logout() {
   state.token = null;
   state.me = null;
   store.del('token');
+  setRain(0);
   showLogin();
 }
 

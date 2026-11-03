@@ -20,10 +20,10 @@ export const VILLAGERS = [
       outfit: 'dress', outfitColor: 10, bottomColor: 4, shoeColor: 6, hat: 'flower', hatColor: 2 } },
   { id: 'teun', name: '튼튼이', isle: 'park', snack: 'tomato', about: '줄넘기와 공놀이 대장이에요. 놀이동산 섬에 살아요.',
     av: { skin: 3, eyes: 'big', eyeColor: 1, brows: 'brave', nose: 'button', mouth: 'teeth', cheek: 'freckle', hair: 'spiky', hairColor: 1,
-      outfit: 'sporty', outfitColor: 0, bottomColor: 2, shoeColor: 3, hat: 'cap', hatColor: 2 } },
+      outfit: 'sporty', outfitColor: 0, bottom: 'jogger', bottomColor: 2, shoeColor: 3, hat: 'cap', hatColor: 2 } },
   { id: 'noeul', name: '노을이', isle: 'pool', snack: 'carrot', about: '노래하고 헤엄치는 걸 좋아해요. 수영장 섬에 살아요.',
     av: { skin: 0, eyes: 'lash', eyeColor: 4, brows: 'soft', nose: 'dot', mouth: 'cat', cheek: 'peach', hair: 'long', hairColor: 5,
-      outfit: 'stripe', outfitColor: 1, bottomColor: 1, shoeColor: 1, hat: 'ribbon', hatColor: 9 } },
+      outfit: 'stripe', outfitColor: 1, bottom: 'shorts', bottomColor: 1, shoeColor: 1, hat: 'ribbon', hatColor: 9 } },
 ];
 
 // 하루는 자기 섬의 자리 몇 곳을 차례로 돌며 보낸다: [자리, 하는 일, 머무는 초]. 다 돌면 처음부터 되풀이한다
@@ -62,6 +62,17 @@ const SAY = {
   lie: ['🎵 랄랄라~', '햇볕이 따뜻하다~'],
   plArk: ['무지개 색이 정말 예쁘다.', '동물들이 둘씩 방주에 들어갔대.'],
   shell: ['예쁜 조개껍데기 찾았다!', '반짝이는 모래를 파면 보물이 나온대.'],
+};
+// 날씨 혼잣말 (대구 지금 날씨는 모두 같으므로 친구 화면에서도 같은 때 같은 말을 한다). 세 번에 한 번
+const WX_SAY = {
+  clear: ['오늘 날씨 정말 좋다!', '햇살이 반짝반짝!'],
+  partly: ['구름이 솜사탕 같아.', '하늘에 구름이 둥실둥실.'],
+  cloudy: ['구름이 잔뜩 꼈네.', '비가 올 것 같기도 하고…'],
+  fog: ['안개 때문에 멀리가 잘 안 보여.', '뿌연 안개 속을 걷는 것 같아.'],
+  drizzle: ['보슬보슬 이슬비가 와.', '이슬비쯤이야 괜찮아!'],
+  rain: ['빗소리가 톡톡, 듣기 좋다.', '비 오는 날엔 우산을 꼭 챙겨!'],
+  snow: ['눈이다! 눈사람 만들고 싶다!', '하얀 눈이 펑펑 내려!'],
+  storm: ['우르릉! 깜짝이야!', '천둥이 치면 안전한 곳에 있어야 해.'],
 };
 // 아이가 눌렀을 때 하는 말 (자리에 따라, 없으면 하는 일에 따라)
 export const TALK = {
@@ -547,7 +558,8 @@ export class Villagers {
     const k = `${p.round}:${p.si}:${step}`;
     if (n.saidKey !== k && (t - SAY_FIRST) - step * SAY_EVERY < 0.6) {
       n.saidKey = k;
-      const line = lines[(step + p.round + p.si) % lines.length];
+      const wx = this.weather && WX_SAY[this.weather];
+      const line = wx && step % 3 === 1 && p.act !== 'fish' ? wx[(step + i) % wx.length] : lines[(step + p.round + p.si) % lines.length];
       this.say(i, line);
       if (line.startsWith('🐟')) n.av.jump();
     }

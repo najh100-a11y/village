@@ -240,7 +240,7 @@ export class DemoBackend {
           avatar: { v: 1, skin: 0, eyes: 'sparkle', eyeColor: 1, brows: 'soft', nose: 'dot', mouth: 'grin', cheek: 'pink', hair: 'pigtails', hairColor: 0, outfit: 'dress', outfitColor: 10, bottomColor: 0, shoeColor: 3, hat: 'flower', hatColor: 2 },
           fruits: 12, last_seen_at: nowIso(30), memory: { [curVerse]: { practice_count: 3, best_score: 95, passed: true, last: t, first: nowIso(300) } } },
         { id: 'c3', login_id: '바다', pin: '2222', name: '예시 바다', birthdate: '2018-02-20', consent_date: t, village_name: '바다',
-          avatar: { v: 1, skin: 3, eyes: 'round', eyeColor: 0, brows: 'thick', nose: 'round', mouth: 'smile', cheek: 'none', hair: 'spiky', hairColor: 1, outfit: 'hoodie', outfitColor: 7, bottomColor: 2, shoeColor: 4, hat: 'cap', hatColor: 0 },
+          avatar: { v: 1, skin: 3, eyes: 'round', eyeColor: 0, brows: 'thick', nose: 'round', mouth: 'smile', cheek: 'none', hair: 'spiky', hairColor: 1, outfit: 'hoodie', outfitColor: 7, bottom: 'cargo', bottomColor: 10, shoeColor: 4, hat: 'cap', hatColor: 0 },
           fruits: 4, last_seen_at: null, memory: { [curVerse]: { practice_count: 1, best_score: 80, passed: false, last: t, first: nowIso(120) } } },
       ],
       qtEntries: [

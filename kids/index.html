@@ -221,6 +221,7 @@ button { font: inherit; color: inherit; }
 .tab[aria-selected="true"] { background: #fff; color: var(--leaf-deep); border-color: var(--line); border-bottom-color: #fff; }
 .maker-options { flex: 1; overflow-y: auto; padding: 14px 18px 20px; background: #fff; display: grid; gap: 18px; align-content: start; -webkit-overflow-scrolling: touch; }
 .opt-sec h4 { margin: 0 0 8px; font-family: var(--display); font-weight: 400; font-size: 18px; color: var(--ink-soft); }
+.opt-note { margin: 0 0 8px; padding: 8px 12px; border-radius: 12px; background: #FFF6DA; font-size: 14px; color: var(--ink-soft); }
 .opt-grid { display: grid; gap: 8px; }
 .opt-grid.colors { grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); }
 .opt-grid.face { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); }
@@ -248,7 +249,8 @@ button { font: inherit; color: inherit; }
   .maker-top .field span { display: none; }
   .maker-top .field input { height: 42px; font-size: 17px; }
   .tabs { padding: 4px 10px 0; gap: 4px; }
-  .tab { min-height: 40px; font-size: 16px; }
+  .tab { min-height: 40px; font-size: 16px; white-space: nowrap; padding: 0 2px; }
+  #makerTabs .tab { font-size: 15px; }
   .maker-options { padding: 10px 12px 14px; gap: 12px; }
   .opt-sec h4 { font-size: 16px; margin-bottom: 6px; }
   .opt-grid.face { grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); }
@@ -614,7 +616,19 @@ button.online[data-unread]:not([data-unread=""])::after { content: ' 💌' attr(
 .cmt.me { background: #E3F4D8; }
 .cmt b { font-family: var(--display); font-weight: 400; color: var(--leaf-deep); }
 .online.off { background: #C9BDAA; }
-.plate > div { display: grid; gap: 1px; }
+.plate > div { display: grid; gap: 1px; grid-template-columns: auto auto; justify-content: start; align-items: center; column-gap: 8px; }
+.plate > div > b, .plate > div > .online { grid-column: 1 / -1; justify-self: start; }
+.wx { border: 0; border-radius: 999px; background: #EAF4FB; color: #2F5675; font-family: var(--display); font-size: 15px; line-height: 1; padding: 4px 9px 3px; cursor: pointer; white-space: nowrap; }
+.wx:active { transform: scale(.95); }
+.wx-sheet .wx-head { display: flex; align-items: center; gap: 12px; text-align: left; }
+.wx-sheet .wx-big { font-size: 54px; line-height: 1; }
+.wx-sheet .wx-head b { font-family: var(--display); font-weight: 400; font-size: 20px; }
+.wx-sheet .wx-head p { margin: 2px 0 0; color: var(--ink-soft); }
+.wx-credit { font-size: 13px; color: var(--ink-soft); margin: 6px 0 0; }
+.wx-credit a { color: inherit; }
+.wx-pick { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 6px 0 10px; }
+.wx-pick .chip { min-height: 40px; padding: 0 12px; font-size: 16px; box-shadow: 0 3px 0 var(--line); }
+.wx-pick .chip[aria-pressed="true"] { border-color: var(--leaf); background: #EEF8E6; color: var(--leaf-deep); }
 .plate b { order: -1; }
 .round.say .ico svg { color: #4D7DDB; }
 .say-panel { position: fixed; right: max(14px, env(safe-area-inset-right)); top: calc(96px + env(safe-area-inset-top)); z-index: 11; width: min(380px, calc(100% - 28px)); background: var(--paper); border: 3px solid #fff; border-radius: 24px; padding: 12px; box-shadow: var(--shadow); display: grid; gap: 10px; }
@@ -1105,7 +1119,7 @@ body.home-editing .pad, body.home-editing .jump-btn, body.home-editing #hud .hud
 <header id="hud" hidden>
   <div class="plate">
     <canvas id="hudFace" width="100" height="100" aria-hidden="true"></canvas>
-    <div><b id="hudName"></b><button class="online" id="onlineCount" type="button" aria-label="지금 마을에 있는 친구 보기">혼자 있어요</button><span class="fruit" title="모은 열매"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7.5c-1.6-1.2-4.8-1.4-6.4 1-1.8 2.7-.6 7.2 1.6 9.7 1.3 1.5 2.6 2 4.8 1.2 2.2.8 3.5.3 4.8-1.2 2.2-2.5 3.4-7 1.6-9.7-1.6-2.4-4.8-2.2-6.4-1z" fill="#EF6461"/><path d="M12 7.6c.1-1.7.6-3 1.6-4" stroke="#6B4429" stroke-width="1.6" fill="none" stroke-linecap="round"/><path d="M13.4 5.2c1.4-1.6 3.4-1.7 4.6-1-1 1.6-2.8 2.3-4.6 1z" fill="#6CC24A"/></svg></span>열매 <span id="hudFruit">0</span></span></div>
+    <div><b id="hudName"></b><button class="online" id="onlineCount" type="button" aria-label="지금 마을에 있는 친구 보기">혼자 있어요</button><span class="fruit" title="모은 열매"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7.5c-1.6-1.2-4.8-1.4-6.4 1-1.8 2.7-.6 7.2 1.6 9.7 1.3 1.5 2.6 2 4.8 1.2 2.2.8 3.5.3 4.8-1.2 2.2-2.5 3.4-7 1.6-9.7-1.6-2.4-4.8-2.2-6.4-1z" fill="#EF6461"/><path d="M12 7.6c.1-1.7.6-3 1.6-4" stroke="#6B4429" stroke-width="1.6" fill="none" stroke-linecap="round"/><path d="M13.4 5.2c1.4-1.6 3.4-1.7 4.6-1-1 1.6-2.8 2.3-4.6 1z" fill="#6CC24A"/></svg></span>열매 <span id="hudFruit">0</span></span><button class="wx" id="hudWeather" type="button" hidden aria-label="대구 지금 날씨"></button></div>
   </div>
   <nav class="hud-btns" aria-label="마을 메뉴">
     <button class="round say" id="btnSay" type="button"><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 3.5V16h-1A.5.5 0 0 1 4 15.5z" fill="currentColor" opacity=".25" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="8.5" cy="10" r="1.2" fill="currentColor"/><circle cx="12" cy="10" r="1.2" fill="currentColor"/><circle cx="15.5" cy="10" r="1.2" fill="currentColor"/></svg></span>말하기</button>

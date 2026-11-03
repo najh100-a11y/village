@@ -44,7 +44,8 @@ function ensureCtx() {
 
 function unlock() {
   const c = ensureCtx();
-  if (c && c.state === 'suspended') c.resume().catch(() => {});
+  if (c && c.state === 'suspended') c.resume().then(() => applyRain()).catch(() => {});
+  else if (c) applyRain();
   if (wantMusic && musicOn()) playMusic();
 }
 
@@ -121,13 +122,59 @@ export function stopMusic() { wantMusic = false; fadeTo(0, 600); }
 export function setScene(s) {
   scene = s;
   if (bgm && wantMusic && musicOn()) fadeTo(MUSIC_VOL * (SCENE[s] || 1), 700);
+  applyRain();
 }
+
+// ---------- 빗소리: 비 오는 날 마을에 잔잔하게 (효과음을 끄면 함께 꺼진다) ----------
+let rainSrc = null, rainGain = null, rainLevel = 0, rainBuf = null;
+export function setRain(level) { rainLevel = Math.max(0, Math.min(1, level || 0)); applyRain(); }
+function applyRain() {
+  const want = sfxOn() && rainLevel > 0 && !document.hidden ? rainLevel * 0.05 * (scene === 'quiet' ? 0.35 : scene === 'game' ? 0.7 : 1) : 0;
+  if (!want && !rainSrc) return;
+  const c = ac; // 아이가 화면을 처음 누를 때 소리를 깨우면(unlock) 그때 다시 부른다
+  if (!c || c.state !== 'running') return;
+  if (!rainSrc && want) {
+    if (!rainBuf) {
+      // 2초짜리 잡음을 되풀이한다 (빗방울 톡톡 소리를 조금 섞는다)
+      rainBuf = c.createBuffer(1, c.sampleRate * 2, c.sampleRate);
+      const d = rainBuf.getChannelData(0);
+      let last = 0;
+      for (let i = 0; i < d.length; i++) {
+        last = last * 0.86 + (Math.random() * 2 - 1) * 0.14; // 조금 부드러운 잡음
+        d[i] = last * 2.2 + (Math.random() < 0.0009 ? (Math.random() * 2 - 1) * 0.9 : 0);
+      }
+    }
+    rainSrc = c.createBufferSource();
+    rainSrc.buffer = rainBuf;
+    rainSrc.loop = true;
+    const f = c.createBiquadFilter();
+    f.type = 'bandpass';
+    f.frequency.value = 1500;
+    f.Q.value = 0.5;
+    rainGain = c.createGain();
+    rainGain.gain.value = 0.0001;
+    rainSrc.connect(f);
+    f.connect(rainGain);
+    rainGain.connect(master);
+    rainSrc.start();
+  }
+  const t = c.currentTime;
+  rainGain.gain.cancelScheduledValues(t);
+  rainGain.gain.setTargetAtTime(Math.max(0.0001, want), t, 0.6);
+  if (!want) {
+    const src = rainSrc;
+    rainSrc = null;
+    setTimeout(() => { try { src.stop(); } catch (e) { /* 이미 멈춤 */ } }, 2500);
+  }
+}
+document.addEventListener('visibilitychange', () => applyRain());
 
 export function soundMode() { return mode; }
 export function cycleSound() {
   mode = MODES[(MODES.indexOf(mode) + 1) % MODES.length];
   try { localStorage.setItem(KEY, mode); } catch (e) { /* 이번에만 */ }
   if (musicOn() && wantMusic) playMusic(); else if (bgm) fadeTo(0, 400);
+  applyRain();
   if (sfxOn()) sfx.ding();
   return mode;
 }
@@ -267,6 +314,12 @@ function fwBurst(kind = 'spark', vol = 1) {
 const rnd = (a, b) => a + Math.random() * (b - a);
 
 export const sfx = {
+  // 천둥: 멀리서 우르릉 (휴대폰 스피커에도 들리게 낮은 소리에 조금 높은 소리를 섞는다)
+  thunder: play(() => {
+    fxNoise({ dur: 2.6, vol: 0.5, freq: 160, freq2: 70, q: 0.7, kind: 'lowpass', attack: 0.08, hold: 0.5 });
+    fxNoise({ dur: 1.4, vol: 0.18, freq: 900, freq2: 260, q: 0.6, kind: 'lowpass', attack: 0.02, delay: 0.05 });
+    fxNoise({ dur: 1.8, vol: 0.28, freq: 120, q: 0.8, kind: 'lowpass', attack: 0.2, delay: 0.6 });
+  }),
   tap: play(() => tone({ f: 760, f2: 1050, dur: 0.07, vol: 0.09 })),
   pop: play((soft = false) => tone({ f: rnd(480, 560), f2: rnd(880, 980), dur: 0.09, vol: soft ? 0.07 : 0.14 })),
   open: play(() => { tone({ f: 523, type: 'triangle', dur: 0.13, vol: 0.12 }); tone({ f: 784, type: 'triangle', dur: 0.16, vol: 0.12, delay: 0.07 }); }),

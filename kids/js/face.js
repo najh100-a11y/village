@@ -7,9 +7,11 @@ export const PALETTE = {
   eye: [['#2B2525', '검정'], ['#6B4428', '갈색'], ['#3A70D6', '파랑'], ['#3F9A58', '초록'], ['#7D52C8', '보라'], ['#6E7581', '회색']],
   cloth: [['#EF6461', '빨강'], ['#F49A4C', '주황'], ['#F6D55C', '노랑'], ['#A2D86E', '연두'], ['#4FA36C', '초록'], ['#6FD3C0', '민트'],
     ['#7EC8F2', '하늘'], ['#4D7DDB', '파랑'], ['#30477F', '남색'], ['#A07FE3', '보라'], ['#F6A2C4', '분홍'], ['#FAF6EC', '흰색'],
-    ['#9EA4AB', '회색'], ['#8E603E', '갈색'], ['#3B3B42', '검정']],
-  bottom: [['#4B6FA6', '청바지'], ['#30477F', '남색'], ['#3B3B42', '검정'], ['#8E603E', '갈색'], ['#D9C4A0', '베이지'], ['#9EA4AB', '회색'],
-    ['#4FA36C', '초록'], ['#EF6461', '빨강']],
+    ['#9EA4AB', '회색'], ['#8E603E', '갈색'], ['#3B3B42', '검정'], ['#FFB59E', '살구'], ['#BFE0F5', '연하늘'], ['#C9B8F2', '연보라'],
+    ['#9E3B4D', '자주'], ['#7E8C4A', '올리브'], ['#F2C6DA', '연분홍']],
+  bottom: [['#4B6FA6', '청색'], ['#30477F', '남색'], ['#3B3B42', '검정'], ['#8E603E', '갈색'], ['#D9C4A0', '베이지'], ['#9EA4AB', '회색'],
+    ['#4FA36C', '초록'], ['#EF6461', '빨강'], ['#8DB3E2', '연청'], ['#F6A2C4', '분홍'], ['#7EC8F2', '하늘'], ['#F6D55C', '노랑'],
+    ['#A07FE3', '보라'], ['#FAF6EC', '흰색'], ['#8A8F5A', '카키'], ['#30477F', '진남색']],
   shoe: [['#EF6461', '빨강'], ['#4D7DDB', '파랑'], ['#F6D55C', '노랑'], ['#FAF6EC', '흰색'], ['#3B3B42', '검정'], ['#8E603E', '갈색'],
     ['#F6A2C4', '분홍'], ['#4FA36C', '초록']],
 };
@@ -24,9 +26,16 @@ export const PARTS = {
   cheek: [['none', '없음'], ['pink', '분홍 볼'], ['peach', '살구 볼'], ['freckle', '주근깨']],
   hair: [['short', '짧은 머리'], ['side', '옆가르마'], ['buzz', '까까머리'], ['spiky', '삐죽 머리'], ['curly', '곱슬 머리'],
     ['bob', '단발'], ['long', '긴 머리'], ['pigtails', '양갈래'], ['ponytail', '포니테일'], ['bun', '똥머리'], ['braids', '땋은 머리']],
-  outfit: [['tee', '새싹 티'], ['stripe', '줄무늬 티'], ['star', '별무늬 티'], ['check', '체크 셔츠'], ['hoodie', '후드티'],
-    ['sweater', '니트'], ['sporty', '운동복'], ['overall', '멜빵바지'], ['dress', '원피스'], ['robe', '성경 옷'], ['pajama', '잠옷'],
-    ['sailor', '세일러복'], ['raincoat', '비옷'], ['hero', '영웅 옷']],
+  // 상의 (하의와 따로 고른다)와 한 벌 옷 (ONE_PIECE: 위아래가 붙어 있어 하의를 입지 않는다)
+  outfit: [['tee', '새싹 티'], ['plain', '민무늬 티'], ['stripe', '줄무늬 티'], ['star', '별무늬 티'], ['heart', '하트 티'],
+    ['cross', '십자가 티'], ['rainbow', '무지개 티'], ['dots', '물방울 티'], ['tank', '민소매'], ['polo', '카라 티'],
+    ['check', '체크 셔츠'], ['shirt', '셔츠'], ['tie', '넥타이 셔츠'], ['blouse', '블라우스'], ['hoodie', '후드티'],
+    ['sweater', '니트'], ['turtle', '폴라 니트'], ['cardigan', '가디건'], ['vest', '조끼'], ['sporty', '운동복'],
+    ['soccer', '축구 옷'], ['jumper', '야구 점퍼'], ['puffer', '패딩'], ['jeogori', '한복 저고리'],
+    ['sailor', '세일러복'], ['raincoat', '비옷'],
+    ['overall', '멜빵바지'], ['dress', '원피스'], ['robe', '성경 옷'], ['pajama', '잠옷'], ['hero', '영웅 옷']],
+  bottom: [['pants', '긴바지'], ['jeans', '청바지'], ['shorts', '반바지'], ['jogger', '트레이닝 바지'], ['cargo', '주머니 바지'],
+    ['baji', '한복 바지'], ['skirt', '치마'], ['pleated', '주름치마'], ['long', '긴 치마'], ['tutu', '발레 치마'], ['chima', '한복 치마']],
   hat: [['none', '없음'], ['cap', '야구 모자'], ['beanie', '털모자'], ['straw', '밀짚모자'], ['bucket', '벙거지'], ['ribbon', '리본'],
     ['flower', '꽃핀'], ['bear', '곰돌이 머리띠'], ['sprout', '새싹'], ['party', '고깔모자'], ['crown', '왕관'],
     ['halo', '천사 고리'], ['bunny', '토끼 머리띠'], ['catband', '고양이 머리띠'], ['chef', '요리사 모자']],
@@ -36,8 +45,10 @@ export const PARTS = {
 };
 
 const KEYS = {
-  eyes: 'eyes', brows: 'brows', nose: 'nose', mouth: 'mouth', cheek: 'cheek', hair: 'hair', outfit: 'outfit', hat: 'hat', face: 'face', back: 'back',
+  eyes: 'eyes', brows: 'brows', nose: 'nose', mouth: 'mouth', cheek: 'cheek', hair: 'hair', outfit: 'outfit', bottom: 'bottom', hat: 'hat', face: 'face', back: 'back',
 };
+// 한 벌 옷: 이 옷을 입으면 하의(bottom)는 보이지 않는다
+export const ONE_PIECE = new Set(['overall', 'dress', 'robe', 'pajama', 'hero']);
 const COLOR_KEYS = { skin: 'skin', hairColor: 'hair', eyeColor: 'eye', outfitColor: 'cloth', bottomColor: 'bottom', shoeColor: 'shoe', hatColor: 'cloth', backColor: 'cloth' };
 // 상점에서 사야 하는 값 (무작위 꾸미기와 처음 모습에서는 고르지 않는다)
 const SHOP_VALUES = { outfit: ['sailor', 'raincoat', 'hero'], hat: ['halo', 'bunny', 'catband', 'chef'], face: ['glasses', 'sunglasses', 'heart'], back: ['angel', 'butterfly', 'cape', 'backpack'] };
@@ -45,7 +56,7 @@ const SHOP_VALUES = { outfit: ['sailor', 'raincoat', 'hero'], hat: ['halo', 'bun
 export function defaultAvatar() {
   return {
     v: 1, skin: 1, eyes: 'round', eyeColor: 0, brows: 'soft', nose: 'dot', mouth: 'smile', cheek: 'pink',
-    hair: 'short', hairColor: 1, outfit: 'tee', outfitColor: 4, bottomColor: 0, shoeColor: 0, hat: 'none', hatColor: 0,
+    hair: 'short', hairColor: 1, outfit: 'tee', outfitColor: 4, bottom: 'pants', bottomColor: 0, shoeColor: 0, hat: 'none', hatColor: 0,
     face: 'none', back: 'none', backColor: 0,
   };
 }

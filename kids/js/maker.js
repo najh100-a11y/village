@@ -1,7 +1,7 @@
 // 진숲 어린이 마을 — 주민 꾸미기 (머리 모양·머리 색·눈썹·눈·코·입·옷·모자)
 import * as THREE from './three.module.min.js';
 import { Avatar, toon } from './avatar.js';
-import { PARTS, PALETTE, randomAvatar, normalizeAvatar, drawPartTile } from './face.js';
+import { PARTS, PALETTE, randomAvatar, normalizeAvatar, drawPartTile, ONE_PIECE } from './face.js';
 import { h, icon, josa } from './ui.js';
 import { WARDROBE, wearItem, missingItems } from './wardrobe.js';
 
@@ -19,10 +19,15 @@ const TABS = [
     { key: 'hair', title: '머리 모양', type: 'thumb', part: 'hair' },
     { key: 'hairColor', title: '머리 색', type: 'color', pal: 'hair' },
   ] },
-  { id: 'clothes', label: '옷', view: 'body', sections: [
-    { key: 'outfit', title: '옷', type: 'thumb', part: 'outfit' },
-    { key: 'outfitColor', title: '옷 색', type: 'color', pal: 'cloth' },
-    { key: 'bottomColor', title: '바지 색', type: 'color', pal: 'bottom' },
+  // 상의와 하의는 따로 고른다. 한 벌 옷(원피스, 잠옷처럼 위아래가 붙은 옷)을 입으면 하의는 쉰다
+  { id: 'top', label: '상의', view: 'body', sections: [
+    { key: 'outfit', title: '상의', type: 'thumb', part: 'outfit', group: 'top' },
+    { key: 'outfitColor', title: '상의 색 (한 벌 옷도 이 색)', type: 'color', pal: 'cloth' },
+    { key: 'outfit', title: '한 벌 옷 (위아래가 붙은 옷)', type: 'thumb', part: 'outfit', group: 'one' },
+  ] },
+  { id: 'bottom', label: '하의', view: 'legs', sections: [
+    { key: 'bottom', title: '하의', type: 'thumb', part: 'bottom' },
+    { key: 'bottomColor', title: '하의 색', type: 'color', pal: 'bottom' },
     { key: 'shoeColor', title: '신발 색', type: 'color', pal: 'shoe' },
   ] },
   { id: 'hat', label: '모자', view: 'head', sections: [
@@ -38,15 +43,18 @@ const TABS = [
 ];
 const THUMB_DEPS = {
   hair: ['skin', 'hairColor'],
-  outfit: ['skin', 'outfitColor', 'bottomColor', 'shoeColor'],
+  outfit: ['skin', 'outfitColor', 'bottom', 'bottomColor', 'shoeColor'],
+  bottom: ['skin', 'outfit', 'outfitColor', 'bottomColor', 'shoeColor'],
   hat: ['skin', 'hair', 'hairColor', 'hatColor'],
   face: ['skin', 'eyes', 'eyeColor', 'hair', 'hairColor'],
   back: ['skin', 'outfit', 'outfitColor', 'backColor'],
 };
 const FACE_DEPS = ['skin', 'eyeColor', 'hairColor'];
+const LONG_TOPS = new Set(['hoodie', 'sweater', 'turtle', 'cardigan', 'puffer', 'jumper', 'raincoat']);
 const VIEWS = {
   head: { y: 1.45, dist: 4.4 },
   body: { y: 1.0, dist: 7.0 },
+  legs: { y: 0.7, dist: 6.0 },
 };
 
 export class Maker {
@@ -156,6 +164,7 @@ export class Maker {
     this.shop = { on: false, owned: {}, prices: {}, ...(shop || {}) };
     this.drawTabs();
     this.avatar = normalizeAvatar(avatar);
+    this.lastTop = ONE_PIECE.has(this.avatar.outfit) ? null : this.avatar.outfit;
     // 상점 물건을 쓸 수 없는 서버면 그 값은 기본으로 돌려 둔다
     if (!this.shop.on) for (const k of ['hat', 'face', 'back', 'outfit']) if (wearItem(k, this.avatar[k])) this.avatar[k] = k === 'outfit' ? 'tee' : 'none';
     this.first = first;
@@ -255,7 +264,10 @@ export class Maker {
         }));
       });
     } else {
+      if (s.part === 'bottom' && ONE_PIECE.has(this.avatar.outfit)) wrap.insertBefore(h('p', { class: 'opt-note' }, '지금은 한 벌 옷을 입고 있어서 하의가 보이지 않아요. 하의를 고르면 상의로 갈아입어요.'), grid);
       PARTS[s.part].forEach(([id, label]) => {
+        if (s.group === 'top' && ONE_PIECE.has(id)) return;
+        if (s.group === 'one' && !ONE_PIECE.has(id)) return;
         const item = wearItem(s.key, id);
         if (item && !this.shop.on) return; // 상점이 없는 서버에서는 상점 물건을 보이지 않는다
         const cv = h('canvas', { width: s.type === 'face' ? 120 : 160, height: s.type === 'face' ? 84 : 160, 'aria-hidden': 'true' });
@@ -274,13 +286,18 @@ export class Maker {
   }
 
   select(key, value) {
-    if (this.avatar[key] === value) return;
+    // 한 벌 옷을 입은 채 하의를 고르면, 마지막에 입었던 상의(없으면 새싹 티)로 갈아입는다
+    const swapTop = key === 'bottom' && ONE_PIECE.has(this.avatar.outfit);
+    if (this.avatar[key] === value && !swapTop) return;
+    if (key === 'outfit' && !ONE_PIECE.has(this.avatar.outfit)) this.lastTop = this.avatar.outfit;
     this.avatar[key] = value;
+    if (swapTop) this.avatar.outfit = this.lastTop || 'tee';
     const item = wearItem(key, value);
     this.errEl.textContent = item && this.shop.on && !this.owns(item) ? `🔒 ${WARDROBE[item].name}: 입어 보는 중이에요. 저장하려면 열매 상점에서 사 주세요.` : '';
     this.preview.setData(this.avatar);
     this.preview.celebrate();
     this.idle = 0;
+    if (swapTop) { this.showTab(this.tab); return; } // 안내 글을 지우고 다시 그린다
     for (const sec of this.opts.querySelectorAll('.opt-sec')) {
       const k = sec.dataset.key;
       for (const b of sec.querySelectorAll('[data-v]')) {
@@ -325,15 +342,20 @@ export class Maker {
   renderThumb(canvas, part, id) {
     const data = { ...this.avatar, [part]: id };
     if (part === 'hair') data.hat = 'none';
+    // 하의 그림: 한 벌 옷이나 엉덩이를 덮는 긴 상의를 입었으면 하의가 잘 보이게 민무늬 티로 그린다
+    if (part === 'bottom' && (ONE_PIECE.has(data.outfit) || LONG_TOPS.has(data.outfit))) data.outfit = 'plain';
     const av = new Avatar(data);
     av.update(0, false);
     av.body.position.y = 0;
-    const head = part !== 'outfit' && part !== 'back';
+    const head = part !== 'outfit' && part !== 'back' && part !== 'bottom';
     av.root.rotation.y = part === 'hair' ? 0.55 : part === 'hat' ? 0.3 : part === 'back' ? Math.PI - 0.55 : part === 'face' ? 0.12 : 0.25;
     this.thumbScene.add(av.root);
     if (head) {
       this.thumbCam.position.set(0, 1.85, 3.6);
       this.thumbCam.lookAt(0, 1.52, 0);
+    } else if (part === 'bottom') {
+      this.thumbCam.position.set(0, 0.75, 3.0);
+      this.thumbCam.lookAt(0, 0.4, 0);
     } else {
       this.thumbCam.position.set(0, 1.4, 5.0);
       this.thumbCam.lookAt(0, 0.85, 0);

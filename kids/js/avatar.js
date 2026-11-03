@@ -1,6 +1,6 @@
 // 진숲 어린이 마을 — 3D 아바타 만들기
 import * as THREE from './three.module.min.js';
-import { PALETTE, normalizeAvatar, drawFace, colorOf, shade, isLight, FACE_TEX } from './face.js';
+import { PALETTE, normalizeAvatar, drawFace, colorOf, shade, isLight, FACE_TEX, ONE_PIECE } from './face.js';
 import { mergeStatic } from './merge.js';
 
 const R = 0.6;
@@ -446,7 +446,132 @@ function buildBack(style, color) {
 }
 
 // ---------- 옷 ----------
-const SHORT_SLEEVE = new Set(['tee', 'stripe', 'star', 'overall', 'dress', 'sailor']);
+// 상의와 하의는 따로 그린다 (상의는 허리 위, 하의는 엉덩이와 다리). 한 벌 옷(ONE_PIECE)은 몸통 하나로 그린다.
+const SHORT_SLEEVE = new Set(['tee', 'plain', 'stripe', 'star', 'heart', 'cross', 'rainbow', 'dots', 'polo', 'soccer', 'overall', 'dress', 'sailor', 'blouse']);
+const NO_SLEEVE = new Set(['tank']);
+// 상의 아랫단 높이: 긴 옷은 엉덩이까지, 저고리는 짧게, 셔츠는 바지 속에 넣어 입는다
+const TOP_HEM = { hoodie: 0.37, sweater: 0.38, turtle: 0.38, cardigan: 0.36, puffer: 0.35, jumper: 0.39, raincoat: 0.36, jeogori: 0.6, shirt: 0.47, tie: 0.47, blouse: 0.46, polo: 0.45 };
+const SKIRTS = new Set(['skirt', 'pleated', 'long', 'tutu', 'chima']);
+const BARE_LEGS = new Set(['shorts', 'skirt', 'pleated', 'tutu']);
+// 몸통 옆모습 (아래에서 위로 [반지름, 높이])
+const TORSO_PTS = [[0.001, 0.3], [0.3, 0.3], [0.345, 0.36], [0.355, 0.5], [0.335, 0.66], [0.29, 0.8], [0.21, 0.9], [0.11, 0.945], [0.001, 0.955]];
+function torsoR(y) {
+  for (let i = 1; i < TORSO_PTS.length - 1; i++) {
+    const [r0, y0] = TORSO_PTS[i], [r1, y1] = TORSO_PTS[i + 1];
+    if (y <= y1) return r0 + (r1 - r0) * Math.max(0, (y - y0) / (y1 - y0));
+  }
+  return 0.001;
+}
+// 돌림 모양의 무늬 좌표를 높이에 고르게 (위 끝 v=1, 아래 끝 v=0)
+function lathe(pts, y0, y1) {
+  const g = new THREE.LatheGeometry(pts.map(([x, y]) => new THREE.Vector2(x, y)), 36, Math.PI, Math.PI * 2);
+  const pos = g.attributes.position, uv = g.attributes.uv;
+  for (let i = 0; i < pos.count; i++) uv.setY(i, Math.min(1, Math.max(0, (pos.getY(i) - y0) / (y1 - y0))));
+  uv.needsUpdate = true;
+  return g;
+}
+function topGeometry(hem, puff = 1) {
+  const pts = [[torsoR(hem) + 0.016, hem - 0.006], [torsoR(hem) + 0.014, hem + 0.01]];
+  for (const [x, y] of TORSO_PTS) if (y > hem + 0.02) pts.push([x < 0.01 ? x : x + 0.007, y]);
+  const g = lathe(pts, hem - 0.006, 0.955);
+  if (puff !== 1) g.scale(puff, 1, puff);
+  return g;
+}
+function hipsGeometry(wide = 1) {
+  const g = lathe([[0.001, 0.3], [0.3, 0.3], [0.345, 0.36], [0.354, 0.45], [torsoR(0.54), 0.54]], 0.3, 0.54);
+  if (wide !== 1) g.scale(wide, 1, wide);
+  return g;
+}
+// 치마 모양: 허리에서 아래로 퍼진다
+const SKIRT_PTS = {
+  skirt: [[0.35, 0.55], [0.37, 0.47], [0.43, 0.33], [0.47, 0.24]],
+  pleated: [[0.35, 0.55], [0.38, 0.46], [0.46, 0.31], [0.5, 0.22]],
+  long: [[0.35, 0.55], [0.38, 0.42], [0.42, 0.23], [0.45, 0.06]],
+  tutu: [[0.35, 0.5], [0.5, 0.43], [0.58, 0.39], [0.6, 0.37]],
+  chima: [[0.29, 0.74], [0.34, 0.63], [0.4, 0.46], [0.46, 0.26], [0.49, 0.06]],
+};
+
+// 하의 무늬 (엉덩이 둘레와 치마). 위가 허리
+function bottomTexture(av) {
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 128;
+  const ctx = c.getContext('2d');
+  const base = colorOf(av, 'bottomColor');
+  const light = isLight(base);
+  const dark = shade(base, 0.22);
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, 256, 128);
+  const F = 128; // 앞 가운데
+  const band = (h, col = dark) => { ctx.fillStyle = col; ctx.fillRect(0, 0, 256, h); };
+  switch (av.bottom) {
+    case 'jeans': {
+      band(16);
+      ctx.strokeStyle = '#F2B05E';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath(); ctx.moveTo(0, 17); ctx.lineTo(256, 17); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(F + 4, 18); ctx.lineTo(F + 4, 72); ctx.quadraticCurveTo(F + 4, 82, F - 6, 84); ctx.stroke(); // 앞 지퍼
+      for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(F + s * 26, 18); ctx.quadraticCurveTo(F + s * 34, 40, F + s * 56, 44); ctx.stroke(); } // 앞 주머니
+      for (const x of [26, 256 - 26]) { ctx.strokeRect(x - 16, 30, 32, 34); } // 뒷주머니
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#E8C46A';
+      for (const s of [-1, 1]) { ctx.beginPath(); ctx.arc(F + s * 30, 22, 3, 0, 7); ctx.fill(); }
+      break;
+    }
+    case 'jogger':
+      band(18, light ? shade(base, 0.12) : shade(base, -0.15));
+      ctx.fillStyle = '#FFFDF7';
+      for (const x of [64, 192]) { ctx.fillRect(x - 7, 0, 5, 128); ctx.fillRect(x + 2, 0, 5, 128); }
+      ctx.strokeStyle = '#FFFDF7'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+      for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(F + s * 5, 12); ctx.lineTo(F + s * 9, 40); ctx.stroke(); } // 허리끈
+      break;
+    case 'cargo':
+      band(16, shade(base, 0.35));
+      ctx.fillStyle = '#C9A44C';
+      ctx.fillRect(F - 10, 2, 20, 12); // 허리띠 버클
+      ctx.fillStyle = dark;
+      for (const x of [64, 192]) ctx.fillRect(x - 18, 40, 36, 30);
+      break;
+    case 'baji':
+      band(20, light ? shade(base, 0.18) : '#FFFDF7');
+      ctx.strokeStyle = 'rgba(0,0,0,.08)'; ctx.lineWidth = 6;
+      for (let x = 8; x < 256; x += 28) { ctx.beginPath(); ctx.moveTo(x, 22); ctx.lineTo(x + 6, 128); ctx.stroke(); }
+      break;
+    case 'pleated':
+      ctx.fillStyle = dark;
+      for (let x = 0; x < 256; x += 16) ctx.fillRect(x, 10, 7, 118);
+      band(10, shade(base, 0.3));
+      if (!light) { ctx.fillStyle = 'rgba(255,253,247,.55)'; ctx.fillRect(0, 112, 256, 4); }
+      break;
+    case 'skirt':
+      band(10);
+      ctx.fillStyle = light ? shade(base, 0.18) : 'rgba(255,253,247,.7)';
+      ctx.fillRect(0, 112, 256, 6);
+      break;
+    case 'long':
+      band(10);
+      ctx.fillStyle = light ? shade(base, 0.2) : 'rgba(255,253,247,.75)';
+      for (let x = 6; x < 256; x += 16) { ctx.beginPath(); ctx.arc(x, 118, 4, 0, 7); ctx.fill(); }
+      break;
+    case 'tutu':
+      ctx.fillStyle = 'rgba(255,255,255,.35)';
+      for (let i = 0; i < 40; i++) { ctx.beginPath(); ctx.arc((i * 71) % 256, (i * 29) % 128, 3, 0, 7); ctx.fill(); }
+      break;
+    case 'chima':
+      ctx.strokeStyle = light ? shade(base, 0.12) : 'rgba(255,253,247,.18)'; ctx.lineWidth = 3;
+      for (let x = 10; x < 256; x += 22) { ctx.beginPath(); ctx.moveTo(x, 14); ctx.lineTo(x - 6, 128); ctx.stroke(); }
+      band(14, '#FFFDF7'); // 허리말기
+      break;
+    default: // 긴바지, 반바지
+      band(14);
+      ctx.fillStyle = dark;
+      ctx.fillRect(F - 1, 14, 2, 56);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
 
 function clothTexture(av) {
   const c = document.createElement('canvas');
@@ -635,6 +760,148 @@ function clothTexture(av) {
       ctx.fillRect(frontX - 14, 218, 28, 26);
       break;
     }
+    case 'plain':
+      ctx.fillStyle = shade(base, 0.1);
+      ctx.fillRect(0, 240, 256, 16);
+      break;
+    case 'heart': // 가슴에 큰 하트
+      ctx.fillStyle = light ? '#EF6461' : '#FFFDF7';
+      ctx.beginPath();
+      ctx.moveTo(frontX, 150);
+      ctx.bezierCurveTo(frontX - 46, 118, frontX - 30, 72, frontX, 96);
+      ctx.bezierCurveTo(frontX + 30, 72, frontX + 46, 118, frontX, 150);
+      ctx.fill();
+      break;
+    case 'cross': // 가슴에 작은 십자가
+      ctx.fillStyle = light ? '#8E603E' : '#FFF2B8';
+      ctx.fillRect(frontX - 5, 66, 10, 56);
+      ctx.fillRect(frontX - 20, 80, 40, 10);
+      break;
+    case 'rainbow': { // 무지개 (노아의 방주 약속)
+      const cols = ['#EF6461', '#F49A4C', '#F6D55C', '#6CC24A', '#4D7DDB', '#A07FE3'];
+      ctx.lineWidth = 7;
+      cols.forEach((cl, i) => { ctx.strokeStyle = cl; ctx.beginPath(); ctx.arc(frontX, 140, 54 - i * 7, Math.PI, 0); ctx.stroke(); });
+      ctx.fillStyle = '#FFFDF7';
+      for (const s of [-1, 1]) { ctx.beginPath(); ctx.arc(frontX + s * 40, 142, 11, 0, 7); ctx.arc(frontX + s * 28, 146, 9, 0, 7); ctx.fill(); }
+      break;
+    }
+    case 'dots':
+      ctx.fillStyle = accent;
+      for (let y = 10, row = 0; y < 256; y += 26, row++) for (let x = (row % 2) * 13; x < 256; x += 26) { ctx.beginPath(); ctx.arc(x, y, 5.5, 0, 7); ctx.fill(); }
+      break;
+    case 'tank':
+      ctx.fillStyle = accent;
+      ctx.fillRect(0, 244, 256, 12);
+      ctx.strokeStyle = accent; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.arc(frontX, 0, 30, 0, Math.PI); ctx.stroke();
+      break;
+    case 'polo':
+      ctx.fillStyle = light ? shade(base, 0.22) : '#FFFDF7';
+      for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(frontX, 30); ctx.lineTo(frontX + s * 34, 0); ctx.lineTo(frontX + s * 8, 0); ctx.fill(); }
+      ctx.fillStyle = shade(base, 0.2);
+      ctx.fillRect(frontX - 7, 28, 14, 56);
+      ctx.fillStyle = '#FFFDF7';
+      for (const y of [44, 68]) { ctx.beginPath(); ctx.arc(frontX, y, 4, 0, 7); ctx.fill(); }
+      break;
+    case 'shirt':
+    case 'tie': {
+      ctx.fillStyle = shade(base, 0.12);
+      ctx.fillRect(frontX - 2, 30, 4, 226);
+      ctx.fillStyle = '#FFFDF7';
+      if (av.outfit === 'shirt') for (let y = 50; y < 250; y += 36) { ctx.beginPath(); ctx.arc(frontX + 7, y, 4, 0, 7); ctx.fill(); }
+      ctx.fillStyle = light ? '#FFFDF7' : shade(base, -0.4);
+      for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(frontX, 34); ctx.lineTo(frontX + s * 40, 0); ctx.lineTo(frontX + s * 6, 0); ctx.fill(); }
+      if (av.outfit === 'tie') {
+        const tc = ['#EF6461', '#F6D55C'].includes(base) ? '#30477F' : base === '#30477F' || base === '#4D7DDB' ? '#EF6461' : '#30477F';
+        ctx.fillStyle = tc;
+        ctx.beginPath(); ctx.moveTo(frontX - 9, 26); ctx.lineTo(frontX + 9, 26); ctx.lineTo(frontX + 6, 40); ctx.lineTo(frontX - 6, 40); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(frontX - 6, 40); ctx.lineTo(frontX + 6, 40); ctx.lineTo(frontX + 13, 176); ctx.lineTo(frontX, 196); ctx.lineTo(frontX - 13, 176); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,.25)';
+        for (let y = 60; y < 176; y += 26) ctx.fillRect(frontX - 10, y, 20, 6);
+      }
+      break;
+    }
+    case 'blouse':
+      ctx.fillStyle = 'rgba(255,253,247,.5)';
+      for (let i = 0; i < 16; i++) { ctx.beginPath(); ctx.arc((i * 61 + 20) % 256, (i * 43) % 200 + 40, 5, 0, 7); ctx.fill(); }
+      ctx.fillStyle = shade(base, 0.12);
+      ctx.fillRect(0, 238, 256, 18);
+      break;
+    case 'turtle':
+      ctx.strokeStyle = shade(base, 0.14); ctx.lineWidth = 6;
+      for (let x = 6; x < 256; x += 18) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 256); ctx.stroke(); }
+      ctx.fillStyle = shade(base, 0.12);
+      ctx.fillRect(0, 232, 256, 24);
+      break;
+    case 'cardigan':
+      ctx.fillStyle = '#FFFDF7';
+      ctx.beginPath(); ctx.moveTo(frontX - 30, 0); ctx.lineTo(frontX - 14, 256); ctx.lineTo(frontX + 14, 256); ctx.lineTo(frontX + 30, 0); ctx.fill(); // 안에 입은 흰 티
+      ctx.fillStyle = shade(base, 0.18);
+      for (const s of [-1, 1]) { ctx.beginPath(); ctx.moveTo(frontX + s * 30, 0); ctx.lineTo(frontX + s * 14, 256); ctx.lineTo(frontX + s * 22, 256); ctx.lineTo(frontX + s * 38, 0); ctx.fill(); }
+      ctx.fillStyle = light ? '#8E603E' : '#FFF2B8';
+      for (let y = 90; y < 250; y += 40) { ctx.beginPath(); ctx.arc(frontX - 20, y, 5, 0, 7); ctx.fill(); }
+      ctx.fillStyle = shade(base, 0.18);
+      ctx.fillRect(0, 238, frontX - 18, 18); ctx.fillRect(frontX + 18, 238, 256, 18);
+      break;
+    case 'vest': {
+      // 흰 셔츠 위에 조끼
+      ctx.fillStyle = '#FFFDF7';
+      ctx.fillRect(0, 0, 256, 256);
+      ctx.fillStyle = base;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(frontX - 34, 0); ctx.lineTo(frontX, 120); ctx.lineTo(frontX + 34, 0); ctx.lineTo(256, 0); ctx.lineTo(256, 256); ctx.lineTo(0, 256); ctx.fill();
+      ctx.fillStyle = light ? shade(base, 0.35) : '#FFF2B8';
+      for (let y = 140; y < 240; y += 30) { ctx.beginPath(); ctx.arc(frontX, y, 5, 0, 7); ctx.fill(); }
+      ctx.fillStyle = shade(base, 0.2);
+      for (const s of [-1, 1]) ctx.fillRect(frontX + s * 44 - 16, 168, 32, 6); // 주머니
+      break;
+    }
+    case 'soccer': {
+      ctx.fillStyle = '#FFFDF7';
+      ctx.beginPath(); ctx.moveTo(frontX - 26, 0); ctx.lineTo(frontX, 40); ctx.lineTo(frontX + 26, 0); ctx.lineTo(frontX + 18, 0); ctx.lineTo(frontX, 28); ctx.lineTo(frontX - 18, 0); ctx.fill();
+      for (const x of [40, 216]) ctx.fillRect(x - 4, 0, 8, 256); // 옆 줄
+      ctx.fillStyle = light ? shade(base, 0.45) : '#FFFDF7';
+      ctx.font = '700 64px sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      for (const x of [0, 256]) ctx.fillText('10', x, 116); // 등 번호 (등 가운데는 그림의 양 끝)
+      ctx.font = '700 26px sans-serif';
+      ctx.fillText('10', frontX + 40, 90);
+      break;
+    }
+    case 'jumper': {
+      // 야구 점퍼: 가슴에 '진' 글자, 줄무늬 시보리
+      ctx.fillStyle = '#FFFDF7';
+      ctx.beginPath(); ctx.arc(frontX - 44, 92, 24, 0, 7); ctx.fill();
+      ctx.fillStyle = base;
+      ctx.font = '700 30px sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('진', frontX - 44, 94);
+      ctx.fillStyle = shade(base, 0.25);
+      ctx.fillRect(frontX - 3, 20, 6, 236);
+      for (const y of [232, 246]) { ctx.fillStyle = y === 232 ? '#FFFDF7' : shade(base, 0.25); ctx.fillRect(0, y, 256, 8); }
+      ctx.fillStyle = '#FFF2B8';
+      for (let y = 50; y < 230; y += 36) { ctx.beginPath(); ctx.arc(frontX + 8, y, 4, 0, 7); ctx.fill(); }
+      break;
+    }
+    case 'puffer':
+      ctx.fillStyle = shade(base, 0.16);
+      for (let y = 20; y < 256; y += 34) ctx.fillRect(0, y, 256, 5); // 누빈 줄
+      ctx.fillStyle = 'rgba(255,255,255,.22)';
+      for (let y = 30; y < 256; y += 34) ctx.fillRect(0, y, 256, 8);
+      ctx.fillStyle = shade(base, 0.3);
+      ctx.fillRect(frontX - 2, 0, 4, 256); // 지퍼
+      break;
+    case 'jeogori': {
+      // 한복 저고리: 흰 동정이 달린 깃
+      ctx.fillStyle = shade(base, light ? 0.18 : -0.3);
+      ctx.beginPath(); ctx.moveTo(frontX - 40, 0); ctx.lineTo(frontX + 18, 200); ctx.lineTo(frontX + 36, 200); ctx.lineTo(frontX - 22, 0); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(frontX + 40, 0); ctx.lineTo(frontX + 4, 110); ctx.lineTo(frontX + 18, 116); ctx.lineTo(frontX + 56, 0); ctx.fill();
+      ctx.fillStyle = '#FFFDF7';
+      ctx.beginPath(); ctx.moveTo(frontX - 40, 0); ctx.lineTo(frontX - 30, 34); ctx.lineTo(frontX - 22, 0); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(frontX + 40, 0); ctx.lineTo(frontX + 34, 22); ctx.lineTo(frontX + 56, 0); ctx.fill();
+      ctx.fillStyle = shade(base, 0.14);
+      ctx.fillRect(0, 236, 256, 20);
+      break;
+    }
     default:
   }
   const tex = new THREE.CanvasTexture(c);
@@ -701,15 +968,25 @@ export class Avatar {
     this.ownTextures.push(clothTex);
     this.ownMaterials.push(clothMat);
     const plain = toon(clothC);
-    // 소매와 바지: 멜빵바지는 흰 소매, 세일러복은 흰 반소매, 잠옷은 위아래 같은 무늬, 영웅 옷은 옷 색 바지
-    const sleeveMat = av.outfit === 'overall' ? toon('#FFF6E6') : av.outfit === 'sailor' ? toon('#FFFDF7') : av.outfit === 'pajama' ? clothMat : plain;
-    const bottomC = ['overall', 'hero'].includes(av.outfit) ? clothC : colorOf(av, 'bottomColor');
-    const legMat = ['dress', 'robe'].includes(av.outfit) ? skin : av.outfit === 'pajama' ? clothMat : toon(bottomC);
+    const one = ONE_PIECE.has(av.outfit);
+    const bot = one ? null : av.bottom;
+    const bottomC = colorOf(av, 'bottomColor');
+    // 소매: 멜빵바지는 흰 소매, 세일러복은 흰 반소매, 잠옷은 위아래 같은 무늬, 야구 점퍼는 크림색 소매, 조끼는 안에 입은 흰 셔츠 소매
+    const sleeveMat = av.outfit === 'overall' || av.outfit === 'jumper' ? toon('#FFF6E6') : av.outfit === 'sailor' || av.outfit === 'vest' ? toon('#FFFDF7') : av.outfit === 'pajama' ? clothMat : plain;
+    // 다리: 한 벌 옷은 예전 그대로, 따로 입으면 하의에 따라 (반바지·치마는 맨다리)
+    let legMat;
+    if (one) legMat = ['dress', 'robe'].includes(av.outfit) ? skin : av.outfit === 'pajama' ? clothMat : toon(['overall', 'hero'].includes(av.outfit) ? clothC : bottomC);
+    else legMat = BARE_LEGS.has(bot) || bot === 'long' || bot === 'chima' ? skin : toon(bottomC);
     const shoeMat = toon(av.outfit === 'robe' ? '#9A6A43' : colorOf(av, 'shoeColor'));
+    const botTex = one ? null : bottomTexture(av);
+    const botMat = botTex ? new THREE.MeshToonMaterial({ map: botTex, gradientMap: toonGradient(), side: THREE.DoubleSide }) : null;
+    if (botTex) { this.ownTextures.push(botTex); this.ownMaterials.push(botMat); }
+    const botPlain = toon(bottomC);
 
     // 다리
     this.legs = [];
-    const legGeo = new THREE.CapsuleGeometry(0.1, 0.12, 6, 12);
+    const wideLeg = bot === 'baji';
+    const legGeo = wideLeg ? new THREE.CapsuleGeometry(0.122, 0.1, 6, 12) : new THREE.CapsuleGeometry(0.1, 0.12, 6, 12);
     const shoeGeo = sph(1, 16, 12);
     for (const s of [-1, 1]) {
       const pivot = new THREE.Group();
@@ -718,21 +995,46 @@ export class Avatar {
       const shoe = mesh(shoeGeo, shoeMat, 0, -0.29, 0.035);
       shoe.scale.set(0.125, 0.075, 0.165);
       pivot.add(shoe);
+      if (bot === 'shorts') pivot.add(mesh(new THREE.CylinderGeometry(0.128, 0.122, 0.15, 14), botPlain, 0, -0.03, 0)); // 반바지 자락
+      if (bot === 'jeans') pivot.add(mesh(new THREE.CylinderGeometry(0.107, 0.107, 0.05, 14), toon(shade(bottomC, -0.25)), 0, -0.215, 0)); // 걷어 올린 단
+      if (bot === 'jogger') {
+        pivot.add(mesh(new THREE.CylinderGeometry(0.104, 0.1, 0.06, 14), toon(shade(bottomC, 0.2)), 0, -0.22, 0)); // 발목 고무단
+        pivot.add(mesh(new THREE.BoxGeometry(0.016, 0.24, 0.04), toon('#FFFDF7'), s * 0.098, -0.09, 0)); // 옆줄
+      }
+      if (bot === 'cargo') pivot.add(mesh(new THREE.BoxGeometry(0.03, 0.09, 0.1), toon(shade(bottomC, 0.2)), s * 0.1, -0.1, 0)); // 옆 주머니
+      if (bot === 'baji') pivot.add(mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.05, 14), toon(shade(bottomC, isLight(bottomC) ? 0.35 : -0.4)), 0, -0.22, 0)); // 대님
       this.body.add(pivot);
       this.legs.push(pivot);
     }
 
     // 몸통
-    const torso = mesh(torsoGeometry(), clothMat);
-    this.body.add(torso);
+    if (one) {
+      const torso = mesh(torsoGeometry(), clothMat);
+      this.body.add(torso);
+    } else {
+      // 상의 (허리 위)와 하의 (엉덩이). 상의가 하의 위에 조금 겹친다
+      const hem = TOP_HEM[av.outfit] || 0.42;
+      this.body.add(mesh(topGeometry(hem, av.outfit === 'puffer' ? 1.08 : 1), clothMat));
+      this.body.add(mesh(hipsGeometry(wideLeg ? 1.06 : 1), botMat));
+      if (SKIRTS.has(bot)) {
+        const k = SKIRT_PTS[bot];
+        const g = lathe(k, k[k.length - 1][1], k[0][1]);
+        this.body.add(mesh(g, botMat));
+        if (bot === 'tutu') {
+          // 발레 치마는 두 겹
+          const g2 = lathe([[0.36, 0.47], [0.55, 0.4], [0.66, 0.35], [0.68, 0.33]], 0.33, 0.47);
+          this.body.add(mesh(g2, toon(shade(bottomC, -0.3), { side: THREE.DoubleSide })));
+        }
+      }
+    }
     if (av.outfit === 'dress' || av.outfit === 'robe') {
       const skirt = mesh(skirtGeometry(av.outfit === 'robe'), new THREE.MeshToonMaterial({ map: clothTex, gradientMap: toonGradient(), side: THREE.DoubleSide }));
       this.ownMaterials.push(skirt.material);
       this.body.add(skirt);
       if (av.outfit === 'dress') {
-        const hem = mesh(new THREE.TorusGeometry(0.5, 0.028, 6, 40), toon('#FFFDF7'), 0, 0.245, 0);
-        hem.rotation.x = Math.PI / 2;
-        this.body.add(hem);
+        const hemR = mesh(new THREE.TorusGeometry(0.5, 0.028, 6, 40), toon('#FFFDF7'), 0, 0.245, 0);
+        hemR.rotation.x = Math.PI / 2;
+        this.body.add(hemR);
       } else {
         const sashC = isLight(clothC) ? '#9A6A43' : '#E9B949';
         const sash = mesh(new THREE.TorusGeometry(0.35, 0.05, 8, 36), toon(sashC), 0, 0.58, 0);
@@ -746,7 +1048,7 @@ export class Avatar {
     }
     if (av.outfit === 'raincoat') {
       // 비옷 자락 (엉덩이까지 내려온다)
-      const pts = [[0.335, 0.62], [0.37, 0.46], [0.405, 0.3], [0.415, 0.2]].map(([x, y]) => new THREE.Vector2(x, y));
+      const pts = [[0.345, 0.62], [0.375, 0.46], [0.41, 0.3], [0.42, 0.2]].map(([x, y]) => new THREE.Vector2(x, y));
       const coat = mesh(new THREE.LatheGeometry(pts, 36, Math.PI, Math.PI * 2), new THREE.MeshToonMaterial({ map: clothTex, gradientMap: toonGradient(), side: THREE.DoubleSide }));
       this.ownMaterials.push(coat.material);
       this.body.add(coat);
@@ -761,18 +1063,43 @@ export class Avatar {
       collar.rotation.x = Math.PI / 2;
       this.body.add(collar);
     }
+    if (av.outfit === 'turtle') this.body.add(mesh(new THREE.CylinderGeometry(0.15, 0.17, 0.12, 20), toon(shade(clothC, 0.08)), 0, 0.95, 0)); // 목까지 올라오는 깃
+    if (av.outfit === 'puffer') this.body.add(mesh(new THREE.CylinderGeometry(0.17, 0.2, 0.1, 20), toon(shade(clothC, 0.1)), 0, 0.94, 0));
+    if (av.outfit === 'blouse') {
+      const frill = mesh(new THREE.TorusGeometry(0.16, 0.05, 6, 24), toon('#FFFDF7'), 0, 0.925, 0.01);
+      frill.rotation.x = Math.PI / 2;
+      frill.scale.set(1, 1, 0.55);
+      this.body.add(frill);
+    }
+    if (av.outfit === 'jeogori') {
+      // 고름: 오른쪽 가슴에서 길게 늘어진 두 가닥과 매듭
+      const gc = ['#EF6461', '#9E3B4D', '#F6A2C4'].includes(clothC) ? '#30477F' : '#D6455A';
+      const gm = toon(gc);
+      const knot = mesh(sph(1, 10, 8), gm, 0.07, 0.72, 0.325);
+      knot.scale.set(0.045, 0.035, 0.03);
+      this.body.add(knot);
+      for (const [dx, len, rz] of [[0.04, 0.26, 0.12], [0.1, 0.2, -0.1]]) {
+        const r = mesh(new THREE.BoxGeometry(0.045, len, 0.012), gm, 0.07 + dx * 0.4, 0.72 - len / 2, 0.345);
+        r.rotation.set(-0.12, 0, rz);
+        this.body.add(r);
+      }
+    }
 
     // 팔
     this.arms = [];
-    const armGeo = new THREE.CapsuleGeometry(0.085, 0.26, 6, 12);
+    const puffy = av.outfit === 'puffer';
+    const armGeo = puffy ? new THREE.CapsuleGeometry(0.105, 0.24, 6, 12) : new THREE.CapsuleGeometry(0.085, 0.26, 6, 12);
     const handGeo = sph(0.09, 14, 10);
-    const short = SHORT_SLEEVE.has(av.outfit);
+    const short = SHORT_SLEEVE.has(av.outfit), bare = NO_SLEEVE.has(av.outfit);
     for (const s of [-1, 1]) {
       const pivot = new THREE.Group();
       pivot.position.set(s * 0.33, 0.84, 0);
       pivot.rotation.z = s * 0.2;
-      pivot.add(mesh(armGeo, short ? skin : sleeveMat, 0, -0.2, 0));
-      if (short) pivot.add(mesh(new THREE.CylinderGeometry(0.112, 0.105, 0.16, 14), sleeveMat, 0, -0.05, 0));
+      pivot.add(mesh(armGeo, short || bare ? skin : sleeveMat, 0, -0.2, 0));
+      if (av.outfit === 'blouse') { const puff = mesh(sph(1, 14, 10), sleeveMat, 0, -0.04, 0); puff.scale.set(0.135, 0.11, 0.135); pivot.add(puff); } // 퍼프 소매
+      else if (short) pivot.add(mesh(new THREE.CylinderGeometry(0.112, 0.105, 0.16, 14), sleeveMat, 0, -0.05, 0));
+      if (av.outfit === 'jeogori') pivot.add(mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.06, 14), toon(['#EF6461', '#9E3B4D', '#F6A2C4'].includes(clothC) ? '#30477F' : '#D6455A'), 0, -0.33, 0)); // 끝동
+      if (av.outfit === 'jumper') pivot.add(mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.05, 14), toon(shade(clothC, 0.1)), 0, -0.33, 0)); // 소매 시보리
       pivot.add(mesh(handGeo, skin, 0, -0.42, 0));
       this.body.add(pivot);
       this.arms.push(pivot);

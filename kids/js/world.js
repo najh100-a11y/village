@@ -5,6 +5,7 @@ import { randomAvatar, colorOf, shade } from './face.js';
 import { mergeStatic, Instancer } from './merge.js';
 import { Park, RIDE_IDS, resetLimbs } from './park.js';
 import { Critters, Follower, PET_ITEMS, CARE_SEC } from './critters.js';
+import { WeatherFx } from './weatherfx.js';
 import { Pool, inPool, SWIM_Y, swimPose, STROKES, LOUNGER } from './pool.js';
 import { clampWalk, makeBridge, BRIDGES, WORLD_CENTER, WORLD_HALF, route, PARK_ISLE, pierPoint } from './isles.js';
 import { POOL } from './pool.js';
@@ -262,6 +263,17 @@ const SKY = {
   dusk: { sky: '#F3A98C', hemiSky: '#FFD6C2', hemiGround: '#8DB46A', hemi: 1.35, sun: '#FFB98A', sunI: 1.6, glow: 0.6 },
   night: { sky: '#2E3E6E', hemiSky: '#9DB2F0', hemiGround: '#3E5A48', hemi: 0.95, sun: '#BFD0FF', sunI: 0.7, glow: 1 },
 };
+// 날씨에 따라 하늘과 빛을 바꾼다. k: 하늘이 회색으로 바뀌는 정도, g: 회색의 밝기, sun·hemi: 햇빛·하늘빛 배율, fog: 안개 거리 배율
+const WEATHER_LOOK = {
+  clear: { k: 0, g: 1, sun: 1, hemi: 1, near: 1, far: 1, glow: 0 },
+  partly: { k: 0.14, g: 0.95, sun: 0.88, hemi: 0.98, near: 1, far: 1, glow: 0 },
+  cloudy: { k: 0.52, g: 0.86, sun: 0.42, hemi: 0.86, near: 0.9, far: 0.9, glow: 0.2 },
+  fog: { k: 0.62, g: 1.04, sun: 0.38, hemi: 0.9, near: 0.12, far: 0.42, glow: 0.3 },
+  drizzle: { k: 0.56, g: 0.84, sun: 0.36, hemi: 0.8, near: 0.75, far: 0.8, glow: 0.35 },
+  rain: { k: 0.7, g: 0.76, sun: 0.26, hemi: 0.68, near: 0.6, far: 0.72, glow: 0.45, wet: 0.25 },
+  snow: { k: 0.55, g: 1.0, sun: 0.42, hemi: 0.95, near: 0.6, far: 0.72, glow: 0.3, ground: '#EEF3F6' },
+  storm: { k: 0.84, g: 0.6, sun: 0.18, hemi: 0.56, near: 0.5, far: 0.65, glow: 0.55, wet: 0.35 },
+};
 function phaseFor(h) {
   if (h >= 6 && h < 7.5) return 'dawn';
   if (h >= 7.5 && h < 17.5) return 'day';
@@ -342,6 +354,11 @@ export class Village {
     this.sun.shadow.bias = -0.0006;
     this.sun.shadow.normalBias = 0.04;
     scene.add(this.sun, this.sun.target);
+    // 날씨 (대구 지금 날씨를 setWeather로 받는다. 받기 전에는 맑음)
+    this.wx = { kind: 'clear', level: 0, wind: 0 };
+    this.weatherFx = new WeatherFx({ coarse });
+    this.weatherFx.onThunder = () => { if (this.on.onThunder) this.on.onThunder(); };
+    scene.add(this.weatherFx.root);
 
     this.buildGround();
     this.buildWater();
@@ -378,6 +395,7 @@ export class Village {
       poses: { lie: liePose },
       onTalk: (i) => this.on.onVillager && this.on.onVillager(i),
     });
+    this.villagers.weather = this.wx.kind;
     this.applyTimeOfDay();
     this.bindInput();
     this.resize();
@@ -2586,8 +2604,11 @@ export class Village {
     const cd = this.camPos.distanceTo(this.camLook);
     const extra = Math.max(0, cd - 30);
     const fog = this.scene.fog;
-    fog.near = 55 + extra * 1.15;
-    fog.far = 120 + extra * 1.7;
+    // 안개·비 오는 날은 가까이까지 뿌옇다 (멀리서 볼수록 덜)
+    const away = Math.min(1, extra / 60);
+    const kn = (this.fogNear || 1) + (1 - (this.fogNear || 1)) * away, kf = (this.fogFar || 1) + (1 - (this.fogFar || 1)) * away;
+    fog.near = (55 + extra * 1.15) * kn;
+    fog.far = (120 + extra * 1.7) * kf;
     const far = Math.max(300, cd * 2.2 + 120);
     if (Math.abs(this.camera.far - far) > 10) { this.camera.far = far; this.camera.updateProjectionMatrix(); }
     const ext = Math.min(72, 24 + extra * 0.42);
@@ -2731,7 +2752,8 @@ export class Village {
     this.reportStop();
   }
   moveInto(scene) {
-    scene.add(this.hemi, this.sun, this.sun.target);
+    scene.add(this.hemi, this.sun, this.sun.target, this.weatherFx.root);
+    this.weatherFx.placed = false;
     if (this.player) scene.add(this.player.root);
     for (const f of this.petsOf('me')) { scene.add(f.root); f.placed = false; }
     if (this.tapMark) { scene.add(this.tapMark); this.tapMark.visible = false; }
@@ -3096,15 +3118,47 @@ export class Village {
     const ph = force || phaseFor(h);
     if (ph === this.phase) return;
     this.phase = ph;
-    const s = SKY[ph];
-    this.scene.background = new THREE.Color(s.sky);
-    this.scene.fog.color.set(s.sky);
-    this.hemi.color.set(s.hemiSky);
-    this.hemi.groundColor.set(s.hemiGround);
-    this.hemi.intensity = s.hemi;
+    this.applyAtmos();
+  }
+  // 시간(새벽·낮·저녁·밤)과 날씨를 합쳐 하늘색, 안개, 빛을 정한다
+  applyAtmos() {
+    const s = SKY[this.phase || 'day'];
+    const w = WEATHER_LOOK[this.wx.kind] || WEATHER_LOOK.clear;
+    const sky = new THREE.Color(s.sky);
+    if (w.k > 0) {
+      const L = sky.r * 0.3 + sky.g * 0.59 + sky.b * 0.11;
+      const g = Math.min(1, L * w.g);
+      sky.lerp(new THREE.Color(g * 0.95, g * 0.98, Math.min(1, g * 1.05)), w.k);
+    }
+    this.skyBase = sky.clone();
+    this.scene.background = sky;
+    this.scene.fog.color.copy(sky);
+    // 흐린 날은 하늘빛도 회색빛으로, 비 오는 날은 땅이 젖어 조금 어둡게, 눈 오는 날은 땅이 하얗게 비친다
+    this.hemi.color.set(s.hemiSky).lerp(new THREE.Color('#C3CBD4'), w.k * 0.6);
+    const ground = new THREE.Color(s.hemiGround);
+    if (w.ground) ground.lerp(new THREE.Color(w.ground), 0.45);
+    if (w.wet) ground.multiplyScalar(1 - w.wet);
+    this.hemi.groundColor.copy(ground);
+    this.hemiBase = s.hemi * w.hemi;
+    this.hemi.intensity = this.hemiBase;
     this.sun.color.set(s.sun);
-    this.sun.intensity = s.sunI;
-    for (const mt of this.glowMats) mt.emissiveIntensity = s.glow;
+    this.sun.intensity = s.sunI * w.sun;
+    this.fogNear = w.near;
+    this.fogFar = w.far;
+    // 비·눈이 오면 나비는 쉰다
+    const still = ['drizzle', 'rain', 'snow', 'storm'].includes(this.wx.kind);
+    for (const b of this.butterflies) b.g.visible = !still;
+    for (const mt of this.glowMats) mt.emissiveIntensity = Math.max(s.glow, w.glow);
+  }
+  // 날씨 바꾸기: kind clear·partly·cloudy·fog·drizzle·rain·snow·storm, level 비·눈 세기(0~1), wind 바람(m/s)
+  setWeather(kind, level = 0.6, wind = 0) {
+    if (!WEATHER_LOOK[kind]) kind = 'clear';
+    const same = this.wx.kind === kind && Math.abs(this.wx.level - level) < 0.01 && this.wx.wind === wind;
+    this.wx = { kind, level, wind };
+    if (this.villagers) this.villagers.weather = kind;
+    if (same) return;
+    this.weatherFx.set(kind, level, wind);
+    this.applyAtmos();
   }
 
   // ---------- 화면 ----------
@@ -3234,14 +3288,20 @@ export class Village {
     }
     this.tickFruit(dt);
     // 불꽃놀이: 터질 때 마을이 잠깐 환해진다 (밤에 더)
-    if (this.fireworks) {
-      this.fireworks.update(dt);
-      const f = this.fireworks.flash;
-      if (f > 0 || this.flashOn) {
-        const base = SKY[this.phase || 'day'].hemi;
-        this.hemi.intensity = base + f * (this.phase === 'night' || this.phase === 'dusk' ? 0.8 : 0.25);
-        this.flashOn = f > 0;
+    // 번개가 치면 하늘과 마을이 번쩍
+    const wf = this.weatherFx;
+    wf.update(dt, this.camLook, t, this.camPos.distanceTo(this.camLook) > 58);
+    let fwF = 0;
+    if (this.fireworks) { this.fireworks.update(dt); fwF = this.fireworks.flash; }
+    const bolt = wf.flash;
+    if (fwF > 0 || bolt > 0 || this.flashOn) {
+      const base = this.hemiBase != null ? this.hemiBase : SKY[this.phase || 'day'].hemi;
+      this.hemi.intensity = base + fwF * (this.phase === 'night' || this.phase === 'dusk' ? 0.8 : 0.25) + bolt * 1.6;
+      if (this.skyBase) {
+        this.scene.background.copy(this.skyBase).lerp(new THREE.Color('#F4F6FF'), bolt * 0.45);
+        this.scene.fog.color.copy(this.scene.background);
       }
+      this.flashOn = fwF > 0 || bolt > 0;
     }
 
     if (this.sea) this.sea.update(dt, t); // 배가 먼저 움직여야 배에 탄 친구가 제자리에 붙는다
