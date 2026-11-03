@@ -1,6 +1,6 @@
 // 진숲 어린이 마을 — 보드게임 섬 (마을 섬 서쪽, 나무 다리로 이어진다)
 // 섬 가운데 큰 주사위와 말 조각이 있는 돌 마당을 두고, 둘레에 놀이 탁자 여섯 개를 둥글게 놓는다.
-// 탁자마다 의자 둘(바깥 자리와 안쪽 자리)이 마주 보고, 탁자 위에 그 놀이 도구가 놓여 있다.
+// 탁자마다 의자 넷(만칼라는 둘)이 둘러 있고, 탁자 위에 그 놀이 도구가 놓여 있다.
 // 탁자를 누르면 바깥 자리로 걸어가 그 놀이를 연다 (js/boardgames.js).
 import * as THREE from './three.module.min.js';
 import { toon, toonGradient } from './avatar.js';
@@ -11,7 +11,7 @@ const FONT = '"Maplestory Bold", "Apple SD Gothic Neo", "Malgun Gothic", sans-se
 const RING = 7.4; // 탁자가 놓인 둘레 반지름
 export const SEAT_Y = 0.25; // 의자에 앉은 높이 (다른 놀이와 같다)
 const SEAT_D = 0.95; // 탁자 가운데에서 의자까지
-// 놀이 탁자: id, 이름, 둘레 위 각도(도, 동쪽 0, 남쪽 90)
+// 놀이 탁자: id, 이름, 둘레 위 각도(도, 동쪽 0, 남쪽 90). 만칼라만 두 사람, 나머지는 네 사람까지
 export const BG_TABLES = [
   { id: 'fruit', name: '과일 종 치기', deg: 40, color: '#EF6461' },
   { id: 'yut', name: '윷놀이', deg: 92, color: '#C2453A' },
@@ -22,13 +22,18 @@ export const BG_TABLES = [
 ].map((t, i) => {
   const a = (t.deg * Math.PI) / 180, dx = Math.cos(a), dz = Math.sin(a);
   const x = BOARD_ISLE.x + dx * RING, z = BOARD_ISLE.z + dz * RING;
-  // 0: 바깥 자리(안쪽을 본다), 1: 안쪽 자리(바깥을 본다)
-  const seats = [
-    { x: x + dx * SEAT_D, z: z + dz * SEAT_D, rot: Math.atan2(-dx, -dz) },
-    { x: x - dx * SEAT_D, z: z - dz * SEAT_D, rot: Math.atan2(dx, dz) },
-  ];
-  return { ...t, i, x, z, dx, dz, rot: Math.atan2(dx, dz), seats };
+  // 의자 넷을 차례대로 둘러 놓는다: 0 바깥, 1 오른쪽, 2 안쪽, 3 왼쪽 (모두 탁자 가운데를 본다)
+  // 탁자 기준(+z가 섬 바깥, +x가 (dz, -dx)) 자리
+  const rot = Math.atan2(dx, dz);
+  const local = [[0, SEAT_D], [SEAT_D, 0], [0, -SEAT_D], [-SEAT_D, 0]];
+  const seats = local.map(([lx, lz]) => {
+    const wx = x + lx * Math.cos(rot) + lz * Math.sin(rot), wz = z - lx * Math.sin(rot) + lz * Math.cos(rot);
+    return { x: wx, z: wz, rot: Math.atan2(x - wx, z - wz), lx, lz };
+  });
+  return { ...t, i, x, z, dx, dz, rot, seats, stools: t.id === 'mancala' ? [0, 2] : [0, 1, 2, 3] };
 });
+// 함께하는 사람 수에 따라 앉는 의자 (차례 순서대로)
+export const stoolsFor = (n) => (n >= 4 ? [0, 1, 2, 3] : n === 3 ? [0, 1, 3] : [0, 2]);
 export const bgTable = (id) => BG_TABLES.find((t) => t.id === id);
 
 function mk(geo, mat, x = 0, y = 0, z = 0) {
@@ -209,22 +214,24 @@ export function buildBoardIsle(v, { signMesh } = {}) {
     g.add(mk(new THREE.CylinderGeometry(0.62, 0.62, 0.07, 28), wood, 0, 0.74, 0));
     g.add(mk(new THREE.CylinderGeometry(0.08, 0.1, 0.72, 12), dark, 0, 0.37, 0));
     g.add(mk(new THREE.CylinderGeometry(0.34, 0.38, 0.05, 20), dark, 0, 0.025, 0));
-    // 의자 둘 (탁자 바깥쪽과 안쪽): 탁자 기준 +z가 섬 바깥
-    for (const s of [1, -1]) {
-      g.add(mk(new THREE.CylinderGeometry(0.24, 0.24, 0.06, 18), stoolTop, 0, 0.42 - 0.03, s * SEAT_D));
-      g.add(mk(new THREE.CylinderGeometry(0.05, 0.07, 0.38, 10), dark, 0, 0.19, s * SEAT_D));
+    // 의자 넷 (만칼라는 둘): 탁자 기준 +z가 섬 바깥
+    for (const k of t.stools) {
+      const { lx, lz } = t.seats[k];
+      g.add(mk(new THREE.CylinderGeometry(0.24, 0.24, 0.06, 18), stoolTop, lx, 0.42 - 0.03, lz));
+      g.add(mk(new THREE.CylinderGeometry(0.05, 0.07, 0.38, 10), dark, lx, 0.19, lz));
     }
     const top = tableTop(t.id, 0.775);
     g.add(top);
-    // 팻말: 탁자 옆 (둘레를 따라 조금 비켜서)
+    // 팻말: 바깥 의자와 오른쪽 의자 사이 (밖을 본다)
+    const SX = 0.95, SZ = 0.95;
     const sg = nameSign(t.name, t.color);
-    sg.position.set(0.95, 0, 0.35);
-    sg.rotation.y = 0.25;
+    sg.position.set(SX, 0, SZ);
+    sg.rotation.y = 0.45;
     g.add(sg);
     v.spot('bg_' + t.id, t.name, g, { x: t.x, z: t.z, rot: t.rot, door: SEAT_D + 0.25 });
     v.addObstacleCircle(t.x, t.z, 0.66);
     // 팻말 기둥
-    const sx = t.x + Math.cos(t.rot) * 0.95 + Math.sin(t.rot) * 0.35, sz = t.z - Math.sin(t.rot) * 0.95 + Math.cos(t.rot) * 0.35;
+    const sx = t.x + Math.cos(t.rot) * SX + Math.sin(t.rot) * SZ, sz = t.z - Math.sin(t.rot) * SX + Math.cos(t.rot) * SZ;
     v.addObstacleCircle(sx, sz, 0.12);
   }
   // 섬 둘레 나무와 꽃

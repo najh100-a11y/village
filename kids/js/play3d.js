@@ -15,8 +15,8 @@ import { createSkipGame, SKIP_STANDS, SKIP_FACE } from './beach.js';
 import { createArkGame, ARK_SEATS } from './ark.js';
 import { SEA_Y, SEA_SPOTS, MOOR, BOARD, BOAT_FACE, HARBOR, seatOf, seaRoute, seaBlock, shoreGap, nearSchool } from './sea.js';
 import { onPier, PIER } from './isles.js';
-import { BG_TABLES, bgTable } from './boardisle.js';
-import { boardMenu, mountBoardGame } from './boardgames.js';
+import { BG_TABLES, bgTable, stoolsFor } from './boardisle.js';
+import { boardMenu, mountBoardGame, joinRoom } from './boardgames.js';
 
 // ---------- 도우미 ----------
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -687,9 +687,9 @@ export function createPlay3D(ctx) {
       return;
     }
     if (act === 'bgame') {
-      // 보드게임 섬: 자리 번호 = 탁자 번호 * 2 + (0 바깥 의자, 1 안쪽 의자)
-      const t = BG_TABLES[r.actSeat >> 1];
-      const s = t && t.seats[r.actSeat & 1];
+      // 보드게임 섬: 자리 번호 = 탁자 번호 * 4 + 의자 번호 (0 바깥, 1 오른쪽, 2 안쪽, 3 왼쪽)
+      const t = r.actSeat >= 0 ? BG_TABLES[r.actSeat >> 2] : null;
+      const s = t && t.seats[r.actSeat & 3];
       if (s) v.pinRemote(r.id, { x: s.x, y: SEAT_Y, z: s.z, rot: s.rot, pose: seatPose({}), auto: true });
       return;
     }
@@ -3272,14 +3272,25 @@ export function createPlay3D(ctx) {
   // 보드게임 섬: 탁자 의자에 앉고, 놀이 화면을 덮어 띄운다 (마을은 잠시 멈춘다)
   // =====================================================================
   function boardOpen(id) {
-    boardMenu(id, { hub, onlineFriends, onStart: (gid, how) => boardGame(gid, how) });
+    const me = ctx.getMe ? ctx.getMe() : null;
+    boardMenu(id, { hub, onlineFriends, getPerson: ctx.getPerson || (() => null), myAv: me && me.avatar, onStart: (gid, how) => boardGame(gid, how) });
   }
-  function boardGame(id, { session = null, level = 'normal', opts = null } = {}) {
+  // 친구 방에 초대받아 들어감: 방장이 시작할 때까지 기다리는 창
+  function boardJoin(id, room) {
+    stopAll();
+    const me = ctx.getMe ? ctx.getMe() : null;
+    joinRoom(id, room, { getPerson: ctx.getPerson || (() => null), myId: ctx.myId ? ctx.myId() : null, myAv: me && me.avatar, onStart: (gid, how) => boardGame(gid, how) });
+  }
+  // how: { room, seats, level, opts, startMsg, early }. seats의 내 자리는 { id: 'me' } 또는 내 아이디
+  function boardGame(id, { room = null, seats, level = 'normal', opts = null, startMsg = null, early = [] } = {}) {
     stopAll();
     const t = bgTable(id);
-    if (!t) return;
-    const side = session && !session.bot && !session.host ? 1 : 0;
-    const mine = t.seats[side], theirs = t.seats[1 - side];
+    if (!t || !Array.isArray(seats) || seats.length < 2) return;
+    const myId = ctx.myId ? ctx.myId() : null;
+    const n = seats.length;
+    const stools = stoolsFor(n);
+    const mySeat = Math.max(0, seats.findIndex((x) => x.id === 'me' || (x.id && x.id === myId && x.cpu == null)));
+    const mine = t.seats[stools[mySeat]];
     const meSt = { reach: 0, cheer: 0 }, opSt = { reach: 0, cheer: 0 };
     let guideSave = null, handle = null;
     const game = {
@@ -3288,8 +3299,7 @@ export function createPlay3D(ctx) {
       state: () => (handle ? handle.state() : null),
       stop() {
         if (handle) { try { handle.stop(); } catch (e) { console.error(e); } handle = null; }
-        if (session && !session.closed) session.close();
-        if (session) v.unpinRemote(session.peer);
+        if (room && !room.closed) room.close();
         if (guideSave) {
           const gd = v.guide;
           gd.root.position.copy(guideSave.pos);
@@ -3304,21 +3314,23 @@ export function createPlay3D(ctx) {
     v.enterGame(game);
     v.placePlayer(mine.x, mine.z, mine.rot, SEAT_Y);
     v.player.pose = seatPose(meSt);
-    if (!session) {
+    // 숲지기 솔이 함께하면 솔이 그 의자에 앉는다 (친구들은 저마다 알린 자리에 앉는다)
+    const solSeat = seats.findIndex((x) => x.cpu === 0);
+    if (solSeat >= 0) {
+      const at = t.seats[stools[solSeat]];
       const gd = v.guide;
       guideSave = { pos: gd.root.position.clone(), rot: gd.root.rotation.y, pose: gd.pose };
-      gd.root.position.set(theirs.x, SEAT_Y, theirs.z);
-      gd.root.rotation.y = theirs.rot;
+      gd.root.position.set(at.x, SEAT_Y, at.z);
+      gd.root.rotation.y = at.rot;
       gd.pose = seatPose(opSt);
-    } else v.pinRemote(session.peer, { x: theirs.x, y: SEAT_Y, z: theirs.z, rot: theirs.rot, pose: seatPose(opSt) });
-    setActivity('bgame', t.i * 2 + side);
+    }
+    // 자리 번호 = 탁자 번호 * 4 + 의자 번호 (친구 화면이 이 의자에 앉힌다)
+    setActivity('bgame', t.i * 4 + stools[mySeat]);
     setScene('game');
     const me = ctx.getMe ? ctx.getMe() : null;
-    const peer = session && ctx.getPerson ? ctx.getPerson(session.peer) : null;
     handle = mountBoardGame(id, {
-      session, level, opts,
-      meName: '나', meAv: me && me.avatar,
-      oppAv: peer && peer.avatar,
+      room, seats, level, opts, startMsg, early,
+      myId, myAv: me && me.avatar, getPerson: ctx.getPerson || (() => null),
       onExit: () => stopAll(),
       onCelebrate,
       onCheer: (k) => { if (k === 'me') meSt.cheer = 2.6; else if (k === 'opp') opSt.cheer = 2.6; else if (k === 'reach-me') meSt.reach = 1; else if (k === 'reach-opp') opSt.reach = 1; },
@@ -3328,7 +3340,7 @@ export function createPlay3D(ctx) {
   }
 
   return {
-    boardOpen, boardGame,
+    boardOpen, boardGame, boardJoin,
     get boardState() { return cur && cur.id === 'bgame' && cur.game.state ? cur.game.state() : null; },
     ride: rides.ride,
     fishing, seaFishing, omokMenu, omok, omokWatch, cookMenu, cook, cookFree, easel, artSaved,

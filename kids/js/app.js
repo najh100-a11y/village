@@ -1605,7 +1605,8 @@ function showNews() {
   if (state.features.pets3) news.push(['pets3', "새 소식! 애완동물을 세 마리까지 데리고 다닐 수 있어요. 가방의 '우리 집 친구'에서 열매 15개(반값)에 다시 팔거나 친구에게 선물할 수도 있어요."]);
   if (state.features.petname) news.push(['petname', '새 소식! 애완동물에게 이름을 지어 줄 수 있어요(가방에서). 내 말을 따라 하는 앵무새도 열매 상점에 왔어요.']);
   news.push(['weather', "새 소식! 마을 날씨가 대구의 지금 날씨를 따라 바뀌어요. 대구에 비가 오면 마을에도 비가, 눈이 오면 눈이 내려요. 위쪽 열매 옆의 날씨를 누르면 자세히 볼 수 있어요."]);
-  news.push(['boardisle', '새 소식! 마을 서쪽 다리를 건너면 보드게임 섬이 있어요. 과일 종 치기, 77 피하기, 숫자 암호, 만칼라, 윷놀이, 땅따먹기를 숲지기 솔이나 친구와 1:1로 해 봐요.']);
+  news.push(['boardisle', '새 소식! 마을 서쪽 다리를 건너면 보드게임 섬이 있어요. 과일 종 치기, 77 피하기, 숫자 암호, 만칼라, 윷놀이, 땅따먹기를 컴퓨터 친구나 마을 친구와 해 봐요.']);
+  news.push(['boardisle4', '새 소식! 보드게임 섬에서 방을 만들면 친구 넷까지 함께 놀 수 있어요(만칼라는 둘). 빈자리에는 컴퓨터 친구를 앉히고, 윷놀이는 2:2 편을 먹고 할 수도 있어요.']);
   news.push(['clothes2', "새 소식! 옷장('꾸미기')에 옷이 많이 늘었어요. 이제 상의와 하의를 따로 골라 입어요. 치마, 반바지, 청바지, 한복 저고리와 한복 치마, 패딩, 야구 점퍼도 있어요."]);
   news.unshift(['guide', "새 소식! 오른쪽 '마을 지도' 단추를 누르면 어디에 무엇이 있고 무엇을 할 수 있는지 볼 수 있어요. 가고 싶은 곳을 고르면 그곳까지 걸어가요."]);
   // 이 기기로 처음 들어왔으면 지난 소식을 한꺼번에 띄우지 않고 마을 지도만 알려 준다
@@ -2595,7 +2596,7 @@ async function openGameWith(kind, session) {
   hideHint();
   $('#sayPanel').hidden = true;
   const bid = bgIdOf(kind);
-  if (bid) play3d.boardGame(bid, { session, opts: session.extra });
+  if (bid) play3d.boardJoin(bid, session); // 친구 방에 들어가 방장이 시작하기를 기다린다
   else if (kind === 'omok') play3d.omok({ session });
   else if (kind === 'ark') play3d.ark({ session });
   else play3d.cook({ recipe: recipeById(session.extra) || RECIPES[0], session });

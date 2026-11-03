@@ -9,6 +9,8 @@ const KIND_ASK = {
   bg_fruit: '보드게임 섬에서 과일 종 치기 하자고 해요!', bg_n77: '보드게임 섬에서 77 피하기 하자고 해요!', bg_code: '보드게임 섬에서 숫자 암호 맞히기 하자고 해요!',
   bg_mancala: '보드게임 섬에서 만칼라 하자고 해요!', bg_yut: '보드게임 섬에서 윷놀이 하자고 해요!', bg_dots: '보드게임 섬에서 땅따먹기(점 잇기) 하자고 해요!',
 };
+// 여럿이 하는 놀이 (보드게임 섬): 방 하나(gid)에 친구 여럿이 들어온다
+export const isRoomKind = (k) => typeof k === 'string' && k.startsWith('bg_');
 const newGid = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]).join('') + Date.now().toString(36).slice(-4);
 
 // 받는 쪽에서 메시지를 한 번만 처리하고, 보내는 쪽은 받았다는 대답이 올 때까지 다시 보낸다
@@ -31,10 +33,112 @@ function reliable(raw, onMsg) {
   };
 }
 
+// 방 채널: 모두에게 보내고, 받은 사람마다 보낸 사람에게 받았다는 대답(ack)을 돌려준다.
+// 보낸 사람은 방에 있는 사람이 모두 대답할 때까지 다시 보낸다 (방을 나간 사람은 기다리지 않는다)
+function reliableRoom(raw, myId, getMembers, onMsg) {
+  let seq = 0;
+  const unacked = new Map(); // s → { m, need }
+  const seen = new Map(); // 보낸 사람 → 받은 번호들
+  const timer = setInterval(() => {
+    const mem = new Set(getMembers());
+    for (const [k, u] of unacked) {
+      for (const id of [...u.need]) if (!mem.has(id)) u.need.delete(id);
+      if (!u.need.size) { unacked.delete(k); continue; }
+      raw.send(u.m);
+    }
+  }, 1200);
+  return {
+    send(t, data = {}) {
+      const m = { ...data, t, s: ++seq };
+      const need = new Set(getMembers());
+      if (need.size) unacked.set(m.s, { m, need });
+      raw.send(m);
+    },
+    receive(m) {
+      const from = m._f;
+      if (typeof from !== 'string') return;
+      if (typeof m.ack === 'number') {
+        if (m.to !== myId) return;
+        const u = unacked.get(m.ack);
+        if (u) { u.need.delete(from); if (!u.need.size) unacked.delete(m.ack); }
+        return;
+      }
+      if (typeof m.s !== 'number' || typeof m.t !== 'string') return;
+      raw.send({ ack: m.s, to: from });
+      let got = seen.get(from);
+      if (!got) { got = new Set(); seen.set(from, got); }
+      if (got.has(m.s)) return;
+      got.add(m.s);
+      onMsg(m, from);
+    },
+    stop() { clearInterval(timer); unacked.clear(); },
+  };
+}
+
 export function createPlayHub({ getNet, getPerson, getMe, onAccept, onInviteShown, isBusy, onLockedInvite }) {
   const pending = new Map(); // gid → { resolve, peer, kind, timer }
+  const roomPending = new Map(); // 'gid:친구' → { resolve, timer, room }
   let session = null;
   let card = null;
+
+  // 방: host면 내가 연 방, 아니면 hostId의 방에 들어간 것. members는 나 말고 방에 있는 사람(예시 친구는 빼고)
+  function makeRoom({ gid, kind, host, hostId = null, extra = null }) {
+    const net = getNet();
+    const me = getMe();
+    const members = new Set();
+    if (!host && hostId) members.add(hostId);
+    const bots = new Set();
+    let raw = null, rel = null;
+    const s = {
+      room: true, gid, kind, host, hostId: host ? me : hostId, extra, members, bots,
+      handlers: {},
+      on(name, fn) { this.handlers[name] = fn; return this; },
+      emit(name, ...a) { if (this.handlers[name]) this.handlers[name](...a); },
+      send(t, data) { if (rel) rel.send(t, data); },
+      nameOf: (id) => (getPerson(id) || {}).name || '친구',
+      setMembers(ids) { members.clear(); for (const id of ids) if (id && id !== me) members.add(id); },
+      left(id) { if (members.delete(id)) s.emit('left', id); },
+      // 친구를 방에 부른다. 결과: { ok, bot } 또는 { ok: false, reason }
+      invite(peer) {
+        const n = getNet();
+        if (!n) return Promise.resolve({ ok: false, reason: 'off' });
+        return new Promise((resolve) => {
+          const key = `${gid}:${peer}`;
+          const timer = setTimeout(() => { roomPending.delete(key); resolve({ ok: false, reason: 'timeout' }); }, 25000);
+          roomPending.set(key, { resolve, timer, room: s });
+          n.send('inv', { to: peer, g: gid, k: kind, x: extra });
+        });
+      },
+      cancelInvite(peer) {
+        const key = `${gid}:${peer}`;
+        const w = roomPending.get(key);
+        if (w) { clearTimeout(w.timer); roomPending.delete(key); w.resolve({ ok: false, reason: 'cancel' }); }
+      },
+      close() {
+        if (session === s) session = null;
+        for (const [key, w] of [...roomPending]) if (w.room === s) { clearTimeout(w.timer); roomPending.delete(key); w.resolve({ ok: false, reason: 'cancel' }); }
+        if (raw) { try { raw.send({ t: 'bye' }); } catch (e) { /* 무시 */ } }
+        if (rel) rel.stop();
+        if (raw) raw.close();
+        const n = getNet();
+        if (n) for (const b of bots) n.botBusy(b, false);
+        s.closed = true;
+      },
+    };
+    if (net) {
+      raw = net.openGame(gid, (m) => {
+        if (m.t === 'bye' && typeof m.s !== 'number') { if (typeof m._f === 'string') s.left(m._f); return; }
+        rel.receive(m);
+      }, () => s.emit('ready'));
+      rel = reliableRoom(raw || { send() {} }, me, () => [...members], (m, from) => s.emit('msg', m, from));
+    }
+    session = s;
+    return s;
+  }
+  function openRoom(kind, extra = null) {
+    if (session) session.close();
+    return makeRoom({ gid: newGid(), kind, host: true, extra });
+  }
 
   function makeSession({ gid, peer, kind, host, extra }) {
     const net = getNet();
@@ -105,7 +209,7 @@ export function createPlayHub({ getNet, getPerson, getMe, onAccept, onInviteShow
             close();
             if (session) session.close();
             reply(from, p.g, true);
-            const s = makeSession({ gid: p.g, peer: from, kind: p.k, host: false, extra: p.x });
+            const s = isRoomKind(p.k) ? makeRoom({ gid: p.g, kind: p.k, host: false, hostId: from, extra: p.x }) : makeSession({ gid: p.g, peer: from, kind: p.k, host: false, extra: p.x });
             onAccept(p.k, s);
           } }, '좋아!'))));
     document.body.append(card);
@@ -124,6 +228,17 @@ export function createPlayHub({ getNet, getPerson, getMe, onAccept, onInviteShow
       return true;
     }
     if (type === 'invr') {
+      const rp = roomPending.get(`${p.g}:${from}`);
+      if (rp) {
+        clearTimeout(rp.timer);
+        roomPending.delete(`${p.g}:${from}`);
+        if (!p.ok) { rp.resolve({ ok: false, reason: p.b === 2 ? 'locked' : p.b ? 'busy' : 'no' }); return true; }
+        const net = getNet();
+        const bot = !!(net && net.isBot(from));
+        if (bot) rp.room.bots.add(from); else rp.room.members.add(from);
+        rp.resolve({ ok: true, bot });
+        return true;
+      }
       const w = pending.get(p.g);
       if (!w || w.peer !== from) return true;
       clearTimeout(w.timer);
@@ -136,9 +251,12 @@ export function createPlayHub({ getNet, getPerson, getMe, onAccept, onInviteShow
     return false;
   }
 
-  function onLeave(id) { if (session && session.peer === id) session.emit('left'); }
+  function onLeave(id) {
+    if (session && session.room) session.left(id);
+    else if (session && session.peer === id) session.emit('left');
+  }
 
-  return { invite, onMsg, onLeave, get session() { return session; } };
+  return { invite, openRoom, onMsg, onLeave, get session() { return session; } };
 }
 
 // 친구 고르기 목록 (지금 마을에 있는 친구만)
