@@ -16,6 +16,7 @@ export const ACTS = ['', 'fish', 'omok', 'cook', 'art', 'memory', 'qt', 'copy', 
 const ID_RE = /^[A-Za-z0-9-]{1,64}$/;
 const GID_RE = /^[a-z0-9]{8,12}$/;
 const WORD_RE = /^[a-z]{2,12}$/;
+const PET_RE = /^pet_[a-z]{2,10}$/;
 
 // 받은 메시지를 믿을 수 있는 모양으로만 걸러 낸다
 export function clean(type, p) {
@@ -40,15 +41,20 @@ export function clean(type, p) {
   // 나눔 수레: s 나눔 바구니 번호, e 1이면 먹었다(0이면 새로 올렸다)
   if (type === 'share') return Number.isSafeInteger(p.s) && p.s > 0 ? { s: p.s, e: p.e === 1 ? 1 : 0 } : null;
   if (type === 'jp') return {}; // 폴짝 뛰었다
-  if (type === 'pc') return p.k === 'hug' || p.k === 'feed' ? { k: p.k } : null; // 애완동물 돌보기 (안아 주기, 먹이 주기)
+  // 애완동물 돌보기 (안아 주기, 먹이 주기). i: 돌보는 동물 (예전 화면은 없이 보낸다)
+  if (type === 'pc') return p.k === 'hug' || p.k === 'feed' ? { k: p.k, i: typeof p.i === 'string' && PET_RE.test(p.i) ? p.i : null } : null;
   // 불꽃놀이: 종류와 쏜 자리
   if (type === 'fw') return ['fw_spark', 'fw_flower', 'fw_heart'].includes(p.k) && num(p.x) && num(p.z) ? { k: p.k, x: p.x, z: p.z } : null;
   // 마을 식탁 요리를 먹었다 (d: 요리 번호)
   if (type === 'ate') return Number.isSafeInteger(p.d) && p.d > 0 ? { d: p.d } : null;
   // 곤충을 잡았다 (s: 자리, w: 시간 칸, b: 곤충)
   if (type === 'bug') return Number.isInteger(p.s) && p.s >= 0 && p.s < 32 && Number.isInteger(p.w) && p.w >= 0 && p.w < 1e9 && /^[a-z_]{3,20}$/.test(p.b) ? { s: p.s, w: p.w, b: p.b } : null;
-  // 열매 선물을 보냈다 (받는 아이가 서버에서 확인한다)
-  if (type === 'gift') return typeof p.to === 'string' && ID_RE.test(p.to) && Number.isInteger(p.n) && p.n >= 1 && p.n <= 10 && WORD_RE.test(p.m) ? { to: p.to, n: p.n, m: p.m } : null;
+  // 선물: 열매(n 1~10) 또는 애완동물(n 0, p 동물). 실제 선물은 받는 쪽이 서버에서 확인한다
+  if (type === 'gift') {
+    if (typeof p.to !== 'string' || !ID_RE.test(p.to) || !WORD_RE.test(p.m)) return null;
+    if (Number.isInteger(p.n) && p.n >= 1 && p.n <= 10) return { to: p.to, n: p.n, m: p.m };
+    return p.n === 0 && typeof p.p === 'string' && PET_RE.test(p.p) ? { to: p.to, n: 0, m: p.m, p: p.p } : null;
+  }
   // 집 안에서 움직이기: h 집 주인(빈 글자면 집에서 나감), x·z 집 안 자리, tx·tz 가는 곳,
   // 앉거나 누웠으면 y 높이·ro 방향·l(1 누움), a: 1 막 들어옴(먼저 있던 친구가 자기 자리를 알려 준다), u: 1 집을 새로 꾸몄음
   if (type === 'hm') {

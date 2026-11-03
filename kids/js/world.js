@@ -2203,8 +2203,7 @@ export class Village {
     holder.bubble = { el, life: Math.min(9, 3.8 + [...text].length * 0.14) };
     av.celebrate();
     // 앵무새를 데리고 다니면 주인 말을 따라 한다
-    const f = this.followers && this.followers.get(id);
-    if (f) f.echo(text);
+    for (const f of this.petsOf(id)) f.echo(text);
   }
   // 내 머리 위 이름표
   setMyName(name, teacher = false) {
@@ -2278,7 +2277,7 @@ export class Village {
   // 친구를 알맞은 장면(내가 있는 집 안, 또는 마을)에 둔다
   syncHouse(r) {
     const H = this.homeSpace, av = r.av;
-    const pet = this.followers && this.followers.get(r.id);
+    const pets = this.petsOf(r.id);
     if (this.inMyHouse(r)) {
       const q = r.houseP;
       const at = H.toWorld(q.x, q.z);
@@ -2290,7 +2289,7 @@ export class Village {
         r.target = null;
         r.via = [];
         r.tag.classList.add('home-ok');
-        if (pet) { H.scene.add(pet.root); pet.placed = false; }
+        for (const pet of pets) { H.scene.add(pet.root); pet.placed = false; }
       }
       if (q.y != null) {
         this.pinRemote(r.id, { kind: 'hrest', x: at.x, y: q.y, z: at.z, rot: q.ro, pose: q.l ? bedPose : benchPose, auto: false });
@@ -2311,7 +2310,7 @@ export class Village {
     r.target = null;
     r.via = [];
     r.tag.classList.remove('home-ok');
-    if (pet) { this.scene.add(pet.root); pet.placed = false; }
+    for (const pet of pets) { this.scene.add(pet.root); pet.placed = false; }
   }
   syncAllHouses() { for (const r of this.remotes.values()) this.syncHouse(r); }
 
@@ -2366,10 +2365,9 @@ export class Village {
         // 애완동물 돌보기 자세 (걸어가면 그만, 안고 있던 동물은 내려온다)
         r.care.t += dt;
         if (r.care.t >= r.care.dur || moving) {
-          const what = r.care.what;
+          const what = r.care.what, f = r.care.pet;
           r.care = null;
           resetLimbs(r.av);
-          const f = this.followers && this.followers.get(r.id);
           if (moving && what === 'hug' && f && f.care && f.care.what === 'hug') f.endCare();
         } else (r.care.what === 'hug' ? hugPose : feedPose(r.care))(r.av);
       }
@@ -2403,6 +2401,7 @@ export class Village {
     el.style.display = '';
     const x = (v.x * 0.5 + 0.5) * this.w;
     const y = (-v.y * 0.5 + 0.5) * this.h;
+    el._lx = x; el._ly = y;
     el.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
   }
 
@@ -2630,7 +2629,7 @@ export class Village {
       if (p.type === 'bench') { this.walkToBench(p.i); return; }
       if (p.type === 'fruit') { this.walkToFruit(p.i); return; }
       if (p.type === 'pet') { this.petAnimal(p.i); return; }
-      if (p.type === 'mypet') { this.petFollower(p.owner); return; }
+      if (p.type === 'mypet') { this.petFollower(p.owner, p.item); return; }
       if (p.type === 'bug') { this.walkToBug(p.i); return; }
       if (p.type === 'dig') { this.walkToDig(p.i); return; }
       if (p.type === 'dish') { this.walkToDish(p.i); return; }
@@ -2649,15 +2648,14 @@ export class Village {
   tapHome(ray) {
     const H = this.homeSpace;
     const roots = [...H.pickRoots];
-    const f = this.followers && this.followers.get('me');
-    if (f) roots.push(f.root);
+    for (const f of this.petsOf('me')) roots.push(f.root);
     for (const h of ray.intersectObjects(roots, true)) {
       let o = h.object;
       while (o && !o.userData.pick) o = o.parent;
       if (!o) continue;
       const p = o.userData.pick;
       if (p.type === 'building') { this.walkTo(p.id); return true; }
-      if (p.type === 'mypet') { this.petFollower(p.owner); return true; }
+      if (p.type === 'mypet') { this.petFollower(p.owner, p.item); return true; }
       if (p.type === 'homeitem' && H.restSpot) {
         const rest = H.restSpot(p.id, this.player && this.player.root.position);
         if (rest) {
@@ -2735,8 +2733,7 @@ export class Village {
   moveInto(scene) {
     scene.add(this.hemi, this.sun, this.sun.target);
     if (this.player) scene.add(this.player.root);
-    const f = this.followers && this.followers.get('me');
-    if (f) { scene.add(f.root); f.placed = false; }
+    for (const f of this.petsOf('me')) { scene.add(f.root); f.placed = false; }
     if (this.tapMark) { scene.add(this.tapMark); this.tapMark.visible = false; }
   }
   afterSwitch() {
@@ -2795,41 +2792,86 @@ export class Village {
     this.showTapMark(pos);
     this.reportMove(pos.x, pos.z);
   }
-  // 강아지·고양이를 누르면 멈춰서 반기고, 나는 그 옆으로 간다
-  // ---------- 애완동물: 주인('me' 또는 친구 id)을 따라다닌다 ----------
-  // name: 아이가 지어 준 애완동물 이름 (없으면 이름표 없이)
-  setPet(owner, item, name = '') {
-    this.followers = this.followers || new Map();
-    const cur = this.followers.get(owner);
-    if (cur && cur.item === item) { cur.setName(name); return; }
-    if (cur) { cur.dispose(); this.followers.delete(owner); }
-    if (!item || !PET_ITEMS[item]) return;
-    const f = new Follower(this, item, owner);
-    f.setName(name);
-    this.followers.set(owner, f);
-    if (owner === 'me' && this.atHome && this.homeSpace) this.homeSpace.scene.add(f.root);
+  // ---------- 애완동물: 주인('me' 또는 친구 id)을 따라다닌다 (세 마리까지) ----------
+  // 순서대로 주인 왼쪽 뒤, 오른쪽 뒤, 가운데 조금 더 뒤에서 따라온다
+  petsOf(owner) { return (this.followers && this.followers.get(owner)) || []; }
+  petOf(owner, item) {
+    const list = this.petsOf(owner);
+    return (item && list.find((f) => f.item === item)) || (item ? null : list[0] || null);
   }
+  // pets: [{ item, name }] (아이가 지어 준 이름, 없으면 이름표 없이). 같은 동물은 그대로 두고 자리만 바꾼다
+  setPets(owner, pets) {
+    this.followers = this.followers || new Map();
+    const want = [];
+    for (const p of pets || []) {
+      if (!p || !PET_ITEMS[p.item] || want.some((w) => w.item === p.item)) continue;
+      want.push(p);
+      if (want.length >= 3) break;
+    }
+    const cur = this.followers.get(owner) || [];
+    for (const f of cur) {
+      if (want.some((w) => w.item === f.item)) continue;
+      if (owner === 'me' && this.petCare && this.petCare.pet === f) this.stopPetCare(false);
+      const r = owner !== 'me' && this.remotes.get(owner);
+      if (r && r.care && r.care.pet === f) { r.care = null; resetLimbs(r.av); }
+      f.dispose();
+    }
+    const out = want.map((w, i) => {
+      let f = cur.find((c) => c.item === w.item);
+      if (!f) {
+        f = new Follower(this, w.item, owner);
+        if (owner === 'me' && this.atHome && this.homeSpace) this.homeSpace.scene.add(f.root);
+        else if (owner !== 'me') { const r = this.remotes.get(owner); if (r && r.inHouse && this.homeSpace) this.homeSpace.scene.add(f.root); }
+      }
+      f.setName(w.name || '');
+      f.setSlot(i);
+      return f;
+    });
+    if (out.length) this.followers.set(owner, out);
+    else this.followers.delete(owner);
+  }
+  // 예전처럼 한 마리만 (item이 없으면 모두 집에서 쉰다)
+  setPet(owner, item, name = '') { this.setPets(owner, item ? [{ item, name }] : []); }
   updateFollowers(dt) {
     if (!this.followers) return;
-    for (const [owner, f] of this.followers) {
+    for (const [owner, list] of this.followers) {
       if (owner === 'me') {
         if (!this.player) continue;
         // 놀이 중이면(놀이기구, 낚시 등) 그 자리에서 기다린다. 벤치에 앉거나 열매를 먹을 때는 곁에 있는다
-        f.update(dt, this.player.root, this.mode !== 'play');
+        for (const f of list) f.update(dt, this.player.root, this.mode !== 'play');
       } else {
         const r = this.remotes.get(owner);
         if (!r) continue;
-        f.update(dt, r.av.root, !!(r.pin && r.pin.kind !== 'bench'));
+        for (const f of list) f.update(dt, r.av.root, !!(r.pin && r.pin.kind !== 'bench'));
       }
+      if (list.length > 1) this.spreadPetTags(list);
+    }
+  }
+  // 한 주인의 애완동물 이름표가 화면에서 겹치면 뒤쪽(위쪽) 것을 조금 올린다
+  spreadPetTags(list) {
+    const tags = list.map((f) => f.tag).filter((t) => t && t.style.display !== 'none' && t._lx != null);
+    if (tags.length < 2) return;
+    tags.sort((a, b) => b._ly - a._ly);
+    const placed = [];
+    for (const t of tags) {
+      const w = t._w || (t._w = t.offsetWidth || 40), hh = t._h || (t._h = t.offsetHeight || 18);
+      let y = t._ly;
+      for (let k = 0; k < 3; k++) {
+        const hit = placed.find((q) => Math.abs(q.x - t._lx) < (q.w + w) / 2 + 2 && Math.abs(q.y - y) < (q.h + hh) / 2 + 1);
+        if (!hit) break;
+        y = hit.y - (hit.h + hh) / 2 - 2;
+      }
+      if (y !== t._ly) t.style.transform = `translate(${t._lx}px, ${y}px) translate(-50%, -100%)`;
+      placed.push({ x: t._lx, y, w, h: hh });
     }
   }
   // ---------- 내 애완동물 돌보기: 안아 주기(hug), 먹이 주기(feed) ----------
-  // 돌려주는 값: 'ok', 'none'(애완동물 없음), 'busy'(다른 일 중), 'pool'(물속)
-  careForPet(what) {
-    const f = this.followers && this.followers.get('me');
+  // item: 돌볼 동물 (없으면 첫 동물). 돌려주는 값: 'ok', 'none'(애완동물 없음), 'busy'(다른 일 중), 'pool'(물속)
+  careForPet(what, item) {
+    const f = this.petOf('me', item);
     const pl = this.player;
     if (!f || !pl || this.mode !== 'play' || !CARE_SEC[what]) return 'none';
-    if (this.petCare || f.care || this.eating || this.digging || this.netting) return 'busy';
+    if (this.petCare || this.petsOf('me').some((x) => x.care) || this.eating || this.digging || this.netting) return 'busy';
     const p = pl.root.position;
     if (!this.atHome && inPool(p.x, p.z)) return 'pool';
     if (this.sitting) this.standUp();
@@ -2839,7 +2881,7 @@ export class Village {
     const c = this.camera.position;
     pl.root.rotation.y = Math.atan2(c.x - p.x, c.z - p.z);
     if (!f.startCare(what, pl.root)) return 'none';
-    this.petCare = { what, t: 0, dur: CARE_POSE_SEC[what] };
+    this.petCare = { what, t: 0, dur: CARE_POSE_SEC[what], pet: f };
     pl.pose = what === 'hug' ? hugPose : feedPose(this.petCare);
     return 'ok';
   }
@@ -2849,24 +2891,26 @@ export class Village {
     if (!c) return;
     this.petCare = null;
     if (this.player) { this.player.pose = null; resetLimbs(this.player); }
-    if (!done && c.what === 'hug') { const f = this.followers && this.followers.get('me'); if (f && f.care) f.endCare(); }
+    if (!done && c.what === 'hug' && c.pet && c.pet.care) c.pet.endCare();
   }
   // 친구가 애완동물을 돌볼 때: 친구 주민과 그 애완동물이 같은 모습을 보인다
-  remotePetCare(id, what) {
+  remotePetCare(id, what, item) {
     const r = this.remotes.get(id);
-    const f = this.followers && this.followers.get(id);
-    if (!r || !f || !CARE_SEC[what] || f.care) return;
+    const f = this.petOf(id, item);
+    if (!r || !f || !CARE_SEC[what] || f.care || r.care) return;
     if (!f.startCare(what, r.av.root)) return;
-    r.care = { what, t: 0, dur: CARE_POSE_SEC[what] };
+    r.care = { what, t: 0, dur: CARE_POSE_SEC[what], pet: f };
   }
-  petFollower(owner) {
-    const f = this.followers && this.followers.get(owner);
+  petFollower(owner, item) {
+    const f = this.petOf(owner, item);
     if (!f) return;
-    if (f.care) { if (this.on.onPet) this.on.onPet({ kind: f.def.kind, mine: owner === 'me', busy: true }); return; }
-    const kind = f.pet();
-    if (this.on.onPet) this.on.onPet({ kind, mine: owner === 'me' });
+    const info = { kind: f.def.kind, item: f.item, name: f.name || '', mine: owner === 'me' };
+    if (f.care) { if (this.on.onPet) this.on.onPet({ ...info, busy: true }); return; }
+    f.pet();
+    if (this.on.onPet) this.on.onPet(info);
   }
 
+  // 강아지·고양이를 누르면 멈춰서 반기고, 나는 그 옆으로 간다
   petAnimal(i) {
     if (!this.critters || !this.player) return;
     const r = this.critters.pet(i);

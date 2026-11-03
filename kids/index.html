@@ -533,9 +533,12 @@ body.in-game .view-ctl .zc.guide, body.home-editing .view-ctl .zc.guide { displa
 .shop-item .acts { display: grid; gap: 6px; justify-items: end; }
 .shop-item .fw-ic.pet svg { background: #D7EFC4; }
 .shop-item small.pet-kind { font-family: var(--body, inherit); font-size: 13px; color: var(--ink-soft); }
-.pet-name .pn-head { display: flex; align-items: center; gap: 12px; text-align: left; }
-.pet-name .pn-head p { margin: 0; }
-.pet-name .fw-ic.big svg { width: 72px; height: 72px; display: block; background: #D7EFC4; border-radius: 18px; }
+.pet-name .pn-head, .pet-gift .pn-head { display: flex; align-items: center; gap: 12px; text-align: left; }
+.pet-name .pn-head p, .pet-gift .pn-head p { margin: 0; }
+.pet-name .fw-ic.big svg, .pet-gift .fw-ic.big svg { width: 72px; height: 72px; display: block; background: #D7EFC4; border-radius: 18px; }
+.shop-item .acts.many { grid-template-columns: repeat(2, auto); justify-content: end; }
+.shop-item .acts.many .btn { width: 100%; }
+.shop-item .acts.many .btn-plain { --btn-bg: #fff; box-shadow: inset 0 0 0 2px #F1E6CF; font-size: 16px; }
 .pn-input { display: block; width: 100%; margin-top: 12px; border: 3px solid var(--line); border-radius: 16px; padding: 12px 14px; font-family: var(--display); font-size: 22px; text-align: center; background: #fff; color: var(--ink); }
 .pn-input:focus { border-color: var(--leaf); outline: none; }
 .pn-err { min-height: 1.2em; margin: 6px 0 0; color: #C2412D; font-size: 14px; }
@@ -568,6 +571,7 @@ body.in-game .view-ctl .zc.guide, body.home-editing .view-ctl .zc.guide { displa
   .shop-item .fw-ic svg { width: 54px; height: 54px; }
   .shop-item .acts { grid-column: 1 / -1; grid-auto-flow: column; justify-content: stretch; justify-items: stretch; }
   .shop-item .acts:empty { display: none; }
+  .shop-item .acts.many { grid-auto-flow: row; grid-template-columns: 1fr 1fr; justify-content: stretch; }
 }
 .shop-fruit { font-family: var(--display); font-size: 18px; margin: 0 0 10px; }
 .dish-eat .eaters { background: #F3FAEE; border-radius: 14px; padding: 8px 12px; margin: 10px 0; }
@@ -1038,6 +1042,7 @@ body.home-editing .pad, body.home-editing .jump-btn, body.home-editing #hud .hud
 .gift-person b { font-family: var(--display); font-weight: 400; font-size: 16px; }
 .gift-person small { font-size: 12px; color: var(--leaf-deep); }
 .gift-person:disabled { opacity: .5; cursor: default; }
+.gift-person[aria-pressed="true"] { border-color: var(--leaf); background: #EEF8E6; box-shadow: 0 0 0 2px var(--leaf) inset; }
 .gift-person .fl-face { grid-row: auto; }
 .talk.gift h4 { margin: 12px 0 6px; font-family: var(--display); font-weight: 400; font-size: 17px; }
 .gift-to { display: flex; align-items: center; gap: 12px; }

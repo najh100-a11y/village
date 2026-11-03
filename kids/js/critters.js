@@ -380,7 +380,7 @@ export class Follower {
     this.root.traverse((o) => { if (o.isMesh) o.castShadow = false; });
     this.body.children[0].traverse((o) => { if (o.isMesh) o.castShadow = true; });
     if (this.def.kind === 'parrot') this.root.scale.setScalar(1.3); // 날아다니니 조금 크게
-    this.root.userData.pick = { type: 'mypet', owner: ownerId };
+    this.root.userData.pick = { type: 'mypet', owner: ownerId, item };
     v.scene.add(this.root);
     v.pickRoots.push(this.root);
     this.walk = 0;
@@ -388,7 +388,7 @@ export class Follower {
     this.hop = 0;
     this.react = 0;
     this.placed = false;
-    this.side = Math.random() < 0.5 ? -1 : 1;
+    this.setSlot(0);
     this.fly = 0; // 앵무새가 나는 정도 (0 앉음 ~ 1 날기)
     this.echoQ = null;
     this.tag = null;
@@ -403,12 +403,20 @@ export class Follower {
     if (this.care && this.care.bowl) disposeTree(this.care.bowl);
     this.care = null;
   }
+  // 따라다니는 자리: 0 주인 왼쪽 뒤, 1 오른쪽 뒤, 2 가운데 조금 더 뒤 (세 마리가 겹치지 않게)
+  setSlot(i) {
+    this.slot = i;
+    this.side = i === 1 ? 1 : -1; // 먹이 먹을 때 그릇 옆쪽
+    this.back = i === 2 ? 1.75 : 1.0;
+    this.lat = i === 2 ? 0 : 0.7 * this.side;
+  }
   // 아이가 지어 준 이름 (머리 위 작은 이름표)
   setName(name) {
     this.name = name || '';
     if (!this.name) { if (this.tag) { this.tag.remove(); this.tag = null; } return; }
     if (!this.tag) this.tag = this.v.makeLabel('', 'kv-tag kv-pet' + (this.ownerId === 'me' ? ' home-ok' : ''));
     this.tag.textContent = this.name;
+    this.tag._w = 0; // 이름표 너비를 다시 잰다 (겹침 막기)
   }
   // 앵무새는 주인이 한 말을 조금 뒤에 따라 한다
   echo(text) {
@@ -476,7 +484,7 @@ export class Follower {
     const c = this.care, r = this.root, pos = r.position, k = this.def.kind, t = this.v.time;
     c.t += dt;
     const cb = this.v.on && this.v.on.onPetCare;
-    const tell = (phase) => { if (cb) cb({ phase, what: c.what, kind: k, mine: this.ownerId === 'me' }); };
+    const tell = (phase) => { if (cb) cb({ phase, what: c.what, kind: k, item: this.item, name: this.name || '', mine: this.ownerId === 'me' }); };
     if (wait && c.what === 'hug') { this.endCare(); return 0; } // 주인이 놀이를 시작하면 내려온다
     if (c.what === 'hug') {
       // 주인 가슴 앞, 주인과 같은 쪽을 본다 (화면 쪽으로 얼굴이 보이게)
@@ -521,7 +529,7 @@ export class Follower {
         if (!c.said && c.t - c.eatStart > 0.8) { c.said = true; this.say('냠냠!'); tell('bite'); }
       }
     }
-    if (c.t >= c.dur) { const what = c.what; this.endCare(); if (cb) cb({ phase: 'done', what, kind: k, mine: this.ownerId === 'me' }); return 0; }
+    if (c.t >= c.dur) { const what = c.what; this.endCare(); if (cb) cb({ phase: 'done', what, kind: k, item: this.item, name: this.name || '', mine: this.ownerId === 'me' }); return 0; }
     return c.what === 'hug' ? 0.5 : 0; // 안겨 있으면 하트와 이름표를 주인 머리 위쪽에서 띄운다
   }
 
@@ -532,9 +540,9 @@ export class Follower {
     if (this.care) { const lift = this.tickCare(dt, owner, wait); this.tickLabels(dt, lift); return; }
     const o = owner.position;
     const yaw = owner.rotation.y;
-    // 주인 뒤쪽 옆자리
-    const bx = -Math.sin(yaw) * 1.0 + Math.cos(yaw) * 0.7 * this.side;
-    const bz = -Math.cos(yaw) * 1.0 - Math.sin(yaw) * 0.7 * this.side;
+    // 주인 뒤쪽 자리 (setSlot)
+    const bx = -Math.sin(yaw) * this.back + Math.cos(yaw) * this.lat;
+    const bz = -Math.cos(yaw) * this.back - Math.sin(yaw) * this.lat;
     let tx = o.x + bx, tz = o.z + bz;
     if (!this.placed || (!wait && Math.hypot(tx - pos.x, tz - pos.z) > 14)) {
       // 처음이거나 너무 멀어지면(다른 섬, 놀이기구에서 내림) 주인 곁으로 바로 온다

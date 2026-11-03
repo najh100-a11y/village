@@ -90,7 +90,8 @@ export function createGuide(o) {
       const sells = ['잡은 물고기와 곤충', F.beach ? '캔 보물' : null, F.farm ? '밭에서 거둔 것' : null].filter(Boolean);
       add({ id: 'shop', isle: 'main', cat: 'town', icon: '🛒', name: '열매 상점', short: '열매로 사고팔기', x: 16.6, z: 1.6, lbl: 'n',
         lines: [`모은 열매로 불꽃${F.pets ? ', 애완동물' : ''}, 꾸미기 물건${F.home ? ', 집 꾸미기 물건과 씨앗' : ''}을 사요.`,
-          F.sell ? `${sells.join(', ')}을 팔아 열매로 바꿔요.` : null, F.gift ? '친구에게 열매를 선물해요.' : null].filter(Boolean),
+          F.sell ? `${sells.join(', ')}을 팔아 열매로 바꿔요.` : null, F.gift ? '친구에게 열매를 선물해요.' : null,
+          F.pets3 ? '애완동물은 세 마리까지 데리고 다니고, 반값(열매 15개)에 다시 팔거나 친구에게 선물할 수 있어요.' : null].filter(Boolean),
         go: { t: 'door', id: 'shop' } });
     }
     add({ id: 'fruit', isle: 'main', cat: 'town', icon: '🍎', name: '열매 나무', short: '열매 따 먹기', tree: true,

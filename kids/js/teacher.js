@@ -418,7 +418,7 @@ function renderVillage() {
     h('time', { datetime: l.at }, timeOf(l.at)),
     h('div', {}, h('span', { class: 'who' }, l.name || '-', h('small', {}, l.village_name || '')), ' ',
       l.sell ? h('span', { class: 'pill green' }, `팔아서 열매 +${l.fruits}개`) : h('span', { class: 'pill' }, `열매 ${l.price}개`),
-      h('div', { class: 'body' }, l.sell ? (l.kind === 'treasure' ? `${(treasureById(l.item) || {}).name || l.item} ${l.n}개를 팔았어요` : l.kind === 'crop' ? `거둔 ${(HARVEST[l.item] || {}).name || l.item} ${l.n}${(HARVEST[l.item] || {}).unit || '개'}를 팔았어요` : `${(l.kind === 'fish' ? FISH_NAME : BUG_NAMES)[l.item] || l.item} ${l.n}마리를 팔았어요`) : `${ITEM[l.item] || l.item} ${l.n}개`,
+      h('div', { class: 'body' }, l.sell ? (l.kind === 'pet' ? `${ITEM[l.item] || l.item}를 열매 상점에 다시 팔았어요` : l.kind === 'treasure' ? `${(treasureById(l.item) || {}).name || l.item} ${l.n}개를 팔았어요` : l.kind === 'crop' ? `거둔 ${(HARVEST[l.item] || {}).name || l.item} ${l.n}${(HARVEST[l.item] || {}).unit || '개'}를 팔았어요` : `${(l.kind === 'fish' ? FISH_NAME : BUG_NAMES)[l.item] || l.item} ${l.n}마리를 팔았어요`) : `${ITEM[l.item] || l.item} ${l.n}개`,
         h('small', { class: 'muted' }, `  · 지금 남은 열매 ${l.fruits_left}개`))))) : [h('div', { class: 'card empty' }, '아직 사거나 판 것이 없어요.')]));
   const gl = $('#giftList');
   const gifts = v.gifts || [];
@@ -426,7 +426,7 @@ function renderVillage() {
     h('time', { datetime: g.at }, timeOf(g.at)),
     h('div', {}, h('span', { class: 'who' }, g.name || '-', h('small', {}, g.village_name || '')), ' ',
       h('span', { class: 'pill' }, `→ ${g.to_name || '-'}(${g.to_village_name || '-'})에게`), ' ',
-      h('span', { class: 'pill green' }, `열매 ${g.n}개`),
+      h('span', { class: 'pill green' }, g.item ? ITEM[g.item] || g.item : `열매 ${g.n}개`),
       h('div', { class: 'body' }, `"${GIFT_MSGS[g.msg] || ''}"`)))) : [h('div', { class: 'card empty' }, '아직 주고받은 선물이 없어요.')]));
   const cl = $('#commentList');
   const cms = v.comments || [];

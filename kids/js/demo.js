@@ -129,6 +129,19 @@ function seedDrawings() {
   return [church, rainbow];
 }
 
+// 데리고 다니는 애완동물 (세 마리까지). 예전 체험판 자료는 pet 한 마리만 있다
+function petsOf(c) {
+  if (!c) return [];
+  if (Array.isArray(c.pets)) return c.pets.filter((x) => ITEM_PRICE[x] && String(x).startsWith('pet_')).slice(0, 3);
+  return c.pet ? [c.pet] : [];
+}
+function petsJson(c) { return petsOf(c).map((item) => ({ item, name: ((c && c.pet_names) || {})[item] || null })); }
+function dropPet(c, item) {
+  c.pets = petsOf(c).filter((x) => x !== item);
+  c.pet = c.pets[0] || null;
+  if (c.pet_names) { c.pet_names = { ...c.pet_names }; delete c.pet_names[item]; }
+}
+
 // 이 기기에 남은 체험판 자료에 새 계획(이야기, 묵상 해설)을 덮어쓴다. 아이들이 쓴 글은 그대로 둔다.
 // 체험판 예시 친구 바다는 토끼를 데리고 다닌다 (친구 애완동물이 어떻게 보이는지)
 function seedPets(db) {
@@ -324,7 +337,7 @@ export class DemoBackend {
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true }; }
   // 쪽지함: 친구별 마지막 쪽지와 안 읽은 수 (최근 30일)
   kids_dm_box({ p_token }) {
     const me = this.session(p_token, 'child');
@@ -586,7 +599,8 @@ export class DemoBackend {
     const sale = this.villageConf().sale;
     const prices = Object.fromEntries(Object.entries(ITEM_PRICE).map(([k, p]) => [k, salePrice(p, sale)]));
     return { fruits: this.child(me).fruits, items, sale, prices, base: { ...ITEM_PRICE }, pet: this.child(me).pet || null,
-      pet_names: { ...(this.child(me).pet_names || {}) }, gift_left: this.giftLeft(me), sell: this.sellInfo(me) };
+      pets: petsJson(this.child(me)), pet_names: { ...(this.child(me).pet_names || {}) }, gift_left: this.giftLeft(me),
+      pet_gift_left: this.petGiftLeft(me), sell: this.sellInfo(me) };
   }
   kids_shop_buy({ p_token, p_item, p_n }) {
     const me = this.session(p_token, 'child');
@@ -621,8 +635,9 @@ export class DemoBackend {
         bug: Object.fromEntries(BUG_KINDS.map((b) => [b, sellBundle('bug', b)])),
         treasure: Object.fromEntries(TREASURES.filter((t) => t.rarity >= 0).map((t) => [t.id, sellBundle('treasure', t.id)])),
         crop: Object.fromEntries(Object.keys(HARVEST).map((c) => [c, HARVEST[c].sell])) },
-      today: (this.db.sellLog || []).filter((l) => l.child === me && l.at >= today0).reduce((a, l) => a + l.fruits, 0),
+      today: (this.db.sellLog || []).filter((l) => l.child === me && l.kind !== 'pet' && l.at >= today0).reduce((a, l) => a + l.fruits, 0),
       cap: this.villageConf().sell_day,
+      pet: 15,
     };
   }
   kids_sell() { fail('APP_OLD'); }
@@ -676,7 +691,7 @@ export class DemoBackend {
     const me = this.session(p_token, 'child');
     const list = (this.db.gifts || []).filter((g) => g.to === me && !g.seen);
     list.forEach((g) => { g.seen = true; });
-    return { gifts: list.map((g) => ({ from: g.from, name: (this.db.children.find((c) => c.id === g.from) || {}).village_name || '친구', n: g.n, msg: g.msg, at: g.at })),
+    return { gifts: list.map((g) => ({ from: g.from, name: (this.db.children.find((c) => c.id === g.from) || {}).village_name || '친구', n: g.n, msg: g.msg, item: g.item || null, at: g.at })),
       fruits: this.child(me).fruits };
   }
   kids_item_use({ p_token, p_item }) {
@@ -690,12 +705,72 @@ export class DemoBackend {
     this.usedAt[me] = Date.now();
     return { item: p_item, left: bag[p_item] };
   }
-  // 데리고 다닐 애완동물 (null이면 집에서 쉰다)
+  // 데리고 다닐 애완동물 한 마리 (예전 화면용, null이면 모두 집에서 쉰다)
   kids_pet_set({ p_token, p_pet }) {
     const me = this.session(p_token, 'child');
     if (p_pet && !(((this.db.items || {})[me] || {})[p_pet] > 0 && String(p_pet).startsWith('pet_'))) fail('NO_PET');
-    this.child(me).pet = p_pet || null;
+    const c = this.child(me);
+    c.pet = p_pet || null;
+    c.pets = p_pet ? [p_pet] : [];
     return { pet: p_pet || null };
+  }
+  // 데리고 다닐 애완동물 (세 마리까지, 순서대로)
+  kids_pets_set({ p_token, p_pets }) {
+    const me = this.session(p_token, 'child');
+    const list = p_pets || [];
+    if (!Array.isArray(list) || list.length > 3 || list.some((x) => !x) || new Set(list).size !== list.length) fail('BAD_PETS');
+    const bag = (this.db.items || {})[me] || {};
+    if (list.some((x) => !String(x).startsWith('pet_') || !(bag[x] > 0))) fail('NO_PET');
+    const c = this.child(me);
+    c.pets = [...list];
+    c.pet = c.pets[0] || null;
+    return { pet: c.pet, pets: petsJson(c) };
+  }
+  // 가게에 다시 팔기: 정가의 반 (열매 15개)
+  kids_pet_sell({ p_token, p_pet }) {
+    const me = this.session(p_token, 'child');
+    const got = Math.floor((ITEM_PRICE[p_pet] || 0) / 2);
+    const bag = (this.db.items || {})[me] || {};
+    if (!String(p_pet || '').startsWith('pet_') || got < 1 || !(bag[p_pet] > 0)) fail('NO_PET');
+    delete bag[p_pet];
+    const c = this.child(me);
+    dropPet(c, p_pet);
+    c.fruits += got;
+    this.db.sellLog = this.db.sellLog || [];
+    this.db.sellLog.push({ id: Date.now(), child: me, kind: 'pet', item: p_pet, n: 1, fruits: got, at: nowIso() });
+    return { ...this.kids_shop({ p_token }), got };
+  }
+  petGiftLeft(me) {
+    const t0 = startOfToday();
+    return Math.max(0, 3 - (this.db.gifts || []).filter((g) => g.from === me && g.item && g.at >= t0).length);
+  }
+  // 친구에게 애완동물 선물하기 (이름도 함께 간다. 친구가 세 마리보다 적게 데리고 다니면 바로 따라다닌다)
+  kids_pet_gift({ p_token, p_to, p_pet, p_msg }) {
+    const me = this.session(p_token, 'child');
+    const to = this.db.children.find((c) => c.id === p_to);
+    if (!to || p_to === me || !to.village_name) fail('NOT_FOUND');
+    if (!GIFT_MSGS[p_msg] || !['pet_dog', 'pet_cat', 'pet_rabbit', 'pet_chick', 'pet_parrot'].includes(p_pet)) fail('BAD_GIFT');
+    this.db.gifts = this.db.gifts || [];
+    if (this.db.gifts.some((g) => g.from === me && Date.now() - Date.parse(g.at) < 3000)) fail('TOO_FAST');
+    if (this.petGiftLeft(me) < 1) fail('PET_GIFT_DAY');
+    this.db.items = this.db.items || {};
+    const bag = this.db.items[me] || {};
+    if (!(bag[p_pet] > 0)) fail('NO_PET');
+    const tb = this.db.items[p_to] || (this.db.items[p_to] = {});
+    if (tb[p_pet] > 0) fail('HAVE_PET_TO');
+    const c = this.child(me);
+    const name = (c.pet_names || {})[p_pet] || null;
+    delete bag[p_pet];
+    dropPet(c, p_pet);
+    tb[p_pet] = 1;
+    to.pet_names = { ...(to.pet_names || {}) };
+    if (name) to.pet_names[p_pet] = name; else delete to.pet_names[p_pet];
+    const tl = petsOf(to);
+    if (tl.length < 3 && !tl.includes(p_pet)) tl.push(p_pet);
+    to.pets = tl;
+    to.pet = tl[0] || null;
+    this.db.gifts.push({ id: Date.now(), from: me, to: p_to, n: 0, item: p_pet, msg: p_msg, at: nowIso(), seen: false });
+    return { ...this.kids_shop({ p_token }), pet_gift_left: this.petGiftLeft(me) };
   }
   kids_pet_name({ p_token, p_pet, p_name }) {
     const me = this.session(p_token, 'child');
@@ -915,8 +990,8 @@ export class DemoBackend {
   kids_me({ p_token }) {
     const c = this.child(this.session(p_token, 'child'));
     c.last_seen_at = nowIso();
-    return { id: c.id, login_id: c.login_id, name: c.name, village_name: c.village_name, avatar: c.avatar, fruits: c.fruits, pet: c.pet || null,
-      teacher: !!c.teacher, is_birthday: !c.teacher && c.birthdate.slice(5) === iso(new Date()).slice(5) };
+    return { id: c.id, login_id: c.login_id, name: c.name, village_name: c.village_name, avatar: c.avatar, fruits: c.fruits, pet: petsOf(c)[0] || null,
+      pets: petsJson(c), teacher: !!c.teacher, is_birthday: !c.teacher && c.birthdate.slice(5) === iso(new Date()).slice(5) };
   }
   kids_save_avatar({ p_token, p_avatar, p_village_name }) {
     const c = this.child(this.session(p_token, 'child'));
@@ -954,8 +1029,8 @@ export class DemoBackend {
   }
   kids_village({ p_token }) {
     this.session(p_token, 'child');
-    return { room: 'demo', people: this.db.children.filter((c) => c.village_name && c.avatar).map((c) => ({ id: c.id, name: c.village_name, avatar: c.avatar, pet: c.pet || null,
-      pet_name: c.pet ? ((c.pet_names || {})[c.pet] || null) : null, teacher: !!c.teacher })) };
+    return { room: 'demo', people: this.db.children.filter((c) => c.village_name && c.avatar).map((c) => ({ id: c.id, name: c.village_name, avatar: c.avatar, pet: petsOf(c)[0] || null,
+      pet_name: petsOf(c)[0] ? ((c.pet_names || {})[petsOf(c)[0]] || null) : null, pets: petsJson(c), teacher: !!c.teacher })) };
   }
   kids_today({ p_token }) {
     const me = this.session(p_token, 'child');
@@ -1479,7 +1554,7 @@ export class DemoBackend {
       }),
       gifts: (this.db.gifts || []).slice().reverse().slice(0, 100).map((g) => {
         const a = this.db.children.find((x) => x.id === g.from) || {}, b = this.db.children.find((x) => x.id === g.to) || {};
-        return { id: g.id, name: a.name, village_name: a.village_name, to_name: b.name, to_village_name: b.village_name, n: g.n, msg: g.msg, at: g.at };
+        return { id: g.id, name: a.name, village_name: a.village_name, to_name: b.name, to_village_name: b.village_name, n: g.n, msg: g.msg, item: g.item || null, at: g.at };
       }),
       chat: (this.db.chat || []).slice().reverse().slice(0, 200).map((m) => {
         const c = this.db.children.find((x) => x.id === m.child) || {};

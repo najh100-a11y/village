@@ -111,7 +111,7 @@ async function boot() {
       else if (what === 'stop') { setActivity(''); munchSaid = false; }
       else if (what === 'empty') toast('이 나무 열매는 다 땄어요. 조금 있으면 다시 열려요!', 2600);
     },
-    onPet: (r) => { if (r.busy) return; petSound(r.kind); if (r.mine) showPetBar(); },
+    onPet: (r) => { if (r.busy) return; petSound(r.kind); if (r.mine) showPetBar(r.item); },
     onPetCare: (e) => onPetCare(e),
     onBug: (i, kind) => onBug(i, kind),
     onNet: (on) => setActivity(on ? 'bug' : ''),
@@ -362,6 +362,7 @@ async function login(id, pin) {
 
 async function loadMe() {
   state.me = await rpc('kids_me', { p_token: token() });
+  takeMyPets(state.me);
 }
 
 function afterLogin() {
@@ -687,7 +688,7 @@ async function enterVillage(greet) {
   village.setPlayer(me.avatar);
   village.setHome(me.village_name, normalizeAvatar(me.avatar));
   village.setMyName(me.village_name, me.teacher);
-  village.setPet('me', me.pet || null);
+  showMyPets();
   village.setMode('play');
   village.viewChanged();
   rpc('kids_chat_open').then(showChatInput).catch(() => showChatInput(false));
@@ -754,7 +755,12 @@ async function startNet() {
   {
     // 내 애완동물 이름 (마을 사람 목록에 함께 온다)
     const mine = state.people.get(state.me.id);
-    if (mine && mine.pet && mine.pet === state.me.pet) { state.petNames = { ...(state.petNames || {}), [mine.pet]: mine.pet_name || '' }; village.setPet('me', state.me.pet, mine.pet_name || ''); }
+    if (mine) {
+      const names = { ...(state.petNames || {}) };
+      for (const q of personPets(mine)) if (myPets().includes(q.item)) names[q.item] = q.name || '';
+      state.petNames = names;
+      showMyPets();
+    }
   }
   online.clear();
   const showCount = () => {
@@ -772,7 +778,7 @@ async function startNet() {
       online.add(id);
       showCount();
       village.addRemote(id, p.avatar, p.name, p.teacher);
-      village.setPet(id, p.pet || null, p.pet_name || '');
+      village.setPets(id, personPets(p));
       n.announce();
     },
     onLeave: (id) => {
@@ -787,7 +793,7 @@ async function startNet() {
       if ((type === 'inv' || type === 'invr' || type === 'hinv') && p.to !== (state.me && state.me.id)) return;
       const person = await ensurePerson(id);
       if (!person || net !== n) return;
-      if (!online.has(id)) { online.add(id); showCount(); village.addRemote(id, person.avatar, person.name, person.teacher); village.setPet(id, person.pet || null, person.pet_name || ''); }
+      if (!online.has(id)) { online.add(id); showCount(); village.addRemote(id, person.avatar, person.name, person.teacher); village.setPets(id, personPets(person)); }
       if (type === 'mv') village.remoteMove(id, p);
       else if (type === 'st') village.remoteStop(id, p);
       else if (type === 'say') {
@@ -852,7 +858,7 @@ async function startNet() {
       } else if (type === 'jp') {
         village.remoteJump(id);
       } else if (type === 'pc') {
-        village.remotePetCare(id, p.k);
+        village.remotePetCare(id, p.k, p.i);
       } else if (type === 'dish') {
         dishAt = 0;
         refreshDishes();
@@ -869,7 +875,7 @@ async function startNet() {
       } else if (type === 'av') {
         try { await fetchPeople(true); } catch (e) { return; }
         const np = state.people.get(id);
-        if (np) { village.addRemote(id, np.avatar, np.name, np.teacher); village.setPet(id, np.pet || null, np.pet_name || ''); }
+        if (np) { village.addRemote(id, np.avatar, np.name, np.teacher); village.setPets(id, personPets(np)); }
       }
     },
   });
@@ -1072,7 +1078,10 @@ async function openBag(focusBug, focusTreasure) {
     const owned = PET_IDS.filter((id) => items[id] > 0);
     const pets = h('section', { class: 'bag-sec' }, h('h3', {}, '🐾 우리 집 친구'));
     if (!owned.length) pets.append(h('p', { class: 'note' }, '아직 애완동물이 없어요. 열매 상점에서 열매 30개로 데려올 수 있어요.'));
-    else pets.append(h('div', { class: 'shop-list' }, owned.map((id) => petRow(id, { owned: true }))));
+    else {
+      if (state.features.pets3) pets.append(h('p', { class: 'note' }, `함께 다니는 친구 ${myPets().length}/${PET_MAX}마리 · 세 마리까지 데리고 다닐 수 있어요.`));
+      pets.append(h('div', { class: 'shop-list' }, owned.map((id) => petRow(id, { owned: true, back: 'bag' }))));
+    }
     secs.push(pets);
   }
   // 꾸미기 물건 (모자, 안경, 날개, 특별한 옷)
@@ -1207,26 +1216,58 @@ function petIcon(id) {
 function petSound(kind) {
   if (kind === 'cat') sfx.meow(); else if (kind === 'rabbit') sfx.hop(); else if (kind === 'chick') sfx.peep(); else if (kind === 'parrot') sfx.squawk(); else sfx.bark();
 }
+// ---------- 내 애완동물: 세 마리까지 데리고 다닌다 ----------
+const PET_MAX = 3;
+const PET_GIFT_DAY = 3;
+// state.me.pets: 데리고 다니는 동물 id 목록 (순서대로 내 왼쪽 뒤, 오른쪽 뒤, 가운데 뒤)
+function myPets() {
+  const m = state.me;
+  if (!m) return [];
+  if (Array.isArray(m.pets)) return m.pets.map((q) => (typeof q === 'string' ? q : q && q.item)).filter((it) => it && PET_ITEMS[it]);
+  return m.pet && PET_ITEMS[m.pet] ? [m.pet] : [];
+}
+// 서버가 준 목록(from.pets: [{item, name}])을 state.me에 (예전 서버는 pet 한 마리만 준다)
+function takeMyPets(m, from = m) {
+  if (!m || !from) return;
+  if (Array.isArray(from.pets)) {
+    const names = { ...(state.petNames || {}) };
+    const list = [];
+    for (const q of from.pets) {
+      const it = q && (typeof q === 'string' ? q : q.item);
+      if (!it || !PET_ITEMS[it] || list.includes(it)) continue;
+      list.push(it);
+      if (typeof q === 'object' && 'name' in q) names[it] = q.name || '';
+    }
+    state.petNames = names;
+    m.pets = list;
+  } else m.pets = from.pet && PET_ITEMS[from.pet] ? [from.pet] : [];
+  m.pet = m.pets[0] || null;
+}
+function showMyPets() { village.setPets('me', myPets().map((item) => ({ item, name: petName(item) }))); }
+// 친구가 데리고 다니는 동물 [{item, name}] (예전 서버는 pet, pet_name 한 마리)
+function personPets(p) {
+  if (!p) return [];
+  if (Array.isArray(p.pets)) return p.pets.filter((q) => q && PET_ITEMS[q.item]);
+  return p.pet && PET_ITEMS[p.pet] ? [{ item: p.pet, name: p.pet_name || '' }] : [];
+}
+function petCall(it) { return petName(it) || (PET_ITEMS[it] ? PET_ITEMS[it].name : '애완동물'); }
+function petSellPrice(id) { return Math.floor(((PET_ITEMS[id] && PET_ITEMS[id].price) || 30) / 2); }
+
 // ---------- 내 애완동물 돌보기: 누르면 아래에 '안아 주기', '먹이 주기' 단추가 잠깐 나온다 ----------
 let petBar = null, petBarTimer = 0;
-function myPetKind() { const it = state.me && state.me.pet; return it && PET_ITEMS[it] ? PET_ITEMS[it].kind : ''; }
-function myPetCall() {
-  const it = state.me && state.me.pet;
-  const n = petName(it);
-  return n || (PET_ITEMS[it] ? PET_ITEMS[it].name : '애완동물');
-}
-function showPetBar() {
-  const kind = myPetKind();
-  if (!kind) return;
-  const food = PET_FOOD[kind];
+function showPetBar(item) {
+  const list = myPets();
+  const it = item && list.includes(item) ? item : list[0];
+  if (!it || !PET_ITEMS[it]) return;
+  const food = PET_FOOD[PET_ITEMS[it].kind];
   if (!petBar) {
     petBar = h('div', { class: 'pet-bar', hidden: true, role: 'group', 'aria-label': '애완동물 돌보기' });
     document.body.append(petBar);
   }
   petBar.replaceChildren(
-    h('span', { class: 'pb-name' }, myPetCall()),
-    h('button', { type: 'button', onclick: () => doPetCare('hug') }, h('span', { 'aria-hidden': 'true' }, '🤗'), ' 안아 주기'),
-    h('button', { type: 'button', onclick: () => doPetCare('feed') }, h('span', { 'aria-hidden': 'true' }, food.icon), ' 먹이 주기'),
+    h('span', { class: 'pb-name' }, petCall(it)),
+    h('button', { type: 'button', onclick: () => doPetCare('hug', it) }, h('span', { 'aria-hidden': 'true' }, '🤗'), ' 안아 주기'),
+    h('button', { type: 'button', onclick: () => doPetCare('feed', it) }, h('span', { 'aria-hidden': 'true' }, food.icon), ' 먹이 주기'),
     h('button', { type: 'button', class: 'pb-x', 'aria-label': '닫기', onclick: hidePetBar }, '×'));
   petBar.hidden = false;
   document.body.classList.add('pet-bar-on');
@@ -1238,10 +1279,10 @@ function hidePetBar() {
   if (petBar) petBar.hidden = true;
   document.body.classList.remove('pet-bar-on');
 }
-function doPetCare(what) {
+function doPetCare(what, item) {
   hidePetBar();
-  const r = village.careForPet(what);
-  if (r === 'ok') { if (net) net.send('pc', { k: what }); return; }
+  const r = village.careForPet(what, item);
+  if (r === 'ok') { if (net) net.send('pc', { k: what, i: item }); return; }
   if (r === 'pool') toast('물 밖으로 나와서 돌봐 줄 수 있어요.', 2400);
   else if (r === 'busy') toast('지금 하던 일을 마치고 다시 해 봐요.', 2400);
   else toast("데리고 다니는 애완동물이 없어요. 가방의 '우리 집 친구'에서 데리고 다닐 수 있어요.", 3200);
@@ -1254,7 +1295,7 @@ function onPetCare(e) {
   else if (e.phase === 'bite') sfx.munch();
   else if (e.phase === 'done') {
     sfx.success();
-    const name = myPetCall();
+    const name = petCall(e.item);
     if (e.what === 'hug') toast(`${josa(name, '을', '를')} 꼭 안아 줬어요! ${e.kind === 'dog' ? '좋아서 꼬리를 흔들어요.' : '무척 좋아해요.'}`, 2600);
     else toast(`${josa(name, '이', '가')} ${josa(PET_FOOD[e.kind].name, '을', '를')} 맛있게 먹었어요!`, 2600);
   }
@@ -1292,7 +1333,7 @@ function openPetName(id, fresh = false) {
       const r = await rpc('kids_pet_name', { p_token: token(), p_pet: id, p_name: v });
       setPetNames(r.pet_names);
       if (shopData) shopData.pet_names = r.pet_names;
-      if (state.me && state.me.pet === id) { village.setPet('me', id, v); if (net) net.send('av', {}); }
+      if (myPets().includes(id)) { showMyPets(); if (net) net.send('av', {}); }
       modal.close();
       petSound(p.kind);
       if (v) {
@@ -1319,20 +1360,39 @@ function openPetName(id, fresh = false) {
       h('button', { class: 'btn btn-go', type: 'button', onclick: () => save(input.value) }, '이 이름으로 하기'))), 'talk-sheet');
   setTimeout(() => { try { input.focus(); } catch (e) { /* 괜찮다 */ } }, 250);
 }
-function petRow(id, { owned, buy = false, shop = null }) {
+// back: 팔기·선물 뒤에 돌아갈 곳 ('bag' 가방, 'shop' 상점 동물 칸)
+function petRow(id, { owned, buy = false, shop = null, back = null }) {
   const p = PET_ITEMS[id];
   const ic = h('div', { class: 'fw-ic pet', 'aria-hidden': 'true' });
   ic.innerHTML = petIcon(id);
   const acts = h('div', { class: 'acts' });
-  const withMe = state.me && state.me.pet === id;
+  const multi = !!state.features.pets3;
+  const withMe = myPets().includes(id);
   if (!owned && buy) acts.append(buyBtn(id, shop, '데려오기', () => buyPet(id)));
   if (owned) acts.append(withMe
-    ? h('button', { class: 'btn btn-plain btn-small', type: 'button', onclick: () => choosePet(null) }, '집에서 쉬게 하기')
-    : h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => choosePet(id) }, '데리고 다니기'));
+    ? h('button', { class: 'btn btn-plain btn-small', type: 'button', onclick: () => togglePet(id, false) }, '집에서 쉬게 하기')
+    : h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => togglePet(id, true) }, '데리고 다니기'));
   if (owned && state.features.petname) acts.append(h('button', { class: 'btn btn-plain btn-small', type: 'button', onclick: () => openPetName(id) }, petName(id) ? '이름 바꾸기' : '이름 짓기'));
+  if (owned && multi) acts.append(
+    h('button', { class: 'btn btn-plain btn-small', type: 'button', onclick: () => openPetGift(id, back) }, '🎁 선물하기'),
+    h('button', { class: 'btn btn-plain btn-small', type: 'button', onclick: () => askSellPet(id, back) }, `팔기 (열매 ${petSellPrice(id)}개)`));
+  if (acts.childElementCount >= 3) acts.classList.add('many');
   const nm = owned ? petName(id) : '';
   return h('div', { class: 'shop-item' + (withMe ? ' with-me' : '') }, ic,
-    h('div', {}, h('b', {}, nm ? `${nm} ` : '', nm ? h('small', { class: 'pet-kind' }, p.name) : p.name), h('p', {}, p.desc), h('p', {}, owned ? (withMe ? '지금 나와 함께 다녀요' : '우리 집 친구예요') : '')), acts);
+    h('div', {}, h('b', {}, nm ? `${nm} ` : '', nm ? h('small', { class: 'pet-kind' }, p.name) : p.name), h('p', {}, p.desc),
+      h('p', {}, owned ? (withMe ? '지금 나와 함께 다녀요' : multi ? '우리 집에서 쉬고 있어요' : '우리 집 친구예요') : '')), acts);
+}
+// 팔기·선물을 마친 뒤 (또는 그만두면) 원래 보던 창으로
+function petBack(back) {
+  if (back === 'bag') openBag();
+  else if (back === 'shop' || back === 'sell') openShop(back === 'sell' ? 'sell' : 'pet');
+  else modal.close();
+}
+function redrawPetViews() {
+  const body = document.querySelector('#modalBody .talk.shop');
+  if (body && shopData) drawShop(body, shopData);
+  const bag = document.querySelector('#modalBody .talk.bag');
+  if (bag) openBag();
 }
 let petBusy = false;
 async function buyPet(id) {
@@ -1345,10 +1405,40 @@ async function buyPet(id) {
     setPetNames(r.pet_names);
     sfx.success();
     petBusy = false;
-    await choosePet(id, true);
+    let home = false;
+    if (state.features.pets3) {
+      // 함께 다니는 동물이 세 마리보다 적으면 바로 따라다닌다
+      if (myPets().length < PET_MAX) await togglePet(id, true, true);
+      else { home = true; redrawPetViews(); }
+    } else await choosePet(id, true);
+    const homeNote = home ? ` 지금은 세 마리가 함께 다녀서 새 친구는 집에서 기다려요.` : '';
     // 데려오자마자 이름을 지어 준다
-    if (state.features.petname) openPetName(id, true);
-    else toast(`${josa(PET_ITEMS[id].name, '이가', '가')} 우리 집 친구가 되었어요! 이제 졸졸 따라다녀요.`, 3000);
+    if (state.features.petname) { openPetName(id, true); if (home) toast(homeNote.trim(), 3600); }
+    else toast(`${josa(PET_ITEMS[id].name, '이가', '가')} 우리 집 친구가 되었어요!${home ? homeNote : ' 이제 졸졸 따라다녀요.'}`, 3400);
+  } catch (e) {
+    if (e.code === 'SESSION') { sessionLost(); return; }
+    toast(message(e), 3000);
+  } finally { petBusy = false; }
+}
+// 데리고 다니기 켜고 끄기 (세 마리까지). 서버가 예전 것이면 한 마리만
+async function togglePet(id, on, fresh = false) {
+  if (!state.features.pets3) return choosePet(on ? id : null, fresh);
+  if (petBusy) return;
+  const cur = myPets();
+  if (on && cur.includes(id)) return;
+  if (on && cur.length >= PET_MAX) { toast(`애완동물은 세 마리까지 함께 다녀요. 한 마리를 집에서 쉬게 하고 데려가요.`, 3400); return; }
+  const list = on ? [...cur, id] : cur.filter((x) => x !== id);
+  petBusy = true;
+  try {
+    const r = await rpc('kids_pets_set', { p_token: token(), p_pets: list });
+    takeMyPets(state.me, r);
+    if (shopData) { shopData.pet = state.me.pet; shopData.pets = r.pets; }
+    showMyPets();
+    if (net) net.send('av', {});
+    const p = PET_ITEMS[id], nm = petCall(id);
+    if (on) { petSound(p.kind); if (!fresh) toast(`${josa(nm, '이랑', '랑')} 함께 다녀요! (함께 다니는 친구 ${myPets().length}/${PET_MAX})`, 3000); }
+    else toast(`${josa(nm, '이', '가')} 집에서 쉬고 있어요.`, 2400);
+    redrawPetViews();
   } catch (e) {
     if (e.code === 'SESSION') { sessionLost(); return; }
     toast(message(e), 3000);
@@ -1360,7 +1450,8 @@ async function choosePet(id, fresh = false) {
   try {
     await rpc('kids_pet_set', { p_token: token(), p_pet: id });
     state.me.pet = id;
-    village.setPet('me', id, petName(id));
+    state.me.pets = id ? [id] : [];
+    showMyPets();
     if (net) net.send('av', {});
     if (id) {
       const p = PET_ITEMS[id];
@@ -1368,14 +1459,113 @@ async function choosePet(id, fresh = false) {
       const nm = petName(id);
       if (!fresh) toast(nm ? `${josa(nm, '이랑', '랑')} 함께 다녀요!` : `${josa(p.name, '이랑', '랑')} 함께 다녀요!`, 3000);
     } else toast('애완동물이 집에서 쉬고 있어요.', 2400);
-    const body = document.querySelector('#modalBody .talk.shop');
-    if (body && shopData) drawShop(body, shopData);
-    const bag = document.querySelector('#modalBody .talk.bag');
-    if (bag) openBag();
+    redrawPetViews();
   } catch (e) {
     if (e.code === 'SESSION') { sessionLost(); return; }
     toast(message(e), 3000);
   } finally { petBusy = false; }
+}
+// 가게에 다시 팔기: 데려올 때 값의 반
+function askSellPet(id, back) {
+  const p = PET_ITEMS[id];
+  if (!p || !state.features.pets3) return;
+  const nm = petCall(id), got = petSellPrice(id);
+  const ic = h('div', { class: 'fw-ic pet big', 'aria-hidden': 'true' });
+  ic.innerHTML = petIcon(id);
+  openSheet('애완동물 팔기', h('div', { class: 'talk pet-name' },
+    h('div', { class: 'pn-head' }, ic, h('p', {}, `${josa(nm, '을', '를')} 열매 상점에 팔고 열매 ${got}개를 받을까요?`)),
+    h('p', { class: 'note' }, `데려올 때 값(열매 ${p.price}개)의 반을 받아요. 다시 데려오려면 열매 ${p.price}개가 들어요.${petName(id) ? ' 지어 준 이름도 함께 지워져요.' : ''}`),
+    h('div', { class: 'row' },
+      h('button', { class: 'btn btn-plain', type: 'button', onclick: () => petBack(back) }, '아니요, 함께 지낼래요'),
+      h('button', { class: 'btn btn-go', type: 'button', onclick: () => sellPet(id, back) }, `열매 ${got}개 받고 팔기`))), 'talk-sheet');
+}
+async function sellPet(id, back) {
+  if (petBusy) return;
+  petBusy = true;
+  const nm = petCall(id);
+  try {
+    const r = await rpc('kids_pet_sell', { p_token: token(), p_pet: id });
+    shopData = r;
+    setFruits(r.fruits);
+    setPetNames(r.pet_names);
+    takeMyPets(state.me, r);
+    showMyPets();
+    if (net) net.send('av', {});
+    sfx.fruit();
+    toast(`${josa(nm, '을', '를')} 팔고 열매 ${Number.isFinite(r.got) ? r.got : petSellPrice(id)}개를 받았어요.`, 3000);
+    petBusy = false;
+    petBack(back);
+  } catch (e) {
+    if (e.code === 'SESSION') { sessionLost(); return; }
+    toast(message(e), 3000);
+  } finally { petBusy = false; }
+}
+// 친구에게 애완동물 선물하기: 친구 고르기, 한마디
+function openPetGift(id, back) {
+  const pt = PET_ITEMS[id];
+  if (!pt || !state.features.pets3) return;
+  const nm = petCall(id);
+  const shop = shopData || {};
+  const left = Number.isFinite(shop.pet_gift_left) ? shop.pet_gift_left : PET_GIFT_DAY;
+  const me = state.me && state.me.id;
+  const people = [...state.people.values()].filter((q) => q.id !== me && q.name)
+    .sort((a, b) => (online.has(b.id) - online.has(a.id)) || a.name.localeCompare(b.name, 'ko'));
+  let to = null, msg = 'best';
+  const sum = h('p', { class: 'gift-sum' });
+  const send = h('button', { class: 'btn btn-go', type: 'button', onclick: () => sendPetGift(id, to, msg, back) });
+  const msgs = h('div', { class: 'gift-msgs', role: 'group', 'aria-label': '함께 보낼 말' });
+  const btns = people.map((q) => {
+    const has = personPets(q).some((x) => x.item === id); // 친구가 데리고 다니는 동물만 미리 안다 (나머지는 서버가 확인)
+    const cv = h('canvas', { width: 80, height: 80, class: 'fl-face', 'aria-hidden': 'true' });
+    drawFaceIcon(cv, normalizeAvatar(q.avatar));
+    const b = h('button', { class: 'gift-person', type: 'button', 'aria-pressed': 'false', disabled: has || !left, onclick: () => { to = q.id; draw(); } },
+      cv, h('b', {}, q.name, tBadge(q)), has ? h('small', {}, `${josa(pt.name, '이', '가')} 벌써 있어요`) : online.has(q.id) ? h('small', {}, '지금 마을에 있어요') : null);
+    b.dataset.id = q.id;
+    return b;
+  });
+  const draw = () => {
+    for (const b of btns) b.setAttribute('aria-pressed', String(b.dataset.id === to));
+    msgs.replaceChildren(...Object.entries(GIFT_MSGS).map(([k, t]) => h('button', { class: 'chip', type: 'button', 'aria-pressed': String(msg === k),
+      onclick: () => { msg = k; draw(); } }, t)));
+    const tp = to && state.people.get(to);
+    sum.textContent = tp ? `${tp.name}에게 ${josa(nm, '과', '와')} "${GIFT_MSGS[msg]}"를 보내요.` : '선물할 친구를 골라요.';
+    send.textContent = `🎁 ${josa(nm, '을', '를')} 선물하기`;
+    send.disabled = !tp || !left;
+  };
+  draw();
+  const ic = h('div', { class: 'fw-ic pet big', 'aria-hidden': 'true' });
+  ic.innerHTML = petIcon(id);
+  openSheet('애완동물 선물하기', h('div', { class: 'talk gift pet-gift' },
+    h('div', { class: 'pn-head' }, ic, h('p', {}, `${josa(nm, '을', '를')} 친구에게 보내요. 보내면 친구네 집 친구가 돼요.${petName(id) ? ' 지어 준 이름도 함께 가요.' : ''}`)),
+    h('p', { class: 'note' }, left ? `동물 선물은 하루에 세 번까지 할 수 있어요. 오늘은 ${left}번 더 할 수 있어요.` : '오늘은 동물 선물을 다 했어요. 내일 또 할 수 있어요.'),
+    h('h4', {}, '누구에게 보낼까요?'),
+    people.length ? h('div', { class: 'gift-people' }, btns) : h('p', { class: 'fb-empty' }, '아직 마을 친구가 없어요.'),
+    h('h4', {}, '함께 보낼 말'), msgs, sum,
+    h('div', { class: 'row' }, h('button', { class: 'btn btn-plain', type: 'button', onclick: () => petBack(back) }, '다음에'), send)), 'talk-sheet');
+}
+async function sendPetGift(id, to, msg, back) {
+  if (gifting || !to) return;
+  gifting = true;
+  const nm = petCall(id);
+  const tp = state.people.get(to) || { name: '친구' };
+  try {
+    const r = await rpc('kids_pet_gift', { p_token: token(), p_to: to, p_pet: id, p_msg: msg });
+    shopData = r;
+    setFruits(r.fruits);
+    setPetNames(r.pet_names);
+    takeMyPets(state.me, r);
+    showMyPets();
+    if (net) { net.send('av', {}); net.send('gift', { to, n: 0, m: msg, p: id }); }
+    sfx.success();
+    confetti();
+    village.celebrate();
+    toast(`${tp.name}에게 ${josa(nm, '을', '를')} 선물했어요! "${GIFT_MSGS[msg]}"`, 3400);
+    gifting = false;
+    petBack(back);
+  } catch (e) {
+    if (e.code === 'SESSION') { sessionLost(); return; }
+    toast(message(e), 3400);
+  } finally { gifting = false; }
 }
 
 // 새로 생긴 일을 한 번씩 알려 준다 (기기마다 한 번)
@@ -1402,6 +1592,7 @@ function showNews() {
   news.push(['npc', '새 소식! 섬마다 마을 친구가 살아요(마을 섬 봄이, 놀이동산 섬 튼튼이, 수영장 섬 노을이). 눌러서 하이파이브, 가위바위보를 하고 간식도 나눠 먹어 봐요.']);
   if (state.features.arkboard) news.push(['arkboard', '새 소식! 노아의 방주 짝 맞추기에 이번 주 기록판이 생겼어요. 혼자 하기를 빨리 마치면 난이도마다 10위까지 이름이 올라가요.']);
   if (state.features.pets) news.push(['petcare', '새 소식! 데리고 다니는 애완동물을 누르면 안아 주거나 먹이를 줄 수 있어요.']);
+  if (state.features.pets3) news.push(['pets3', "새 소식! 애완동물을 세 마리까지 데리고 다닐 수 있어요. 가방의 '우리 집 친구'에서 열매 15개(반값)에 다시 팔거나 친구에게 선물할 수도 있어요."]);
   if (state.features.petname) news.push(['petname', '새 소식! 애완동물에게 이름을 지어 줄 수 있어요(가방에서). 내 말을 따라 하는 앵무새도 열매 상점에 왔어요.']);
   news.unshift(['guide', "새 소식! 오른쪽 '마을 지도' 단추를 누르면 어디에 무엇이 있고 무엇을 할 수 있는지 볼 수 있어요. 가고 싶은 곳을 고르면 그곳까지 걸어가요."]);
   // 이 기기로 처음 들어왔으면 지난 소식을 한꺼번에 띄우지 않고 마을 지도만 알려 준다
@@ -1452,6 +1643,7 @@ const SHOP_NOTE = {
   sell: '잡은 물고기와 곤충은 같은 것끼리 모아서 팔아요. 흔한 것은 10마리, 가끔 보이는 것은 5마리, 드문 것은 2마리, 아주 드문 것은 1마리에 열매 1개예요. 팔아도 도감 기록은 그대로 남아요. 쓰레기(낡은 장화, 빈 깡통 같은 것)는 팔 수 없어요.',
   gift: '모은 열매를 친구에게 선물해요. 한 번에 1~10개, 하루에 모두 열매 10개까지 보낼 수 있어요. 선생님도 선물 기록을 볼 수 있어요.',
 };
+const PET_NOTE3 = `애완동물은 한 번 데려오면 계속 우리 집 친구예요. 세 마리까지 함께 다닐 수 있어요. 다시 팔면 데려올 때 값의 반(열매 15개)을 받고, 친구에게 선물할 수도 있어요.`;
 // 원래 값과 지금 값 (선생님이 할인을 켜면 지금 값이 싸다)
 function basePrice(id) { return (FIREWORKS[id] || PET_ITEMS[id] || HOME_ITEMS[id] || WARDROBE[id] || {}).price || 0; }
 function priceOf(id, shop) { const p = shop && shop.prices && shop.prices[id]; return Number.isFinite(p) ? p : basePrice(id); }
@@ -1473,7 +1665,7 @@ function drawShop(body, shop) {
   }, label))) : null;
   let rows;
   if (shopTab === 'fw') rows = FW_IDS.map((id) => fwRow(id, items[id] || 0, { buy: true, launch: true, shop }));
-  else if (shopTab === 'pet') rows = PET_IDS.map((id) => petRow(id, { owned: items[id] > 0, buy: true, shop }));
+  else if (shopTab === 'pet') rows = PET_IDS.map((id) => petRow(id, { owned: items[id] > 0, buy: true, shop, back: 'shop' }));
   else if (shopTab === 'wear') rows = WARDROBE_IDS.map((id) => wearRow(id, shop));
   else if (shopTab === 'sell') rows = sellRows(shop);
   else if (shopTab === 'gift') rows = giftRows(shop);
@@ -1483,7 +1675,7 @@ function drawShop(body, shop) {
     h('p', { class: 'shop-fruit' }, `내 열매 🍎 ${shop.fruits}개`),
     tabs, sale,
     h('div', { class: 'shop-list' }, rows),
-    h('p', { class: 'note' }, `${['sell', 'gift'].includes(shopTab) ? '' : '열매는 암송 연습, 묵상, 필사를 하면 모여요. '}${SHOP_NOTE[shopTab]}`)].filter(Boolean));
+    h('p', { class: 'note' }, `${['sell', 'gift'].includes(shopTab) ? '' : '열매는 암송 연습, 묵상, 필사를 하면 모여요. '}${shopTab === 'pet' && f.pets3 ? PET_NOTE3 : SHOP_NOTE[shopTab]}`)].filter(Boolean));
 }
 function redrawShop(r) {
   if (r) shopData = r;
@@ -1532,9 +1724,9 @@ async function wearNow(id, on, fresh = false) {
   const it = WARDROBE[id];
   try {
     const av = { ...normalizeAvatar(state.me.avatar), [it.slot]: on ? it.v : (it.slot === 'outfit' ? 'tee' : 'none') };
-    const pet = state.me.pet;
+    const pet = state.me.pet, pets = state.me.pets;
     state.me = await rpc('kids_save_avatar', { p_token: token(), p_avatar: av, p_village_name: state.me.village_name });
-    if (state.me && !('pet' in state.me)) state.me.pet = pet;
+    if (state.me && !('pet' in state.me)) { state.me.pet = pet; state.me.pets = pets; } else takeMyPets(state.me);
     village.setPlayer(state.me.avatar);
     village.setHome(state.me.village_name, normalizeAvatar(state.me.avatar));
     if (net) net.send('av', {});
@@ -1590,6 +1782,20 @@ function sellRows(shop) {
     out.push(row('crop', id, hv.name, sell.crops[id], bundle.crop[id], ic, hv.unit));
   }
   if (!fishes.length && !bugs.length && !trs.length && !crops.length) out.push(h('p', { class: 'fb-empty' }, '팔 물고기나 곤충, 보물이 없어요. 반짝 연못과 바다에서 낚시하고, 반짝이는 곤충을 잡고, 모래밭에서 보물을 캐 와요!'));
+  // 애완동물: 하루 팔기 한도와 따로, 데려올 때 값의 반
+  const pets = state.features.pets3 ? PET_IDS.filter((id) => (shop.items || {})[id] > 0) : [];
+  if (pets.length) {
+    out.push(h('div', { class: 'sell-head' }, h('b', {}, '🐾 애완동물'), h('p', {}, `데려올 때 값의 반(열매 ${petSellPrice(pets[0])}개)을 받아요. 위의 하루 한도와 따로예요.`)));
+    for (const id of pets) {
+      const ic = h('div', { class: 'fw-ic pet', 'aria-hidden': 'true' });
+      ic.innerHTML = petIcon(id);
+      const nm = petName(id);
+      out.push(h('div', { class: 'shop-item sell' }, ic,
+        h('div', {}, h('b', {}, nm ? `${nm} ` : '', nm ? h('small', { class: 'pet-kind' }, PET_ITEMS[id].name) : PET_ITEMS[id].name),
+          h('p', {}, myPets().includes(id) ? '지금 나와 함께 다녀요' : '우리 집에서 쉬고 있어요')),
+        h('div', { class: 'acts' }, h('button', { class: 'btn btn-go btn-small', type: 'button', onclick: () => askSellPet(id, 'sell') }, `팔기 (열매 ${petSellPrice(id)}개)`))));
+    }
+  }
   return out;
 }
 let selling = false;
@@ -1619,7 +1825,8 @@ function giftRows(shop) {
   const people = [...state.people.values()].filter((p) => p.id !== me && p.name)
     .sort((a, b) => (online.has(b.id) - online.has(a.id)) || a.name.localeCompare(b.name, 'ko'));
   const out = [h('div', { class: 'sell-head' }, h('b', {}, `오늘 더 보낼 수 있는 열매 ${left}개`),
-    h('p', {}, left ? '선물할 친구를 골라요. 지금 마을에 있는 친구가 먼저 나와요.' : '오늘은 선물을 다 보냈어요. 내일 또 보내요!'))];
+    h('p', {}, left ? '선물할 친구를 골라요. 지금 마을에 있는 친구가 먼저 나와요.' : '오늘은 선물을 다 보냈어요. 내일 또 보내요!'),
+    state.features.pets3 ? h('p', {}, "애완동물은 '🐾 동물' 칸이나 가방에서 '선물하기'를 눌러 보내요.") : null)];
   if (!people.length) out.push(h('p', { class: 'fb-empty' }, '아직 마을 친구가 없어요.'));
   const grid = h('div', { class: 'gift-people' }, people.map((p) => {
     const cv = h('canvas', { width: 80, height: 80, class: 'fl-face', 'aria-hidden': 'true' });
@@ -1686,10 +1893,26 @@ async function checkGifts(live = false) {
   try {
     const r = await rpc('kids_gift_inbox', { p_token: token() });
     if (Number.isFinite(r.fruits)) setFruits(r.fruits);
+    const pets = (r.gifts || []).filter((g) => g.item && PET_ITEMS[g.item]);
+    if (pets.length) {
+      // 받은 동물은 서버에서 바로 나를 따라다니게 되어 있다 (세 마리보다 적을 때). 이름과 목록을 새로 받는다
+      const shop = await loadShop();
+      if (shop) { takeMyPets(state.me, shop); showMyPets(); if (net) net.send('av', {}); redrawPetViews(); }
+    }
     for (const g of r.gifts || []) {
-      const text = `🎁 ${josa(g.name, '이가', '가')} 열매 ${g.n}개를 선물했어요! "${GIFT_MSGS[g.msg] || ''}"`;
-      if (live) { sfx.success(); confetti(); toast(text, 4200); logLine(g.name, `🎁 열매 ${g.n}개 선물`, false); }
-      else notice(text, 4600);
+      let text, line;
+      if (g.item && PET_ITEMS[g.item]) {
+        const kind = PET_ITEMS[g.item].name, nm = petName(g.item);
+        const call = nm ? `${kind} ${nm}` : kind;
+        const follow = myPets().includes(g.item);
+        text = `🎁 ${josa(g.name, '이가', '가')} ${josa(call, '을', '를')} 선물했어요! "${GIFT_MSGS[g.msg] || ''}" ${follow ? '지금 나를 따라다녀요.' : "가방의 '우리 집 친구'에서 데리고 다닐 수 있어요."}`;
+        line = `🎁 ${kind} 선물`;
+      } else {
+        text = `🎁 ${josa(g.name, '이가', '가')} 열매 ${g.n}개를 선물했어요! "${GIFT_MSGS[g.msg] || ''}"`;
+        line = `🎁 열매 ${g.n}개 선물`;
+      }
+      if (live) { sfx.success(); confetti(); toast(text, 4600); logLine(g.name, line, false); }
+      else notice(text, 5200);
     }
   } catch (e) { if (e.code === 'SESSION') sessionLost(); } finally { giftChecking = false; }
 }
@@ -2440,9 +2663,9 @@ async function openMaker(first) {
     shop: { on: wardrobe, owned: (shop && shop.items) || {}, prices: (shop && shop.prices) || {} } });
   while (result) {
     try {
-      const pet = state.me && state.me.pet;
+      const pet = state.me && state.me.pet, pets = state.me && state.me.pets;
       state.me = await rpc('kids_save_avatar', { p_token: token(), p_avatar: result.avatar, p_village_name: result.name });
-      if (state.me && !('pet' in state.me)) state.me.pet = pet;
+      if (state.me && !('pet' in state.me)) { state.me.pet = pet; state.me.pets = pets; } else takeMyPets(state.me);
       break;
     } catch (e) {
       if (e.code === 'SESSION') { maker.close(); return sessionLost(); }
