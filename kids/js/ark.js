@@ -2,12 +2,14 @@
 // 탁자 위에 엎어 둔 카드를 두 장씩 뒤집어 같은 동물 짝을 찾는다. 동물들이 짝지어 방주에 들어간 이야기(창세기 7장)에서 따왔다.
 // 혼자: 쉬움(12장), 보통(16장), 어려움(20장) 가운데 골라 걸린 시간과 뒤집은 횟수를 잰다. 내 최고 기록은 이 기기에 남는다.
 // 친구와: 20장으로 번갈아 뒤집는다. 짝을 찾으면 한 번 더, 못 찾으면 차례가 넘어간다. 짝을 더 많이 찾은 친구가 이긴다.
-// 서버는 쓰지 않는다. 친구와 할 때는 초대한 쪽이 카드를 섞어 보내고, 뒤집은 카드 번호만 주고받는다.
+// 혼자 하기 기록은 주간 기록판에 올라간다(서버 kids_ark_start, kids_ark_finish, kids_ark_board). 일요일마다 새로 시작하고 난이도마다 10위까지 보인다.
+// 친구와 할 때는 서버를 쓰지 않는다. 초대한 쪽이 카드를 섞어 보내고, 뒤집은 카드 번호만 주고받는다.
 import * as THREE from './three.module.min.js';
 import { toon, toonGradient } from './avatar.js';
 import { h, josa, confetti, modal } from './ui.js';
 import { sfx } from './sound.js';
-import { store } from './api.js';
+import { store, message } from './api.js';
+import { drawFaceIcon, normalizeAvatar } from './face.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const clamp01 = (k) => Math.max(0, Math.min(1, k));
@@ -282,7 +284,12 @@ export function buildArk(v) {
 // =====================================================================
 // 놀이
 // =====================================================================
-export function createArkGame({ v, ui, begin, stopAll, portrait, live, hub, onlineFriends, friendPicker, waitInvite, menuTok, myId, seatPose, SEAT_Y, onCelebrate }) {
+// 1000분의 1초를 '23.4초'처럼 (소수점 아래는 버린다: 23.48초는 23.4초)
+export const arkSec = (ms) => `${(Math.floor(ms / 100) / 10).toFixed(1)}초`;
+const MEDAL = ['🥇', '🥈', '🥉'];
+
+export function createArkGame({ v, ui, begin, stopAll, portrait, live, hub, onlineFriends, friendPicker, waitInvite, menuTok, myId, seatPose, SEAT_Y, onCelebrate,
+  rpc, getToken, lost, features }) {
   let faces = null, backTex = null;
   const textures = () => {
     if (!faces) { faces = ANIMALS.map(faceTexture); backTex = backTexture(); }
@@ -291,11 +298,57 @@ export function createArkGame({ v, ui, begin, stopAll, portrait, live, hub, onli
   const bestKey = (lv) => `ark.best.${myId() || 'me'}.${lv}`;
   const readBest = (lv) => { try { return JSON.parse(store.get(bestKey(lv)) || 'null'); } catch (e) { return null; } };
   const arkLevel = () => store.get('ark.level') || 'easy';
+  const boardOn = () => !!(rpc && features && (features() || {}).arkboard);
+  const lvName = (lv) => (ARK_LEVELS.find((l) => l[0] === lv) || ARK_LEVELS[0])[1];
+  // '11월 1일(일)~7일(토)'
+  const weekText = (a, b) => {
+    const d1 = new Date(a + 'T00:00:00'), d2 = new Date(b + 'T00:00:00');
+    const m1 = d1.getMonth() + 1, m2 = d2.getMonth() + 1;
+    return `${m1}월 ${d1.getDate()}일(일)~${m2 === m1 ? '' : `${m2}월 `}${d2.getDate()}일(토)`;
+  };
+
+  // ---------- 주간 기록판: 난이도마다 그 주 가장 빠른 기록으로 10위까지 ----------
+  // back: 놀이 고르는 창에서 열었으면 돌아가는 단추를 보인다
+  function arkBoard(level = arkLevel(), weeksAgo = 0, back = null) {
+    if (!boardOn()) return;
+    const box = h('div', { class: 'mem game ark-board' }, h('p', { class: 'empty-big' }, '기록판을 꺼내고 있어요…'));
+    if (modal.isOpen) { modal.setTitle('노아의 방주 기록판'); modal.setBody(box); } else modal.open('노아의 방주 기록판', box, { cls: 'game-sheet' });
+    rpc('kids_ark_board', { p_token: getToken(), p_level: level, p_weeks_ago: weeksAgo }).then((b) => {
+      if (!box.isConnected) return;
+      const tab = (lv) => h('button', { type: 'button', 'aria-pressed': lv === level ? 'true' : 'false', onclick: () => arkBoard(lv, weeksAgo, back) },
+        `${{ easy: '🐣', normal: '🐑', hard: '🦁' }[lv]} ${lvName(lv)}`);
+      const wk = (n, label) => h('button', { type: 'button', 'aria-pressed': n === weeksAgo ? 'true' : 'false', onclick: () => arkBoard(level, n, back) }, label);
+      const top = b.top || [];
+      const rows = top.map((t) => {
+        const cv = h('canvas', { width: 64, height: 64, class: 'fl-face', 'aria-hidden': 'true' });
+        drawFaceIcon(cv, normalizeAvatar(t.avatar));
+        return h('div', { class: 'fl-row' + (t.me ? ' me' : '') + (t.rank <= 3 ? ' podium' : '') },
+          h('b', { class: 'rank', 'aria-label': `${t.rank}위` }, t.rank <= 3 ? MEDAL[t.rank - 1] : String(t.rank)), cv,
+          h('div', { class: 'fl-main' }, h('b', {}, t.name, t.teacher ? h('span', { class: 't-badge' }, '선생님') : null, t.me ? ' (나)' : ''),
+            h('span', {}, h('b', { class: 'ark-time' }, arkSec(t.ms)), ` · ${t.flips}번 뒤집기`)));
+      });
+      const mine = b.mine;
+      const when = weeksAgo === 0 ? '이번 주' : '지난주';
+      box.replaceChildren(...[
+        h('div', { class: 'ark-tabs', role: 'group', 'aria-label': '난이도' }, ['easy', 'normal', 'hard'].map(tab)),
+        h('div', { class: 'ark-tabs small', role: 'group', 'aria-label': '언제' }, wk(0, '이번 주'), wk(1, '지난주')),
+        h('div', { class: 'sub-head' }, h('h3', {}, `${when} ${lvName(level)} 기록`), h('p', {}, weekText(b.week_start, b.week_end))),
+        rows.length ? h('div', { class: 'fl-list' }, rows)
+          : h('p', { class: 'fb-empty' }, weeksAgo === 0 ? `${when}에는 아직 ${lvName(level)} 기록이 없어요. 첫 기록을 세워 봐요!` : `${when}에는 ${lvName(level)} 기록이 없어요.`),
+        h('p', { class: 'note' }, mine ? `나는 ${when} ${mine.rank}위예요 · ${arkSec(mine.ms)} · ${mine.flips}번 뒤집기${b.count ? ` (모두 ${b.count}명)` : ''}`
+          : weeksAgo === 0 ? `${when}에는 내 ${lvName(level)} 기록이 아직 없어요.` : `${when}에는 내 ${lvName(level)} 기록이 없어요.`),
+        h('p', { class: 'note' }, '혼자 하기를 끝까지 마친 시간으로 줄을 세워요. 같은 시간이면 덜 뒤집은 친구가 앞이에요. 한 주는 일요일에 새로 시작하고, 친구와 같이 한 판은 들어가지 않아요.'),
+        back ? h('div', { class: 'row' }, h('button', { class: 'btn btn-plain', type: 'button', onclick: back }, '놀이 고르기로')) : null].filter(Boolean));
+    }).catch((e) => {
+      if (lost && lost(e)) return;
+      if (box.isConnected) box.replaceChildren(h('p', { class: 'fb-empty' }, message(e)));
+    });
+  }
 
   function arkMenu() {
     const tok = menuTok.next();
     const friends = onlineFriends();
-    const fmt = (b) => (b ? `내 최고 ${b.sec}초 · ${b.flips}번 뒤집기` : '아직 기록이 없어요');
+    const fmt = (b) => (b ? `내 최고 ${b.ms ? arkSec(b.ms) : `${b.sec}초`} · ${b.flips}번 뒤집기` : '아직 기록이 없어요');
     const body = h('div', { class: 'mem game' },
       h('section', { class: 'guide compact' },
         h('h3', {}, '짝 맞추기는 이렇게 해요'),
@@ -304,10 +357,12 @@ export function createArkGame({ v, ui, begin, stopAll, portrait, live, hub, onli
           h('li', {}, h('b', {}, '같은 동물이면 짝!'), h('span', {}, '동물들은 하나님 말씀대로 둘씩 짝지어 방주에 들어갔어요(창세기 7장). 같은 동물 두 마리를 찾으면 짝이에요.')),
           h('li', {}, h('b', {}, '다르면 다시 엎어요'), h('span', {}, '어디에 무슨 동물이 있었는지 잘 기억해 두세요.')))),
       h('div', { class: 'sub-head' }, h('h3', {}, '혼자 하기'), h('p', {}, '얼마나 빨리 다 찾는지 재요')),
+      boardOn() ? h('button', { class: 'btn btn-soft ark-board-btn', type: 'button', onclick: () => { menuTok.next(); arkBoard(arkLevel(), 0, () => arkMenu()); } }, '🏆 이번 주 기록판 (10위까지)') : null,
       h('div', { class: 'mode-pick levels' }, ARK_LEVELS.map(([lv, name, desc]) => h('button', {
         class: 'mode' + (lv === arkLevel() ? ' last' : ''), type: 'button', 'data-level': lv,
         onclick: () => { menuTok.next(); store.set('ark.level', lv); modal.close(); ark({ level: lv }); },
-      }, h('b', {}, `${{ easy: '🐣', normal: '🐑', hard: '🦁' }[lv]} ${name}`), h('span', {}, `${desc} · ${fmt(readBest(lv))}`)))),
+      }, h('b', {}, `${{ easy: '🐣', normal: '🐑', hard: '🦁' }[lv]} ${name}`), h('span', {}, `${desc} · ${fmt(readBest(lv))}`),
+      h('span', { class: 'ark-week', 'data-week': lv })))),
       h('div', { class: 'sub-head' }, h('h3', {}, '마을 친구와 하기'), h('p', {}, friends.length ? `${friends.length}명 · 카드 20장` : '')),
       friendPicker(friends, (f) => {
         modal.setTitle('노아의 방주 짝 맞추기');
@@ -320,6 +375,19 @@ export function createArkGame({ v, ui, begin, stopAll, portrait, live, hub, onli
         });
       }, '지금 마을에 있는 친구가 없어요. 친구가 들어오면 여기에 보여요.'));
     modal.open('노아의 방주 짝 맞추기', body, { cls: 'game-sheet', onClose: () => { if (menuTok.is(tok)) menuTok.next(); } });
+    // 이번 주 1등과 내 순위를 난이도 단추에 적는다
+    if (boardOn()) {
+      rpc('kids_ark_week', { p_token: getToken() }).then((w) => {
+        if (!menuTok.is(tok) || !body.isConnected) return;
+        for (const el of body.querySelectorAll('.ark-week')) {
+          const x = (w.levels || {})[el.dataset.week] || {};
+          const parts = [];
+          if (x.first) parts.push(`이번 주 1등 ${x.first.name} ${arkSec(x.first.ms)}`);
+          if (x.mine) parts.push(`나는 ${x.mine.rank}위`);
+          el.textContent = parts.length ? parts.join(' · ') : '이번 주 첫 기록을 세워 봐요!';
+        }
+      }).catch((e) => { if (lost) lost(e); });
+    }
   }
 
   function ark({ session = null, level = 'easy' } = {}) {
@@ -431,7 +499,14 @@ export function createArkGame({ v, ui, begin, stopAll, portrait, live, hub, onli
       if (g.busy > 0) { if (g.queue.length < 4) g.queue.push([i, who, fromNet]); return false; }
       if (c.done || c.up || g.open.length >= 2) return false;
       if (session && who !== g.turn) return false;
-      if (!g.start) g.start = performance.now();
+      if (!g.start) {
+        g.start = performance.now();
+        // 혼자 하기: 서버가 시작 시각을 적어 둔다 (기록판에 올릴 때 확인한다)
+        if (!session && boardOn()) {
+          const cur = g;
+          cur.runP = rpc('kids_ark_start', { p_token: getToken(), p_level: lvId }).then((r) => r.run).catch((e) => { if (lost && lost(e)) return null; cur.runErr = e; return null; });
+        }
+      }
       c.up = true;
       g.open.push(i);
       g.flips++;
@@ -472,16 +547,20 @@ export function createArkGame({ v, ui, begin, stopAll, portrait, live, hub, onli
     }
     function finish() {
       g.over = true;
-      const sec = Math.max(1, Math.round((performance.now() - g.start) / 1000));
+      const ms = Math.max(1000, Math.round(performance.now() - g.start));
+      const sec = Math.max(1, Math.round(ms / 1000));
       if (!session) {
         const best = readBest(lvId);
-        const better = !best || sec < best.sec || (sec === best.sec && g.flips < best.flips);
-        if (better) try { store.set(bestKey(lvId), JSON.stringify({ sec, flips: g.flips })); } catch (e) { /* 그대로 */ }
-        ui.banner('다 찾았어요!', `${sec}초 · ${g.flips}번 뒤집기${better ? ' · 내 최고 기록!' : ''}`, 3600);
-        ui.say(better && best ? `예전 기록은 ${best.sec}초였어요. 정말 빨라졌어요!` : '모든 동물이 짝을 찾았어요. 방주에 들어갈 준비 끝!');
+        const bestMs = best ? (best.ms || best.sec * 1000) : Infinity;
+        const better = !best || ms < bestMs || (ms === bestMs && g.flips < best.flips);
+        if (better) try { store.set(bestKey(lvId), JSON.stringify({ sec, ms, flips: g.flips })); } catch (e) { /* 그대로 */ }
+        timeChip.textContent = `⏱ ${arkSec(ms)} · ${g.flips}번 뒤집기`;
+        ui.banner('다 찾았어요!', `${arkSec(ms)} · ${g.flips}번 뒤집기${better ? ' · 내 최고 기록!' : ''}`, 3600);
+        ui.say(better && best ? `예전 기록은 ${arkSec(bestMs)}였어요. 정말 빨라졌어요!` : '모든 동물이 짝을 찾았어요. 방주에 들어갈 준비 끝!');
         confetti(); onCelebrate();
         meSt.cheer = 2;
         ui.setMain('한 판 더', { onClick: () => newRound(g.round + 1) });
+        if (g.runP) postRecord(g, ms);
         return;
       }
       const m = g.score[g.me], o = g.score[g.me === 1 ? 2 : 1];
@@ -490,6 +569,27 @@ export function createArkGame({ v, ui, begin, stopAll, portrait, live, hub, onli
       else { ui.banner('비겼어요!', `${m} : ${o}`, 3600); sfx.ding(); }
       ui.say('모든 동물이 짝을 찾았어요!');
       drawAgain();
+    }
+    // 기록판에 올리고 이번 주 순위를 알려 준다 (그사이 '한 판 더'를 눌렀어도 이 판 기록으로)
+    async function postRecord(run, ms) {
+      const id = await run.runP;
+      const here = () => live(game) && g === run; // 놀이를 그만두거나 다음 판으로 넘어갔으면 말하지 않는다 (기록은 올린다)
+      if (!id) { if (run.runErr && here()) ui.say(`기록판에는 올리지 못했어요. ${message(run.runErr)}`); return; }
+      try {
+        const r = await rpc('kids_ark_finish', { p_token: getToken(), p_run: id, p_ms: ms, p_flips: run.flips });
+        if (!here()) return;
+        const m = r.mine || {};
+        if (m.rank === 1 && r.new_best) {
+          ui.banner(`이번 주 ${lvName} 1등!`, `${arkSec(r.ms)} · 기록판 맨 위에 올랐어요`, 3600);
+          confetti(); onCelebrate();
+        }
+        if (r.new_best && m.rank && m.rank <= 10) ui.say(`이번 주 ${lvName} 기록판 ${m.rank}위에 올랐어요! '기록판' 단추로 볼 수 있어요.`);
+        else if (r.new_best && m.rank) ui.say(`이번 주 내 ${lvName} 기록이에요. 지금 ${m.rank}위예요. 10위 안에 들어 봐요!`);
+        else if (m.rank) ui.say(`이번 주 내 가장 빠른 기록은 ${arkSec(m.ms)}(${m.rank}위)예요. 한 번 더 도전해 볼까요?`);
+      } catch (e) {
+        if (lost && lost(e)) return;
+        if (here()) ui.say(`기록판에는 올리지 못했어요. ${message(e)}`);
+      }
     }
     function drawAgain() {
       if (!g.over) return;
@@ -607,9 +707,10 @@ export function createArkGame({ v, ui, begin, stopAll, portrait, live, hub, onli
       grp.removeFromParent();
       g = null;
     };
-    begin('ark', session ? `노아의 방주 · ${josa(oppName, '과', '와')} 한 판` : `노아의 방주 · ${lvName}`, game);
+    begin('ark', session ? `노아의 방주 · ${josa(oppName, '과', '와')} 한 판` : `노아의 방주 · ${lvName}`, game,
+      !session && boardOn() ? [['star', '기록판', () => arkBoard(lvId)]] : []);
     if (!session || session.host) newRound(1);
     else { ui.say('카드를 섞고 있어요…'); ui.setMain('기다려요', { disabled: true }); g = null; session.send('ready'); }
   }
-  return { arkMenu, ark };
+  return { arkMenu, ark, arkBoard };
 }

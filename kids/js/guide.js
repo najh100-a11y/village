@@ -147,7 +147,8 @@ export function createGuide(o) {
       go: { t: 'door', id: 'skip' } });
     add({ id: 'ark', isle: 'pool', cat: 'play', icon: '🌈', name: '노아의 방주 짝 맞추기', label: '노아의 방주', short: '동물 카드 짝 맞추기', x: 56, z: -13.4, lbl: 'n', lock: true, need: 'ark',
       lines: ['탁자 위 동물 카드를 두 장씩 뒤집어 같은 동물 짝을 찾아요. 동물들이 둘씩 방주에 들어간 이야기(창세기 7장)에서 따왔어요.',
-        '혼자 하면 쉬움(12장), 보통(16장), 어려움(20장)을 고르고, 친구와 하면 20장으로 번갈아 뒤집어요.'],
+        '혼자 하면 쉬움(12장), 보통(16장), 어려움(20장)을 고르고, 친구와 하면 20장으로 번갈아 뒤집어요.',
+        F.arkboard ? '혼자 하기 기록은 이번 주 기록판에 올라가요. 난이도마다 가장 빠른 10명이 보이고, 일요일마다 새로 시작해요.' : null].filter(Boolean),
       go: { t: 'door', id: 'ark' } });
     return L;
   }

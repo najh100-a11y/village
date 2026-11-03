@@ -173,6 +173,7 @@ async function boot() {
     openArt: (start, onClose) => art.open(start, { onClose }),
     onDishShared: () => { if (net) net.send('dish', {}); dishAt = 0; refreshDishes(); },
     myId: () => state.me && state.me.id,
+    features: () => state.features || {},
     personName: (id) => { const p = state.people.get(id); return p ? p.name : ''; },
     onOmokState: (st) => { if (net) net.send('ob', st); },
     getObserve: (id) => { const o = observes.get(id); return o && Date.now() - o.at < 30000 ? o.st : null; },
@@ -1399,6 +1400,7 @@ function showNews() {
   if (state.features.sea) news.push(['seafight', '새 소식! 바다 낚시가 1인칭이 되었어요. 물고기가 물면 바늘이 초록 칸에 올 때 ‘감기!’를 눌러 끌어와요. 줄이 팽팽하면 ‘줄 풀기’를 눌러요.']);
   if (state.features.farm) news.push(['farm2', "새 소식! 밭의 채소와 열매는 며칠에 걸쳐 자라요. 거둔 것은 수확 바구니에 모였다가, 마을 식탁 옆 '나눔 수레'에서 친구들과 나눠 먹거나 열매 상점에서 팔 수 있어요."]);
   news.push(['npc', '새 소식! 섬마다 마을 친구가 살아요(마을 섬 봄이, 놀이동산 섬 튼튼이, 수영장 섬 노을이). 눌러서 하이파이브, 가위바위보를 하고 간식도 나눠 먹어 봐요.']);
+  if (state.features.arkboard) news.push(['arkboard', '새 소식! 노아의 방주 짝 맞추기에 이번 주 기록판이 생겼어요. 혼자 하기를 빨리 마치면 난이도마다 10위까지 이름이 올라가요.']);
   if (state.features.pets) news.push(['petcare', '새 소식! 데리고 다니는 애완동물을 누르면 안아 주거나 먹이를 줄 수 있어요.']);
   if (state.features.petname) news.push(['petname', '새 소식! 애완동물에게 이름을 지어 줄 수 있어요(가방에서). 내 말을 따라 하는 앵무새도 열매 상점에 왔어요.']);
   news.unshift(['guide', "새 소식! 오른쪽 '마을 지도' 단추를 누르면 어디에 무엇이 있고 무엇을 할 수 있는지 볼 수 있어요. 가고 싶은 곳을 고르면 그곳까지 걸어가요."]);

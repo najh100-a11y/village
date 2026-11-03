@@ -72,6 +72,7 @@ function fail(code) {
   throw e;
 }
 const ID_RE = /^[가-힣A-Za-z0-9_]{2,12}$/;
+const ARK_PAIRS = { easy: 6, normal: 8, hard: 10 }; // 노아의 방주 난이도마다 짝 수
 const nowIso = (minAgo = 0) => new Date(Date.now() - minAgo * 60000).toISOString();
 const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.toISOString(); }; // 놀이 기록은 실제 오늘 기준
 
@@ -323,7 +324,7 @@ export class DemoBackend {
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true }; }
   // 쪽지함: 친구별 마지막 쪽지와 안 읽은 수 (최근 30일)
   kids_dm_box({ p_token }) {
     const me = this.session(p_token, 'child');
@@ -507,6 +508,74 @@ export class DemoBackend {
     const me = this.session(p_token, 'child');
     const mine = (this.db.skips || []).filter((x) => x.child === me), t0 = startOfToday();
     return { top: this.skipTop(me), best: Math.max(0, ...mine.map((x) => x.n)), best_today: Math.max(0, ...mine.filter((x) => x.at >= t0).map((x) => x.n)) };
+  }
+
+  // ---------- 노아의 방주 기록판 (서버 kids_ark_start, kids_ark_finish, kids_ark_board, kids_ark_week와 같다) ----------
+  arkRuns() {
+    if (!this.db.arkRuns) {
+      // 체험판이 처음이면 예시 친구 바다의 이번 주 기록을 넣어 둔다 (기록판이 비어 보이지 않게)
+      const wk = weekOf(iso(new Date())), at = nowIso(30);
+      this.db.arkRuns = this.db.children.some((c) => c.id === 'c3')
+        ? [{ id: 1, child: 'c3', level: 'easy', week: wk, start: at, done: at, ms: 31600, flips: 20 }, { id: 2, child: 'c3', level: 'normal', week: wk, start: at, done: at, ms: 58200, flips: 30 }]
+        : [];
+    }
+    return this.db.arkRuns;
+  }
+  arkBest(week, level) {
+    const best = new Map();
+    for (const r of this.arkRuns().filter((x) => x.week === week && x.level === level && x.ms)) {
+      const c = this.db.children.find((x) => x.id === r.child);
+      if (!c || !c.village_name) continue;
+      const b = best.get(r.child);
+      if (!b || r.ms < b.ms || (r.ms === b.ms && (r.flips < b.flips || (r.flips === b.flips && r.done < b.done)))) best.set(r.child, r);
+    }
+    return [...best.values()].sort((a, b) => a.ms - b.ms || a.flips - b.flips || a.done.localeCompare(b.done)).map((r, i) => ({ ...r, rank: i + 1 }));
+  }
+  arkTop(week, level, me) {
+    return this.arkBest(week, level).slice(0, 10).map((r) => { const c = this.db.children.find((x) => x.id === r.child);
+      return { rank: r.rank, name: c.village_name, avatar: c.avatar, ms: r.ms, flips: r.flips, me: c.id === me, teacher: !!c.teacher }; });
+  }
+  arkMine(week, level, me) { const r = this.arkBest(week, level).find((x) => x.child === me); return r ? { rank: r.rank, ms: r.ms, flips: r.flips } : null; }
+  kids_ark_start({ p_token, p_level }) {
+    const me = this.session(p_token, 'child');
+    if (!ARK_PAIRS[p_level]) fail('BAD_LEVEL');
+    this.gate(me);
+    const runs = this.arkRuns(), mine = runs.filter((r) => r.child === me);
+    if (mine.some((r) => Date.now() - new Date(r.start).getTime() < 2000)) fail('TOO_FAST');
+    if (mine.filter((r) => r.start >= startOfToday()).length >= 200) fail('ARK_DAY');
+    const id = runs.reduce((m, r) => Math.max(m, r.id), 0) + 1;
+    runs.push({ id, child: me, level: p_level, week: weekOf(iso(new Date())), start: nowIso(), done: null, ms: null, flips: null });
+    return { run: id };
+  }
+  kids_ark_finish({ p_token, p_run, p_ms, p_flips }) {
+    const me = this.session(p_token, 'child');
+    const r = this.arkRuns().find((x) => x.id === p_run && x.child === me);
+    if (!r || r.done) fail('NO_RUN');
+    const srv = Date.now() - new Date(r.start).getTime();
+    if (srv > 1800000) fail('NO_RUN');
+    const pairs = ARK_PAIRS[r.level];
+    if (!Number.isInteger(p_flips) || p_flips < pairs * 2 || p_flips > 999) fail('BAD_RUN');
+    const ms = Math.max(Number.isFinite(p_ms) ? Math.round(p_ms) : srv, srv - 3000, 1000);
+    if (ms < pairs * 800) fail('BAD_RUN');
+    const prev = this.arkRuns().filter((x) => x.child === me && x.week === r.week && x.level === r.level && x.ms).map((x) => x.ms);
+    Object.assign(r, { done: nowIso(), ms, flips: p_flips });
+    return { ms, flips: p_flips, level: r.level, week_start: r.week, new_best: !prev.length || ms < Math.min(...prev),
+      mine: this.arkMine(r.week, r.level, me), top: this.arkTop(r.week, r.level, me) };
+  }
+  kids_ark_board({ p_token, p_level, p_weeks_ago = 0 }) {
+    const me = this.session(p_token, 'child');
+    if (!ARK_PAIRS[p_level]) fail('BAD_LEVEL');
+    const d = new Date(weekOf(iso(new Date())) + 'T00:00:00');
+    d.setDate(d.getDate() - 7 * Math.max(0, Math.min(52, p_weeks_ago | 0)));
+    const wk = iso(d), end = new Date(d); end.setDate(end.getDate() + 6);
+    return { level: p_level, week_start: wk, week_end: iso(end), top: this.arkTop(wk, p_level, me), mine: this.arkMine(wk, p_level, me), count: this.arkBest(wk, p_level).length };
+  }
+  kids_ark_week({ p_token }) {
+    const me = this.session(p_token, 'child');
+    const wk = weekOf(iso(new Date())), end = new Date(wk + 'T00:00:00'); end.setDate(end.getDate() + 6);
+    const levels = {};
+    for (const lv of Object.keys(ARK_PAIRS)) levels[lv] = { first: this.arkTop(wk, lv, me)[0] || null, mine: this.arkMine(wk, lv, me) };
+    return { week_start: wk, week_end: iso(end), levels };
   }
 
   // ---------- 열매 상점: 불꽃놀이 ----------
