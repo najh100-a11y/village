@@ -25,7 +25,11 @@ export const PARTS = {
     ['teeth', '이 보여요'], ['small', '쪼끔'], ['flat', '일자']],
   cheek: [['none', '없음'], ['pink', '분홍 볼'], ['peach', '살구 볼'], ['freckle', '주근깨']],
   hair: [['short', '짧은 머리'], ['side', '옆가르마'], ['buzz', '까까머리'], ['spiky', '삐죽 머리'], ['curly', '곱슬 머리'],
-    ['bob', '단발'], ['long', '긴 머리'], ['pigtails', '양갈래'], ['ponytail', '포니테일'], ['bun', '똥머리'], ['braids', '땋은 머리']],
+    ['bob', '단발'], ['long', '긴 머리'], ['pigtails', '양갈래'], ['ponytail', '포니테일'], ['bun', '똥머리'], ['braids', '땋은 머리'],
+    // 열매 상점에서 사는 머리 모양 (js/wardrobe.js)
+    ['cloud', '뭉게구름 머리'], ['spacebuns', '양쪽 똥머리'], ['twintails', '높은 양갈래'], ['sidetail', '옆으로 묶은 머리'],
+    ['wavy', '긴 물결 머리'], ['princess', '리본 긴 머리'], ['quiff', '멋쟁이 앞머리'], ['messy', '까치집 머리'], ['dino', '공룡 머리'],
+    ['daenggi', '댕기 머리'], ['sangtu', '상투 머리']],
   // 상의 (하의와 따로 고른다)와 한 벌 옷 (ONE_PIECE: 위아래가 붙어 있어 하의를 입지 않는다)
   outfit: [['tee', '새싹 티'], ['plain', '민무늬 티'], ['stripe', '줄무늬 티'], ['star', '별무늬 티'], ['heart', '하트 티'],
     ['cross', '십자가 티'], ['rainbow', '무지개 티'], ['dots', '물방울 티'], ['tank', '민소매'], ['polo', '카라 티'],
@@ -51,7 +55,8 @@ const KEYS = {
 export const ONE_PIECE = new Set(['overall', 'dress', 'robe', 'pajama', 'hero']);
 const COLOR_KEYS = { skin: 'skin', hairColor: 'hair', eyeColor: 'eye', outfitColor: 'cloth', bottomColor: 'bottom', shoeColor: 'shoe', hatColor: 'cloth', backColor: 'cloth' };
 // 상점에서 사야 하는 값 (무작위 꾸미기와 처음 모습에서는 고르지 않는다)
-const SHOP_VALUES = { outfit: ['sailor', 'raincoat', 'hero'], hat: ['halo', 'bunny', 'catband', 'chef'], face: ['glasses', 'sunglasses', 'heart'], back: ['angel', 'butterfly', 'cape', 'backpack'] };
+const SHOP_VALUES = { outfit: ['sailor', 'raincoat', 'hero'], hat: ['halo', 'bunny', 'catband', 'chef'], face: ['glasses', 'sunglasses', 'heart'], back: ['angel', 'butterfly', 'cape', 'backpack'],
+  hair: ['cloud', 'spacebuns', 'twintails', 'sidetail', 'wavy', 'princess', 'quiff', 'messy', 'dino', 'daenggi', 'sangtu'] };
 
 export function defaultAvatar() {
   return {
@@ -509,10 +514,16 @@ export function drawFaceIcon(canvas, av) {
   const skin = colorOf(av, 'skin');
   const hair = colorOf(av, 'hairColor');
   // 뒷머리
-  if (['bob', 'long', 'pigtails', 'braids'].includes(av.hair)) {
+  if (['bob', 'long', 'pigtails', 'braids', 'wavy', 'princess', 'twintails', 'daenggi'].includes(av.hair)) {
     ctx.fillStyle = hair;
     ctx.beginPath();
     ctx.ellipse(s / 2, s * 0.52, s * 0.44, s * 0.42, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (av.hair === 'cloud') { // 뭉게구름 머리는 얼굴 둘레가 크게 부푼다
+    ctx.fillStyle = hair;
+    ctx.beginPath();
+    ctx.ellipse(s / 2, s * 0.44, s * 0.48, s * 0.4, 0, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.fillStyle = skin;

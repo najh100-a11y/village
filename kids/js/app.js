@@ -17,7 +17,8 @@ import { FIREWORKS, FW_IDS, fireworkIcon } from './fireworks.js';
 import { PET_ITEMS, PET_IDS, PET_FOOD } from './critters.js';
 import { HOME_ITEMS, HOME_IDS, ZONE_NAMES, HARVEST, CROP_IDS } from './homeitems.js';
 import { itemThumb, avatarThumb } from './home.js';
-import { WARDROBE, WARDROBE_IDS } from './wardrobe.js';
+import { WARDROBE, WARDROBE_IDS, WEAR_OFF } from './wardrobe.js';
+import { COVER_HATS } from './avatar.js';
 import { GIFT, GIFT_MSGS } from './economy.js';
 import { fishCanvas } from './fishing.js';
 import { createHomeUI } from './homeui.js';
@@ -1099,7 +1100,7 @@ async function openBag(focusBug, focusTreasure) {
     const items = (shop && shop.items) || {};
     const owned = WARDROBE_IDS.filter((id) => items[id] > 0);
     const sec = h('section', { class: 'bag-sec' }, h('h3', {}, '👗 꾸미기 물건'));
-    if (!owned.length) sec.append(h('p', { class: 'note' }, '아직 없어요. 열매 상점의 꾸미기 칸에서 날개, 망토, 안경 같은 물건을 살 수 있어요.'));
+    if (!owned.length) sec.append(h('p', { class: 'note' }, `아직 없어요. 열매 상점의 꾸미기 칸에서 날개, 망토, 안경 같은 물건을${state.features.hair ? ', 머리 칸에서 여러 머리 모양을' : ''} 살 수 있어요.`));
     else sec.append(h('div', { class: 'bag-chips' }, owned.map((id) => h('span', { class: 'bag-chip' }, WARDROBE[id].name))));
     sec.append(h('div', { class: 'row' }, h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => { modal.close(); openMaker(false); } }, '옷장 열기')));
     secs.push(sec);
@@ -1607,6 +1608,7 @@ function showNews() {
   news.push(['weather', "새 소식! 마을 날씨가 대구의 지금 날씨를 따라 바뀌어요. 대구에 비가 오면 마을에도 비가, 눈이 오면 눈이 내려요. 위쪽 열매 옆의 날씨를 누르면 자세히 볼 수 있어요."]);
   news.push(['boardisle', '새 소식! 마을 서쪽 다리를 건너면 보드게임 섬이 있어요. 과일 종 치기, 77 피하기, 숫자 암호, 만칼라, 윷놀이, 땅따먹기를 컴퓨터 친구나 마을 친구와 해 봐요.']);
   news.push(['boardisle4', '새 소식! 보드게임 섬에서 방을 만들면 친구 넷까지 함께 놀 수 있어요(만칼라는 둘). 빈자리에는 컴퓨터 친구를 앉히고, 윷놀이는 2:2 편을 먹고 할 수도 있어요.']);
+  if (state.features.hair) news.push(['hairshop', "새 소식! 열매 상점에 '머리' 칸이 생겼어요. 뭉게구름 머리, 공룡 머리, 댕기 머리, 상투 머리처럼 여러 머리 모양을 사서 옷장의 머리 칸에서 바꿔 가며 해요."]);
   news.push(['bghouses', '새 소식! 보드게임 섬 놀이 탁자마다 그 놀이를 닮은 작은 집이 생겼어요. 줄무늬 과일 가게, 윷놀이 정자, 카드 집, 해와 달 지붕, 만칼라 돌 정원, 연필 공방을 찾아가 봐요.']);
   news.push(['clothes2', "새 소식! 옷장('꾸미기')에 옷이 많이 늘었어요. 이제 상의와 하의를 따로 골라 입어요. 치마, 반바지, 청바지, 한복 저고리와 한복 치마, 패딩, 야구 점퍼도 있어요."]);
   news.unshift(['guide', "새 소식! 오른쪽 '마을 지도' 단추를 누르면 어디에 무엇이 있고 무엇을 할 수 있는지 볼 수 있어요. 가고 싶은 곳을 고르면 그곳까지 걸어가요."]);
@@ -1652,6 +1654,7 @@ const SHOP_NOTE = {
   fw: '산 불꽃은 가방에 들어가고, 마을 어디서나 터트릴 수 있어요. 친구들 하늘에도 같이 터져요.',
   pet: '애완동물은 한 번 데려오면 계속 우리 집 친구예요. 한 번에 한 마리가 나를 따라다녀요.',
   wear: "한 번 사면 계속 내 것이에요. 여기서 바로 써 보거나, 화면 아래 '꾸미기'(옷장)에서 다른 옷과 함께 골라요. 옷장에서는 사기 전에 입어 볼 수도 있어요.",
+  hair: "머리 모양은 한 번 사면 계속 내 것이에요. 머리 색은 옷장에서 고른 색으로 물들어요. 옷장(꾸미기)의 '머리' 칸에서 산 머리와 원래 머리 모양을 언제든 바꿔 가며 해요. 사기 전에 옷장에서 미리 해 볼 수도 있어요.",
   room: "방에 놓는 가구예요. 내 집에 들어가서 '집 꾸미기'를 누르면 놓을 수 있어요. 산 가구는 없어지지 않아요.",
   yard: "마당에 놓는 물건이에요. 내 집에 들어가서 '집 꾸미기'를 누르면 놓을 수 있어요. 산 물건은 없어지지 않아요.",
   garden: '씨앗과 모종은 밭 한 칸에 하나씩 심어요. 다 자란 채소를 거두면 그 씨앗은 없어지고, 꽃은 다 피면 계속 피어 있어요.',
@@ -1671,7 +1674,7 @@ function drawShop(body, shop) {
   if (!shop) { body.replaceChildren(h('p', { class: 'note' }, '상점을 열지 못했어요. 잠시 뒤에 다시 와 주세요.')); return; }
   const items = shop.items || {};
   const f = state.features;
-  const tabsDef = [['fw', '🎆 불꽃'], f.pets && ['pet', '🐾 동물'], f.wardrobe && ['wear', '👗 꾸미기'],
+  const tabsDef = [['fw', '🎆 불꽃'], f.pets && ['pet', '🐾 동물'], f.wardrobe && ['wear', '👗 꾸미기'], f.wardrobe && f.hair && ['hair', '💇 머리'],
     f.home && ['room', '🛏️ 방'], f.home && ['yard', '🌳 마당'], f.home && ['garden', '🥕 밭'],
     f.sell && shop.sell && ['sell', '🧺 팔기'], f.gift && ['gift', '🎁 선물']].filter(Boolean);
   if (!tabsDef.some(([k]) => k === shopTab)) shopTab = 'fw';
@@ -1681,7 +1684,8 @@ function drawShop(body, shop) {
   let rows;
   if (shopTab === 'fw') rows = FW_IDS.map((id) => fwRow(id, items[id] || 0, { buy: true, launch: true, shop }));
   else if (shopTab === 'pet') rows = PET_IDS.map((id) => petRow(id, { owned: items[id] > 0, buy: true, shop, back: 'shop' }));
-  else if (shopTab === 'wear') rows = WARDROBE_IDS.map((id) => wearRow(id, shop));
+  else if (shopTab === 'wear') rows = WARDROBE_IDS.filter((id) => WARDROBE[id].slot !== 'hair').map((id) => wearRow(id, shop));
+  else if (shopTab === 'hair') rows = WARDROBE_IDS.filter((id) => WARDROBE[id].slot === 'hair').map((id) => wearRow(id, shop));
   else if (shopTab === 'sell') rows = sellRows(shop);
   else if (shopTab === 'gift') rows = giftRows(shop);
   else rows = HOME_IDS.filter((id) => HOME_ITEMS[id].zone === shopTab).map((id) => homeRow(id, items[id] || 0, shop));
@@ -1699,19 +1703,21 @@ function redrawShop(r) {
 }
 
 // ---------- 꾸미기 물건 (모자, 안경, 날개, 특별한 옷) ----------
-const WEAR_VERB = { hat: '쓰기', face: '쓰기', back: '메기', outfit: '입기' };
+const WEAR_VERB = { hat: '쓰기', face: '쓰기', back: '메기', outfit: '입기', hair: '이 머리로 하기' };
 function wearRow(id, shop) {
   const it = WARDROBE[id];
   const owned = (shop.items || {})[id] > 0;
   const me = normalizeAvatar(state.me && state.me.avatar);
   const wearing = me[it.slot] === it.v;
   const ic = h('div', { class: 'fw-ic home wear', 'aria-hidden': 'true' });
-  const src = avatarThumb({ ...me, [it.slot]: it.v }, it.slot === 'back' ? 'back' : it.slot === 'outfit' ? 'body' : 'head');
+  const look = it.slot === 'hair' ? { ...me, hair: it.v, hat: 'none' } : { ...me, [it.slot]: it.v }; // 머리 모양은 모자를 벗고 보여 준다
+  const src = avatarThumb(look, it.slot === 'back' ? 'back' : it.slot === 'outfit' ? 'body' : it.slot === 'hair' ? 'hair' : 'head');
   if (src) ic.append(h('img', { src, alt: '' }));
   const acts = h('div', { class: 'acts' });
   if (!owned) acts.append(buyBtn(id, shop, '사기', () => buyWear(id)));
   else if (!wearing) acts.append(h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => wearNow(id, true) }, WEAR_VERB[it.slot]));
   else if (it.slot === 'outfit') acts.append(h('button', { class: 'btn btn-plain btn-small', type: 'button', onclick: () => { modal.close(); openMaker(false); } }, '옷장에서 갈아입기'));
+  else if (it.slot === 'hair') acts.append(h('button', { class: 'btn btn-plain btn-small', type: 'button', onclick: () => { modal.close(); openMaker(false, 'hair'); } }, '옷장에서 머리 바꾸기'));
   else acts.append(h('button', { class: 'btn btn-plain btn-small', type: 'button', onclick: () => wearNow(id, false) }, '벗기'));
   return h('div', { class: 'shop-item' + (wearing ? ' with-me' : '') }, ic,
     h('div', {}, h('b', {}, it.name), h('p', {}, it.desc), h('p', {}, owned ? (wearing ? '지금 하고 있어요' : '내 옷장에 있어요') : '')), acts);
@@ -1738,7 +1744,7 @@ async function wearNow(id, on, fresh = false) {
   wearBusy = true;
   const it = WARDROBE[id];
   try {
-    const av = { ...normalizeAvatar(state.me.avatar), [it.slot]: on ? it.v : (it.slot === 'outfit' ? 'tee' : 'none') };
+    const av = { ...normalizeAvatar(state.me.avatar), [it.slot]: on ? it.v : WEAR_OFF[it.slot] };
     const pet = state.me.pet, pets = state.me.pets;
     state.me = await rpc('kids_save_avatar', { p_token: token(), p_avatar: av, p_village_name: state.me.village_name });
     if (state.me && !('pet' in state.me)) { state.me.pet = pet; state.me.pets = pets; } else takeMyPets(state.me);
@@ -1746,7 +1752,8 @@ async function wearNow(id, on, fresh = false) {
     village.setHome(state.me.village_name, normalizeAvatar(state.me.avatar));
     if (net) net.send('av', {});
     updateHud();
-    if (on) { village.celebrate(); toast(fresh ? `${josa(it.name, '을', '를')} 샀어요! 정말 잘 어울려요.` : `${josa(it.name, '을', '를')} 했어요! 정말 잘 어울려요.`, 2800); }
+    const hatNote = on && it.slot === 'hair' && COVER_HATS.has(av.hat) ? ' 지금 쓴 모자가 머리를 덮어요. 옷장에서 모자를 벗으면 더 잘 보여요.' : '';
+    if (on) { village.celebrate(); toast((fresh ? `${josa(it.name, '을', '를')} 샀어요! 정말 잘 어울려요.` : `${josa(it.name, '으로', '로')} 바꿨어요! 정말 잘 어울려요.`) + hatNote, 3200); }
     else toast(`${josa(it.name, '을', '를')} 벗었어요. 옷장에 잘 넣어 둘게요.`, 2400);
     redrawShop();
   } catch (e) {
@@ -2745,7 +2752,7 @@ function openBoard() {
         h('b', {}, '이번 주 암송'), h('span', {}, cur.ref), h('em', {}, cur.passed ? '도장' : cur.practice_count ? '연습 중' : '아직')) : null)));
 }
 
-async function openMaker(first) {
+async function openMaker(first, tab = null) {
   village.setPaused(true);
   $('#hud').hidden = true;
   $('#prompt').hidden = true;
@@ -2754,7 +2761,7 @@ async function openMaker(first) {
   const wardrobe = !!state.features.wardrobe;
   const shop = wardrobe ? await loadShop() : null;
   let result = await maker.open({ avatar: me.avatar || defaultAvatar(), name: me.village_name || '', first,
-    shop: { on: wardrobe, owned: (shop && shop.items) || {}, prices: (shop && shop.prices) || {} } });
+    shop: { on: wardrobe, hair: !!state.features.hair, owned: (shop && shop.items) || {}, prices: (shop && shop.prices) || {} }, tab });
   while (result) {
     try {
       const pet = state.me && state.me.pet, pets = state.me && state.me.pets;

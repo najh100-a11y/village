@@ -351,7 +351,7 @@ function ensureThumbR() {
   thumbScene.add(sun);
   thumbCam = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
 }
-// 내 주민이 꾸미기 물건을 입은 작은 그림 (상점 목록). view: 'head' 머리, 'body' 앞모습, 'back' 뒷모습
+// 내 주민이 꾸미기 물건을 입은 작은 그림 (상점 목록). view: 'head' 머리, 'hair' 머리 모양(비스듬히 옆에서, 어깨까지), 'body' 앞모습, 'back' 뒷모습
 export function avatarThumb(data, view = 'body') {
   const key = view + JSON.stringify(data);
   if (thumbs.has(key)) return thumbs.get(key);
@@ -360,9 +360,10 @@ export function avatarThumb(data, view = 'body') {
     const av = new Avatar(data);
     av.update(0, false);
     av.body.position.y = 0;
-    av.root.rotation.y = view === 'back' ? Math.PI - 0.6 : 0.3;
+    av.root.rotation.y = view === 'back' ? Math.PI - 0.6 : view === 'hair' ? 0.95 : 0.3;
     thumbScene.add(av.root);
     if (view === 'head') { thumbCam.position.set(0, 1.85, 3.7); thumbCam.lookAt(0, 1.5, 0); }
+    else if (view === 'hair') { thumbCam.position.set(0, 1.75, 4.6); thumbCam.lookAt(0, 1.3, 0); }
     else { thumbCam.position.set(0, 1.45, 5.4); thumbCam.lookAt(0, 0.95, 0); }
     thumbR.setClearColor(0x000000, 0);
     thumbR.render(thumbScene, thumbCam);

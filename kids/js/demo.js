@@ -337,7 +337,7 @@ export class DemoBackend {
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true }; }
   // 쪽지함: 친구별 마지막 쪽지와 안 읽은 수 (최근 30일)
   kids_dm_box({ p_token }) {
     const me = this.session(p_token, 'child');
@@ -998,7 +998,7 @@ export class DemoBackend {
     const name = String(p_village_name || '').trim();
     if (name.length < 1 || name.length > 10) fail('BAD_NAME');
     const bag = ((this.db.items || {})[c.id]) || {};
-    for (const slot of ['hat', 'face', 'back', 'outfit']) {
+    for (const slot of ['hat', 'face', 'back', 'outfit', 'hair']) {
       const it = p_avatar && wearItem(slot, p_avatar[slot]);
       if (it && !(bag[it] > 0)) fail('NEED_ITEM'); // 상점 꾸미기 물건은 산 아이만 입는다
     }

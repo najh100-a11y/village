@@ -76,6 +76,11 @@ function buildHair(style, color) {
   };
   const base = (gap = 0.95) => { capAll(1.07, 1.16); sides(1.07, 1.55, gap); back(1.07, 2.0, 1.2); };
   const blunt = () => fringe(1.085, 0.5, 1.32, 0.98);
+  const short = () => { capAll(1.04, 1.2); sides(1.04, 1.5, 0.95); back(1.04, 1.95, 1.2); };
+  const center = (t1 = 1.22) => { fringe(1.085, 0.5, t1, 0.46, -0.5); fringe(1.085, 0.5, t1, 0.46, 0.5); }; // 가운데 가르마
+  // 머리 표면 바깥쪽을 향하게 세운다 (뿔, 고리)
+  const outward = (o, dir, up = new THREE.Vector3(0, 1, 0)) => { o.quaternion.setFromUnitVectors(up, dir.clone().normalize()); return o; };
+  let lift = 0; // 머리숱이 높이 솟은 모양이면 덮지 않는 모자(왕관, 머리띠 등)를 그만큼 올린다
 
   switch (style) {
     case 'buzz':
@@ -167,16 +172,152 @@ function buildHair(style, color) {
         blob(0.06, 0.06, 0.06, new THREE.Vector3(s * 0.45, -0.9, 0.19), [0, 0, 0], false, tieMat);
       }
       break;
+    // ----- 열매 상점에서 사는 머리 모양 (js/wardrobe.js) -----
+    case 'cloud': { // 뭉게구름 머리: 머리 둘레에 큰 공을 겹겹이 (얼굴 앞은 비운다)
+      base();
+      const bump = sph(1, 16, 12);
+      for (const [th, n, r] of [[0, 1, 0.3], [0.42, 6, 0.28], [0.8, 9, 0.27], [1.15, 10, 0.25], [1.5, 9, 0.21]]) {
+        for (let i = 0; i < n; i++) {
+          const a = Math.atan2(Math.sin((i / n) * Math.PI * 2 + th * 0.7), Math.cos((i / n) * Math.PI * 2 + th * 0.7));
+          if (th > 0.6 && Math.abs(a) < 0.88) continue;
+          const o = mesh(bump, m);
+          o.position.copy(onHead(a, th, th > 1.3 ? 1.12 : 1.2));
+          o.scale.setScalar(r);
+          add(o, th < 1.3);
+        }
+      }
+      for (const a of [-0.58, -0.2, 0.2, 0.58]) {
+        const o = mesh(bump, m);
+        o.position.copy(onHead(a, 0.8, 1.1));
+        o.scale.setScalar(0.16);
+        add(o, true);
+      }
+      lift = 0.22;
+      break;
+    }
+    case 'spacebuns': // 양쪽 똥머리: 머리 위 양쪽에 동그란 똥머리
+      base(); blunt();
+      for (const s of [-1, 1]) {
+        const c = new THREE.Vector3(s * 0.4, 0.6, -0.08);
+        blob(0.23, 0.23, 0.23, c, [0, 0, 0], true);
+        const dir = c.clone().normalize();
+        add(outward(mesh(new THREE.TorusGeometry(0.18, 0.045, 8, 18), tieMat, ...c.clone().addScaledVector(dir, -0.13).toArray()), dir, new THREE.Vector3(0, 0, 1)), true);
+      }
+      lift = 0.1;
+      break;
+    case 'twintails': // 높은 양갈래: 머리 위쪽에서 묶어 어깨 아래까지
+      base(); blunt();
+      for (const s of [-1, 1]) {
+        for (const [x, y, z, r] of [[0.64, 0.26, -0.24, 0.19], [0.8, 0.0, -0.27, 0.18], [0.88, -0.28, -0.25, 0.165], [0.88, -0.55, -0.21, 0.145], [0.82, -0.78, -0.17, 0.115]]) {
+          blob(r, r * 1.3, r, new THREE.Vector3(s * x, y, z));
+        }
+        blob(0.08, 0.08, 0.08, new THREE.Vector3(s * 0.6, 0.34, -0.22), [0, 0, 0], false, tieMat);
+      }
+      break;
+    case 'sidetail': // 옆으로 묶은 머리: 앞머리는 왼쪽으로 넘기고 오른쪽 옆에 모아 묶는다
+      base(0.9);
+      tuft(0.3, 1.05, 0.36, 0.15, 0.2, -0.38);
+      tuft(-0.42, 1.1, 0.17, 0.1, 0.13, 0.3);
+      for (const [x, y, z, r] of [[0.68, 0.02, -0.3, 0.19], [0.78, -0.24, -0.24, 0.18], [0.8, -0.5, -0.16, 0.16], [0.74, -0.74, -0.09, 0.125]]) {
+        blob(r, r * 1.3, r, new THREE.Vector3(x, y, z));
+      }
+      blob(0.085, 0.085, 0.085, new THREE.Vector3(0.6, 0.17, -0.35), [0, 0, 0], false, tieMat);
+      break;
+    case 'wavy': // 긴 물결 머리: 가운데 가르마, 등까지 물결치며 내려온다
+      capAll(1.1, 1.05); sides(1.12, 2.15, 0.78); center(1.25);
+      blob(0.56, 0.58, 0.25, new THREE.Vector3(0, -0.52, -0.34));
+      // 등 쪽 머리 끝과 양옆이 물결 모양으로 굽이친다
+      for (const s of [-1, 1]) {
+        for (let k = 0; k < 4; k++) blob(0.15, 0.17, 0.15, new THREE.Vector3(s * (0.5 + (k % 2 ? 0.08 : 0)), -0.3 - k * 0.2, 0.06 - k * 0.07));
+        for (let k = 0; k < 3; k++) blob(0.16, 0.16, 0.16, new THREE.Vector3(s * (0.52 - (k % 2 ? 0.08 : 0)), -0.4 - k * 0.22, -0.36));
+      }
+      for (const x of [-0.36, -0.12, 0.12, 0.36]) blob(0.15, 0.15, 0.15, new THREE.Vector3(x, -1.02 + (Math.abs(x) > 0.2 ? 0.07 : 0), -0.36));
+      break;
+    case 'quiff': // 멋쟁이 앞머리: 옆은 짧고 앞머리를 위로 세워 넘긴다
+      short();
+      blob(0.4, 0.14, 0.34, onHead(0, 0.42, 1.06), [-0.25, 0, 0], true);
+      for (const a of [-0.48, -0.16, 0.16, 0.48]) {
+        blob(0.14, 0.27, 0.12, onHead(a, 0.66, 1.06).add(new THREE.Vector3(0, 0.1, 0.03)), [-0.55, 0, -a * 0.7], true);
+      }
+      lift = 0.1;
+      break;
+    case 'messy': { // 까치집 머리: 여기저기 뻗친 머리
+      base();
+      for (const [a, th, tilt, rx] of [[-0.62, 1.04, 0.7, 0.2], [-0.2, 1.02, -0.5, 0.2], [0.25, 1.04, 0.6, 0.19], [0.66, 1.06, -0.7, 0.18],
+        [-0.15, 0.5, 0.9, 0.22], [0.6, 0.4, -0.8, 0.2], [-0.9, 0.62, 0.5, 0.2], [2.5, 0.7, 0.7, 0.2], [-2.5, 0.72, -0.6, 0.2], [3.14, 0.45, 0.4, 0.22]]) {
+        add(tuft(a, th, rx, 0.09, 0.14, tilt), th < 0.95);
+      }
+      const cone = new THREE.ConeGeometry(0.07, 0.26, 8);
+      for (const [a, th, lean] of [[0.2, 0.12, 0.5], [-0.5, 0.25, -0.6], [2.8, 0.3, 0.5]]) {
+        const p = onHead(a, th, 1.04), dir = p.clone().normalize().add(new THREE.Vector3(lean * 0.6, 0, lean * 0.3)).normalize();
+        add(outward(mesh(cone, m, ...p.clone().addScaledVector(dir, 0.1).toArray()), dir), true);
+      }
+      lift = 0.06;
+      break;
+    }
+    case 'dino': { // 공룡 머리: 이마에서 뒤통수까지 공룡 등판처럼 뾰족한 판
+      short();
+      [[-0.66, 0.24], [-0.38, 0.33], [-0.1, 0.4], [0.18, 0.42], [0.48, 0.38], [0.8, 0.31], [1.12, 0.23]].forEach(([u, sz], i) => {
+        const p = onHead(u < 0 ? 0 : Math.PI, Math.abs(u), 1.02).add(new THREE.Vector3(i % 2 ? 0.035 : -0.035, 0, 0)), dir = p.clone().normalize();
+        const o = outward(mesh(new THREE.ConeGeometry(sz * 0.5, sz, 4), m, ...p.clone().addScaledVector(dir, sz * 0.38).toArray()), dir);
+        o.scale.set(0.5, 1, 1);
+        add(o, Math.abs(u) < 0.95);
+      });
+      lift = 0.12;
+      break;
+    }
+    case 'daenggi': { // 댕기 머리: 길게 땋아 내린 머리 끝에 빨간 댕기
+      capAll(1.08, 1.12); sides(1.08, 1.6, 0.95); back(1.08, 2.0, 1.2); center();
+      for (let i = 0; i < 6; i++) {
+        const r = 0.125 - i * 0.008;
+        blob(r, r * 1.15, r * 0.95, new THREE.Vector3((i % 2 ? 1 : -1) * 0.022, -0.3 - i * 0.12, -0.55 + i * 0.022));
+      }
+      const red = toon('#C7302C');
+      blob(0.06, 0.05, 0.05, new THREE.Vector3(0, -0.98, -0.44), [0, 0, 0], false, red);
+      for (const s of [-1, 1]) {
+        const rb = mesh(new THREE.BoxGeometry(0.1, 0.3, 0.02), red, s * 0.05, -1.13, -0.43);
+        rb.rotation.set(0.12, 0, s * 0.18);
+        add(rb);
+      }
+      break;
+    }
+    case 'sangtu': { // 상투 머리: 머리를 위로 올려 묶고 금빛 동곳을 꽂는다
+      capAll(1.05, 1.25); sides(1.05, 1.55, 0.95); back(1.05, 2.0, 1.2);
+      blob(0.16, 0.2, 0.16, new THREE.Vector3(0, 0.72, -0.05), [0, 0, 0], true);
+      const ring = mesh(new THREE.TorusGeometry(0.13, 0.035, 8, 18), toon('#3B3B42'), 0, 0.58, -0.05);
+      ring.rotation.x = Math.PI / 2;
+      add(ring, true);
+      const pin = mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.56, 8), toon('#E0B84A'), 0, 0.74, -0.05);
+      pin.rotation.z = Math.PI / 2;
+      add(pin, true);
+      lift = 0.14;
+      break;
+    }
+    case 'princess': { // 리본 긴 머리: 긴 생머리 뒤통수에 분홍 리본
+      capAll(1.1, 1.05); sides(1.12, 2.15, 0.78); blunt();
+      blob(0.5, 0.56, 0.24, new THREE.Vector3(0, -0.54, -0.35));
+      blob(0.14, 0.4, 0.13, new THREE.Vector3(-0.5, -0.5, 0.12), [0, 0, -0.1]);
+      blob(0.14, 0.4, 0.13, new THREE.Vector3(0.5, -0.5, 0.12), [0, 0, 0.1]);
+      const bow = toon('#F6A2C4');
+      for (const s of [-1, 1]) {
+        blob(0.2, 0.13, 0.08, new THREE.Vector3(s * 0.2, 0.22, -0.64), [0, 0, s * 0.35], false, bow);
+        blob(0.05, 0.19, 0.03, new THREE.Vector3(s * 0.09, 0.03, -0.66), [0, 0, s * 0.3], false, bow);
+      }
+      blob(0.075, 0.075, 0.06, new THREE.Vector3(0, 0.22, -0.68), [0, 0, 0], false, bow);
+      break;
+    }
     default: // short
       base();
       tuft(-0.45, 1.1, 0.2, 0.13, 0.13, 0.3);
       tuft(-0.08, 1.08, 0.22, 0.14, 0.13, 0.05);
       tuft(0.3, 1.1, 0.18, 0.12, 0.12, -0.3);
   }
-  return { group: g, top };
+  return { group: g, top, lift };
 }
 
 // ---------- 모자 ----------
+// 머리 윗부분을 덮는 모자 (머리 모양의 솟은 부분을 감춘다). 상점 안내에도 쓴다
+export const COVER_HATS = new Set(['cap', 'beanie', 'straw', 'bucket', 'chef']);
 function buildHat(style, color) {
   const g = new THREE.Group();
   let covers = false;
@@ -362,7 +503,7 @@ function buildHat(style, color) {
     }
     default:
   }
-  return { group: g, covers };
+  return { group: g, covers: covers || COVER_HATS.has(style) };
 }
 
 // ---------- 등에 메는 것 (날개, 망토, 가방) ----------
@@ -1146,6 +1287,7 @@ export class Avatar {
     head.add(hat.group);
     hat.group.traverse((o) => { if (o.userData.ownMaterial) { this.ownMaterials.push(o.material); this.ownTextures.push(o.material.map); } });
     if (hat.covers) for (const o of hair.top) o.visible = false;
+    else if (hair.lift) hat.group.position.y += hair.lift; // 높이 솟은 머리 위에 머리띠·왕관을 얹는다
     this.halo = null;
     hat.group.traverse((o) => { if (o.userData.bob) { o.userData.noMerge = true; this.halo = o; } });
     this.body.add(head);

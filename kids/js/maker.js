@@ -3,7 +3,7 @@ import * as THREE from './three.module.min.js';
 import { Avatar, toon } from './avatar.js';
 import { PARTS, PALETTE, randomAvatar, normalizeAvatar, drawPartTile, ONE_PIECE } from './face.js';
 import { h, icon, josa } from './ui.js';
-import { WARDROBE, wearItem, missingItems } from './wardrobe.js';
+import { WARDROBE, WEAR_OFF, wearItem, missingItems } from './wardrobe.js';
 
 const TABS = [
   { id: 'face', label: '얼굴', view: 'head', sections: [
@@ -16,7 +16,9 @@ const TABS = [
     { key: 'cheek', title: '볼', type: 'face', part: 'cheek' },
   ] },
   { id: 'hair', label: '머리', view: 'head', sections: [
-    { key: 'hair', title: '머리 모양', type: 'thumb', part: 'hair' },
+    { key: 'hair', title: '머리 모양', type: 'thumb', part: 'hair', group: 'free' },
+    // 열매 상점 머리 모양 (🔒는 아직 사지 않은 것. 입어 볼 수는 있지만 저장하려면 사야 한다)
+    { key: 'hair', title: '열매 상점 머리 모양 (🔒는 미리 해 볼 수만 있어요)', type: 'thumb', part: 'hair', group: 'shop', shopHair: true },
     { key: 'hairColor', title: '머리 색', type: 'color', pal: 'hair' },
   ] },
   // 상의와 하의는 따로 고른다. 한 벌 옷(원피스, 잠옷처럼 위아래가 붙은 옷)을 입으면 하의는 쉰다
@@ -87,6 +89,8 @@ export class Maker {
   tabs() { return TABS.filter((t) => !t.shop || this.shop.on); }
   // 상점 물건이면 그 이름, 아니면 null
   shopItem(key, v) { return this.shop.on ? wearItem(key, v) : null; }
+  // 이 서버에서 쓸 수 있는 상점 물건인지 (머리 모양은 서버가 따로 알려 준다)
+  canShop(id) { return this.shop.on && (WARDROBE[id].slot !== 'hair' || this.shop.hair); }
   owns(id) { return this.shop.owned[id] > 0; }
 
   ensure3D() {
@@ -159,14 +163,15 @@ export class Maker {
     this.loop = this.loop.bind(this);
   }
 
-  // shop: { on, owned: {물건: 개수}, prices: {물건: 값} } 상점 꾸미기 물건을 쓸 수 있는지와 산 것
-  open({ avatar, name, first, shop }) {
-    this.shop = { on: false, owned: {}, prices: {}, ...(shop || {}) };
+  // shop: { on, hair, owned: {물건: 개수}, prices: {물건: 값} } 상점 꾸미기 물건(hair: 머리 모양)을 쓸 수 있는지와 산 것
+  // tab: 처음 보여 줄 탭 (예: 'hair')
+  open({ avatar, name, first, shop, tab }) {
+    this.shop = { on: false, hair: false, owned: {}, prices: {}, ...(shop || {}) };
     this.drawTabs();
     this.avatar = normalizeAvatar(avatar);
     this.lastTop = ONE_PIECE.has(this.avatar.outfit) ? null : this.avatar.outfit;
     // 상점 물건을 쓸 수 없는 서버면 그 값은 기본으로 돌려 둔다
-    if (!this.shop.on) for (const k of ['hat', 'face', 'back', 'outfit']) if (wearItem(k, this.avatar[k])) this.avatar[k] = k === 'outfit' ? 'tee' : 'none';
+    for (const k of Object.keys(WEAR_OFF)) { const it = wearItem(k, this.avatar[k]); if (it && !this.canShop(it)) this.avatar[k] = WEAR_OFF[k]; }
     this.first = first;
     this.nameInput.value = name || '';
     this.errEl.textContent = '';
@@ -180,7 +185,7 @@ export class Maker {
     this.resize();
     this.clock.getDelta();
     requestAnimationFrame(this.loop);
-    this.showTab(this.tabs()[0]);
+    this.showTab(this.tabs().find((t) => t.id === tab) || this.tabs()[0]);
     return new Promise((resolve) => { this.resolve = resolve; });
   }
 
@@ -195,7 +200,9 @@ export class Maker {
       if (name.length > 10) { this.errEl.textContent = '이름은 10글자까지 쓸 수 있어요.'; return; }
       const miss = this.shop.on ? missingItems(this.avatar, this.shop.owned) : [];
       if (miss.length) {
-        this.errEl.textContent = `🔒 ${josa(miss.map((id) => WARDROBE[id].name).join(', '), '은', '는')} 열매 상점에서 사야 입을 수 있어요. 벗거나 상점에서 사 주세요.`;
+        this.errEl.textContent = miss.some((id) => WARDROBE[id].slot === 'hair')
+          ? `🔒 ${josa(miss.map((id) => WARDROBE[id].name).join(', '), '은', '는')} 열매 상점에서 사야 저장할 수 있어요. 다른 것으로 바꾸거나 상점에서 사 주세요.`
+          : `🔒 ${josa(miss.map((id) => WARDROBE[id].name).join(', '), '은', '는')} 열매 상점에서 사야 입을 수 있어요. 벗거나 상점에서 사 주세요.`;
         return;
       }
     }
@@ -248,7 +255,7 @@ export class Maker {
     this.view = { ...VIEWS[tab.view] };
     for (const b of this.tabsEl.children) b.setAttribute('aria-selected', String(b.dataset.tab === tab.id));
     this.thumbQueue = [];
-    this.opts.replaceChildren(...tab.sections.map((s) => this.section(s)));
+    this.opts.replaceChildren(...tab.sections.filter((s) => !s.shopHair || (this.shop.on && this.shop.hair)).map((s) => this.section(s)));
     this.opts.scrollTop = 0;
   }
 
@@ -269,7 +276,9 @@ export class Maker {
         if (s.group === 'top' && ONE_PIECE.has(id)) return;
         if (s.group === 'one' && !ONE_PIECE.has(id)) return;
         const item = wearItem(s.key, id);
-        if (item && !this.shop.on) return; // 상점이 없는 서버에서는 상점 물건을 보이지 않는다
+        if (s.group === 'free' && item) return;
+        if (s.group === 'shop' && !item) return;
+        if (item && !this.canShop(item)) return; // 상점이 없는 서버에서는 상점 물건을 보이지 않는다
         const cv = h('canvas', { width: s.type === 'face' ? 120 : 160, height: s.type === 'face' ? 84 : 160, 'aria-hidden': 'true' });
         const locked = item && !this.owns(item);
         const btn = h('button', {
@@ -293,11 +302,12 @@ export class Maker {
     this.avatar[key] = value;
     if (swapTop) this.avatar.outfit = this.lastTop || 'tee';
     const item = wearItem(key, value);
-    this.errEl.textContent = item && this.shop.on && !this.owns(item) ? `🔒 ${WARDROBE[item].name}: 입어 보는 중이에요. 저장하려면 열매 상점에서 사 주세요.` : '';
+    this.errEl.textContent = item && this.shop.on && !this.owns(item) ? `🔒 ${WARDROBE[item].name}: ${WARDROBE[item].slot === 'hair' ? '미리 해 보는' : '입어 보는'} 중이에요. 저장하려면 열매 상점에서 사 주세요.` : '';
     this.preview.setData(this.avatar);
     this.preview.celebrate();
     this.idle = 0;
     if (swapTop) { this.showTab(this.tab); return; } // 안내 글을 지우고 다시 그린다
+    let cleared = false;
     for (const sec of this.opts.querySelectorAll('.opt-sec')) {
       const k = sec.dataset.key;
       for (const b of sec.querySelectorAll('[data-v]')) {
@@ -310,7 +320,7 @@ export class Maker {
         for (const b of sec.querySelectorAll('.tile')) drawPartTile(b.querySelector('canvas'), this.avatar, s.part, b.dataset.v);
       }
       if (s.type === 'thumb' && THUMB_DEPS[s.part].includes(key)) {
-        this.thumbQueue = [];
+        if (!cleared) { this.thumbQueue = []; cleared = true; } // 같은 칸을 쓰는 묶음이 둘이면(상의와 한 벌 옷 등) 둘 다 다시 그린다
         for (const b of sec.querySelectorAll('.tile')) this.queueThumb(b.querySelector('canvas'), s.part, b.dataset.v);
       }
     }
