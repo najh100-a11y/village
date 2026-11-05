@@ -13,6 +13,9 @@ export const HOME_O = { x: 1000, z: 1000 };
 // 앉거나 누울 수 있는 가구: seats(물건 안 자리 x, z), y(뿌리 높이: 앉으면 발, 누우면 엉덩이), front(앞에 서는 곳 z), side(침대 옆),
 // turn(앉아서 보는 쪽을 돌린다: 피아노 의자는 건반 쪽을 본다), swing(그네: 앉으면 발판과 함께 흔들린다)
 const SWING_REST = 0.3, SWING_MAX = 1.0, SWING_W = 2.45; // 그네: 가만히 탈 때 흔들림, 가장 높이, 흔들리는 빠르기(라디안/초, 한 번 오가는 데 약 2.6초)
+// 미끄럼틀: 미끄럼판 기울기(라디안)와 판 가운데 (물건 안 좌표)
+export const SLIDE_TILT = Math.atan2(1.32, 2.15);
+const SLIDE_C = { y: 0.8, z: 0.25 };
 const REST = {
   h_bed: { lie: true, seats: [[0, -0.05]], y: 0.86, side: 1.45, front: 1.95 },
   h_sofa: { seats: [[-0.38, 0.06], [0.38, 0.06]], y: 0.3, front: 0.95 },
@@ -230,7 +233,7 @@ export function buildItem(id, glow) {
       for (const x of [-0.3, 0.3]) box(g, 0.07, 1.4, 0.07, '#5FA9E0', x, 0.7, -0.85);
       box(g, 0.66, 0.08, 0.56, '#F6D55C', 0, 1.42, -1.1);
       const ch = box(g, 0.56, 0.06, 2.3, '#EF6461', 0, 0.8, 0.25);
-      ch.rotation.x = -Math.atan2(1.32, 2.15);
+      ch.rotation.x = SLIDE_TILT; // 사다리 쪽(뒤)이 높고 앞이 낮다
       for (const x of [-0.3, 0.3]) { const rl = box(g, 0.06, 0.16, 2.3, '#F49A4C', x, 0.88, 0.25); rl.rotation.x = ch.rotation.x; }
       break;
     }
@@ -846,6 +849,42 @@ export class HomeSpace {
     return it.ride;
   }
   rider(id) { const it = this.items.get(id); return (it && it.anim && it.anim.rider) || null; }
+  // 미끄럼틀 타는 길 (집 장면 좌표): 사다리 아래(foot), 사다리 위(top), 미끄럼판 위·아래에 앉은 뿌리 자리(s0, s1), 내려서는 곳(exit), 보는 쪽(rot)
+  slidePath(id) {
+    const e = this.entry(id);
+    if (!e || e.k !== 'y_slide') return null;
+    const c = centerOf(e), rotY = -(e.r || 0) * Math.PI / 2;
+    const co = Math.cos(rotY), sn = Math.sin(rotY);
+    const at = (lx, y, lz) => { const w = this.toWorld(c.x + lx * co + lz * sn, c.z - lx * sn + lz * co); w.y = y; return w; };
+    // 판 위에 앉은 자리: 판 가운데 + 판을 따라 s만큼 + 판 바깥쪽(n)으로 판 두께 반, 뿌리는 앉는 면에서 0.26 아래
+    const th = SLIDE_TILT, chute = (sAlong) => at(0, SLIDE_C.y - Math.sin(th) * sAlong - Math.cos(th) * 0.23, SLIDE_C.z + Math.cos(th) * sAlong - Math.sin(th) * 0.23);
+    return { foot: at(0, 0, -1.95), bottom: at(0, 0, -1.62), top: at(0, 1.46, -1.12), s0: chute(-0.95), s1: chute(1.12), exit: at(0, 0, 1.95), rot: rotY, tilt: th };
+  }
+  // 사다리 아래까지 가는 길 (마지막 사다리 아래는 빼고): 방 안에서 오면 방문을 지나고, 미끄럼틀 앞이나 옆에서 오면 옆으로 돌아간다
+  slideRoute(id, from) {
+    const e = this.entry(id), P = this.slidePath(id);
+    if (!P) return [];
+    const pts = this.planRoute(from, P.foot);
+    const c = centerOf(e), rotY = -(e.r || 0) * Math.PI / 2, co = Math.cos(rotY), sn = Math.sin(rotY);
+    const at = (lx, lz) => this.toWorld(c.x + lx * co + lz * sn, c.z - lx * sn + lz * co);
+    const l = this.toLocal(pts.length ? pts[pts.length - 1] : from), dx = l.x - c.x, dz = l.z - c.z;
+    const lx = dx * co - dz * sn, lz = dx * sn + dz * co; // 미끄럼틀 안 좌표
+    if (lz > -1.75 && !(Math.abs(lx) > 1.0 && lz < -1.2)) {
+      const sx = lx >= 0 ? 1 : -1;
+      if (Math.abs(lx) < 1.0) pts.push(at(sx * 1.2, Math.min(2.3, Math.max(-1.6, lz))));
+      pts.push(at(sx * 1.2, -1.95));
+    }
+    return pts;
+  }
+  slideNear(x, z) {
+    let best = null, bd = 2.6;
+    for (const it of this.items.values()) {
+      if (it.e.k !== 'y_slide') continue;
+      const c = centerOf(it.e), d = Math.hypot(c.x - x, c.z - z);
+      if (d < bd) { bd = d; best = it.e.id; }
+    }
+    return best;
+  }
   // 집 안 좌표 (x, z)에서 가장 가까운 그네 (2.5칸 안)
   swingNear(x, z) {
     let best = null, bd = 2.5;

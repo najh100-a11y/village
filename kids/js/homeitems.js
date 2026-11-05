@@ -24,7 +24,7 @@ export const HOME_ITEMS = {
   y_birdhouse: { zone: 'yard', name: '새집', desc: '작은 새가 쉬어 가는 나무 새집이에요.', price: 3, w: 1, d: 1 },
   y_picnic: { zone: 'yard', name: '피크닉 탁자', desc: '가족과 친구가 둘러앉는 나무 탁자예요.', price: 7, w: 2, d: 2 },
   y_tree: { zone: 'yard', name: '작은 나무', desc: '마당에 심는 동그란 나무예요.', price: 6, w: 1, d: 1 },
-  y_slide: { zone: 'yard', name: '미끄럼틀', desc: '계단으로 올라가서 쭉 미끄러져요.', price: 8, w: 1, d: 3 },
+  y_slide: { zone: 'yard', name: '미끄럼틀', desc: '누르면 사다리를 올라가서 쭉 미끄러져 내려와요.', price: 8, w: 1, d: 3 },
   y_mailbox: { zone: 'yard', name: '우체통', desc: '빨간 우체통이에요.', price: 2, w: 1, d: 1 },
   // 밭 (씨앗과 모종)
   s_carrot: { zone: 'garden', name: '당근 씨앗', grown: '당근', kind: 'veg', desc: '심고 이틀이 지나면 당근 3개를 거둬요.', price: 1, w: 1, d: 1 },

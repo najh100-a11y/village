@@ -39,6 +39,14 @@ const benchPose = (av) => {
   av.legs[0].rotation.x = av.legs[1].rotation.x = -1.45;
   av.arms[0].rotation.x = av.arms[1].rotation.x = -0.4;
 };
+// 미끄럼틀: 사다리를 오르고(climb) 꼭대기에 앉았다가(sit) 미끄러져 내려와(slide) 앞에 폴짝 내려선다(hop). 초 단위
+const SLIDE_T = { climb: 1.15, sit: 0.4, slide: 1.05, hop: 0.35 };
+const climbPose = (av) => {
+  const s = Math.sin(av.time * 10);
+  av.arms[0].rotation.x = -2.5 + s * 0.45; av.arms[1].rotation.x = -2.5 - s * 0.45;
+  av.legs[0].rotation.x = -0.55 - s * 0.45; av.legs[1].rotation.x = -0.55 + s * 0.45;
+};
+const slidePose = (av) => { av.legs[0].rotation.x = av.legs[1].rotation.x = -1.45; av.arms[0].rotation.x = av.arms[1].rotation.x = -2.75; };
 // 걷기와 달리기 빠르기 (초당)
 const WALK_SPEED = 5.2, RUN_SPEED = 8.6;
 // 선베드에 누운 자세: 낮은 등받이에 기대 다리를 뻗고 두 손은 배 위에 모은다.
@@ -2238,7 +2246,7 @@ export class Village {
   }
   // 점프 단추: 앉아 있거나 먹고 있으면 먼저 일어난다. 뛰었으면 true
   jump() {
-    if (this.mode !== 'play' || !this.player || this.paused) return false;
+    if (this.mode !== 'play' || !this.player || this.paused || this.sliding) return false;
     if (this.netting) return false;
     if (this.sitting) { this.standUp(); return false; }
     if (this.eating) this.cancelEat();
@@ -2362,6 +2370,21 @@ export class Village {
         r.tag.classList.add('home-ok');
         for (const pet of pets) { H.scene.add(pet.root); pet.placed = false; }
       }
+      // 미끄럼틀을 탄 친구 (다 탈 때까지는 다른 자리 소식을 미뤄 둔다)
+      if (q.sl && !r.sliding) {
+        const sid = H.slideNear(q.x, q.z), path = sid && H.slidePath(sid);
+        if (path) {
+          if (r.pin) this.unpinRemote(r.id);
+          r.target = null; r.via = [];
+          r.sliding = { id: sid, t: 0, path };
+          q.sl = 0; // 한 번만 탄다 (다 타고 나서 이 소식을 다시 보지 않게)
+          // 다 타면 내려선 자리에 있다 (그사이 새 소식이 없어도 타기 전 자리로 돌아가지 않게)
+          const ex = H.toLocal(path.exit);
+          q.x = ex.x; q.z = ex.z; q.tx = q.tz = null;
+          return;
+        }
+      }
+      if (r.sliding) return;
       // 그네를 탄 친구: 내 화면의 그 그네 발판에 붙여 함께 흔든다
       const sw = q.w != null && q.y != null ? H.swingNear(q.x, q.z) : null;
       if (r.swingId && r.swingId !== sw) { H.ride(r.swingId, null); r.swingId = null; }
@@ -2399,7 +2422,10 @@ export class Village {
     for (const r of this.remotes.values()) {
       const pos = r.av.root.position;
       let moving = false;
-      if (r.pin && r.pin.obj) {
+      if (r.sliding) {
+        // 같은 집 친구가 미끄럼틀을 탄다: 내 화면의 그 미끄럼틀에서 똑같이 오르고 미끄러진다
+        if (this.slideStep(r.sliding, r.av, dt)) { r.sliding = null; this.syncHouse(r); }
+      } else if (r.pin && r.pin.obj) {
         // 놀이기구에 탄 친구: 그 자리(곤돌라, 배, 말)를 따라 움직인다
         r.pin.obj.getWorldPosition(pos);
         r.pin.obj.getWorldQuaternion(r.av.root.quaternion);
@@ -2440,7 +2466,7 @@ export class Village {
           if (r.stuck > 0.6) r.target = null;
         }
       }
-      if (!r.pin) this.swimTick(r.av, pos, moving, dt, r);
+      if (!r.pin && !r.sliding) this.swimTick(r.av, pos, moving, dt, r);
       r.av.update(dt, moving, r.run && moving ? 2.0 : 1.2);
       if (r.care) {
         // 애완동물 돌보기 자세 (걸어가면 그만, 안고 있던 동물은 내려온다)
@@ -2740,6 +2766,14 @@ export class Village {
       const p = o.userData.pick;
       if (p.type === 'building') { this.walkTo(p.id); return true; }
       if (p.type === 'mypet') { this.petFollower(p.owner, p.item); return true; }
+      if (p.type === 'homeitem' && H.slidePath && H.slidePath(p.id)) {
+        const foot = H.slidePath(p.id).foot.setY(0);
+        this.target = { pos: foot, action: () => { this.startSlide(p.id); if (this.on.onHomeItem) this.on.onHomeItem(p.id); } };
+        this.viaFor = this.target;
+        this.via = this.player ? H.slideRoute(p.id, this.player.root.position) : []; // 앞에서 오면 옆으로 돌아 사다리로
+        this.showTapMark(foot);
+        return true;
+      }
       if (p.type === 'homeitem' && H.restSpot) {
         const rest = H.restSpot(p.id, this.player && this.player.root.position);
         if (rest) {
@@ -2759,6 +2793,69 @@ export class Village {
       }
     }
     return false;
+  }
+  // ---------- 미끄럼틀 타기 (내 집 마당) ----------
+  // 내가 탄다: 같은 집 친구에게도 알리고(sl), 다 타면 내려선 자리를 알린다
+  startSlide(id) {
+    const H = this.homeSpace;
+    if (!this.atHome || !H || !this.player || this.sliding || this.mode !== 'play') return false;
+    const path = H.slidePath(id);
+    if (!path) return false;
+    if (this.sitting) this.standUp(true);
+    this.target = null;
+    // 카메라는 미끄럼틀 가운데를 비스듬히 옆에서 본다 (다 타면 원래 보던 쪽으로. 그동안 직접 돌렸으면 그대로)
+    const v0 = this.view.play, yaw = path.rot + 1.05;
+    this.sliding = { id, t: 0, path, me: true, focus: path.s0.clone().lerp(path.s1, 0.5).setY(0), prevYaw: v0.yaw, setYaw: yaw };
+    v0.yaw = yaw;
+    this.viewChanged();
+    this.sendHouse({ sl: 1 });
+    return true;
+  }
+  // 미끄럼틀 한 걸음: av 주민을 길(path)을 따라 옮기고 자세를 정한다. 다 탔으면 true
+  slideStep(st, av, dt) {
+    const P = st.path, T = SLIDE_T, root = av.root;
+    st.t += dt;
+    let t = st.t;
+    const pos = root.position;
+    root.rotation.order = 'YXZ';
+    if (t < T.climb) { // 사다리 오르기
+      const k = t / T.climb;
+      pos.lerpVectors(P.bottom, P.top, k);
+      if (k < 0.12) pos.lerpVectors(P.foot, P.bottom, k / 0.12).y = 0;
+      root.rotation.set(0, P.rot, 0);
+      if (av.pose !== climbPose) { resetLimbs(av); av.pose = climbPose; }
+      return false;
+    }
+    t -= T.climb;
+    if (t < T.sit) { // 꼭대기에서 미끄럼판에 앉는다
+      const k = t / T.sit;
+      pos.lerpVectors(P.top, P.s0, k);
+      root.rotation.set(P.tilt * k, P.rot, 0);
+      if (av.pose !== slidePose) { resetLimbs(av); av.pose = slidePose; if (st.me && this.on.onSlide) this.on.onSlide('go'); }
+      return false;
+    }
+    t -= T.sit;
+    if (t < T.slide) { // 점점 빠르게 미끄러진다
+      const k = t / T.slide;
+      pos.lerpVectors(P.s0, P.s1, k * k);
+      root.rotation.set(P.tilt, P.rot, 0);
+      return false;
+    }
+    t -= T.slide;
+    if (t < T.hop) { // 앞으로 폴짝 내려선다
+      const k = t / T.hop;
+      pos.lerpVectors(P.s1, P.exit, k);
+      pos.y = Math.max(0, P.s1.y * (1 - k)) + Math.sin(k * Math.PI) * 0.35;
+      root.rotation.set(P.tilt * (1 - k), P.rot, 0);
+      if (k > 0.3 && av.pose === slidePose) { av.pose = null; resetLimbs(av); }
+      return false;
+    }
+    pos.copy(P.exit).setY(0);
+    root.rotation.set(0, P.rot, 0);
+    root.rotation.order = 'XYZ';
+    av.pose = null;
+    resetLimbs(av);
+    return true;
   }
   // 화면 아래쪽 px만큼을 판이 가린다 (0이면 없음)
   setBottomCover(px) { this.coverB = Math.max(0, px || 0); }
@@ -2800,6 +2897,11 @@ export class Village {
   exitHome() {
     if (!this.atHome) return;
     if (this.sitting) this.standUp(true);
+    if (this.sliding && this.player) {
+      if (Math.abs(this.view.play.yaw - this.sliding.setYaw) < 0.01) this.view.play.yaw = this.sliding.prevYaw;
+      this.sliding = null; this.player.pose = null; resetLimbs(this.player); this.player.root.rotation.set(0, 0, 0, 'XYZ');
+    }
+    for (const r of this.remotes.values()) if (r.sliding) { r.sliding = null; r.av.pose = null; resetLimbs(r.av); r.av.root.rotation.set(0, r.av.root.rotation.y, 0, 'XYZ'); }
     const H = this.homeSpace;
     if (this.mode === 'game') this.exitGame();
     H.clearGhost();
@@ -3433,7 +3535,7 @@ export class Village {
     } else if (this.mode === 'play' && this.player) {
       // 기본: 주민 뒤쪽 위(남쪽)에서 앞을 조금 넓게 내려다본다. 끌어서 돌리면 그 방향에서 본다.
       // 그네를 타면 흔들리는 주민 대신 그네 가운데를 본다 (화면이 같이 흔들리지 않게)
-      const p = (this.sitting && this.sitting.swing && this.sitting.swing.focus) || this.player.root.position;
+      const p = (this.sitting && this.sitting.swing && this.sitting.swing.focus) || (this.sliding && this.sliding.focus) || this.player.root.position;
       const v0 = this.view.play;
       // 불꽃놀이를 할 때는 잠깐 하늘을 올려다본다
       this.lookUpT = Math.max(0, (this.lookUpT || 0) - dt);
@@ -3521,6 +3623,17 @@ export class Village {
   updatePlayer(dt) {
     const pl = this.player;
     const p = pl.root.position;
+    if (this.sliding) {
+      this.target = null;
+      if (this.slideStep(this.sliding, pl, dt)) {
+        const sl = this.sliding;
+        this.sliding = null;
+        if (Math.abs(this.view.play.yaw - sl.setYaw) < 0.01) { this.view.play.yaw = sl.prevYaw; this.viewChanged(); }
+        this.say('me', '야호!');
+        if (this.on.onSlide) this.on.onSlide('done');
+        this.sendHouse(); // 내려선 자리
+      } else { pl.update(dt, false); return; }
+    }
     // 벤치에 앉아 있거나 열매를 먹는 중: 움직이려고 하면 일어나서(그만 먹고) 간다
     if (this.sitting) {
       if (this.keys.size || this.target) this.standUp();

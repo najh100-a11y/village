@@ -65,6 +65,7 @@ export function clean(type, p) {
     if (num(p.tx) && num(p.tz)) { out.tx = p.tx; out.tz = p.tz; }
     if (num(p.y) && p.y >= 0 && p.y < 3 && num(p.ro)) { out.y = p.y; out.ro = p.ro; if (p.l === 1) out.l = 1; }
     if (num(p.w) && p.w >= 0 && p.w <= 1.2) out.w = p.w; // 그네를 타는 중 (흔들리는 크기)
+    if (p.sl === 1) out.sl = 1; // 미끄럼틀을 타기 시작했다 (x·z는 사다리 아래)
     if (p.a === 1) out.a = 1;
     if (p.u === 1) out.u = 1;
     return out;
@@ -118,7 +119,7 @@ export class Outbox {
       // 집 안 움직임은 가장 새 것 하나만. 들어오고 나가는 것(a, 빈 h)과 새로 꾸민 것(u)은 잃지 않게 차례에 넣는다
       if (payload.h !== '') this.lastHouse = { h: payload.h, x: payload.x, z: payload.z };
       else this.lastHouse = null;
-      if (payload.a || payload.u || payload.h === '') { this.hmove = null; this.queue = this.queue.filter((m) => m[0] !== 'hm'); this.queue.push([ev, payload]); while (this.queue.length > 4) this.queue.shift(); }
+      if (payload.a || payload.u || payload.sl || payload.h === '') { this.hmove = null; this.queue = this.queue.filter((m) => m[0] !== 'hm'); this.queue.push([ev, payload]); while (this.queue.length > 4) this.queue.shift(); }
       else this.hmove = [ev, payload];
       this.flush();
       return;

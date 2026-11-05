@@ -130,6 +130,7 @@ async function boot() {
     onSwim: (on) => onSwim(on),
     onPlant: (id) => homeUI && homeUI.onPlant(id),
     onHomeItem: (id) => homeUI && homeUI.onHomeItem(id),
+    onSlide: (k) => homeUI && homeUI.onSlide(k), // 미끄럼틀: 'go' 미끄러지기 시작, 'done' 다 탔다
     onCritterSound: (kind, soft) => { if (kind === 'bird') sfx.tweet(); else if (kind === 'cat') sfx.meow(soft); else sfx.bark(soft); },
   });
   try {
@@ -1611,6 +1612,7 @@ function showNews() {
   news.push(['boardisle', '새 소식! 마을 서쪽 다리를 건너면 보드게임 섬이 있어요. 과일 종 치기, 77 피하기, 숫자 암호, 만칼라, 윷놀이, 땅따먹기를 컴퓨터 친구나 마을 친구와 해 봐요.']);
   news.push(['boardisle4', '새 소식! 보드게임 섬에서 방을 만들면 친구 넷까지 함께 놀 수 있어요(만칼라는 둘). 빈자리에는 컴퓨터 친구를 앉히고, 윷놀이는 2:2 편을 먹고 할 수도 있어요.']);
   if (state.features.home) news.push(['swing', "새 소식! 내 집 마당 그네를 탈 수 있어요. 그네에 앉아 '힘껏 구르기'를 누를수록 높이 올라가요. 놀러 온 친구에게도 그네 타는 모습이 보여요."]);
+  if (state.features.home) news.push(['slide', '새 소식! 내 집 마당 미끄럼틀도 탈 수 있어요. 미끄럼틀을 누르면 사다리를 올라가서 쭉 미끄러져 내려와요. 같은 집에 있는 친구에게도 타는 모습이 보여요.']);
   if (state.features.home) news.push(['piano', '새 소식! 내 집 피아노 의자에 앉으면 건반이 나와서 직접 연주할 수 있어요. 반짝반짝 작은 별과 찬송가 세 곡은 다음 건반이 빛나서 따라 칠 수 있어요.']);
   if (state.features.hair) news.push(['hairshop', "새 소식! 열매 상점에 '머리' 칸이 생겼어요. 뭉게구름 머리, 공룡 머리, 댕기 머리, 상투 머리처럼 여러 머리 모양을 사서 옷장의 머리 칸에서 바꿔 가며 해요."]);
   news.push(['bghouses', '새 소식! 보드게임 섬 놀이 탁자마다 그 놀이를 닮은 작은 집이 생겼어요. 줄무늬 과일 가게, 윷놀이 정자, 카드 집, 해와 달 지붕, 만칼라 돌 정원, 연필 공방을 찾아가 봐요.']);

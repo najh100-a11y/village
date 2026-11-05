@@ -599,6 +599,12 @@ export function createHomeUI(o) {
     toast("그네에 앉았어요! '힘껏 구르기'를 누를수록 높이 올라가요.", 2600);
   }
 
+  // 미끄럼틀 소리: 미끄러지기 시작하면 쉬익, 내려서면 통
+  function onSlide(k) {
+    if (k === 'go') o.sfx.whoosh();
+    else if (k === 'done') o.sfx.jump();
+  }
+
   // 꾸미기 아닐 때 물건을 누르면 (작은 재미)
   function onHomeItem(id) {
     const e = v.homeSpace && v.homeSpace.entry(id);
@@ -606,7 +612,8 @@ export function createHomeUI(o) {
     if (e.k === 'h_piano') openPianoHere();
     else if (e.k === 'y_fountain') { o.sfx.splash(); v.say('me', '시원해!'); }
     else if (e.k === 'y_swing' && v.sitting && v.sitting.swing) startSwing(id);
-    else if (e.k === 'y_swing' || e.k === 'y_slide') { o.sfx.jump(); v.jump(); v.say('me', '야호!'); }
+    else if (e.k === 'y_slide') { if (!v.sliding) { o.sfx.jump(); v.jump(); v.say('me', '야호!'); } } // 탈 때는 world가 사다리부터 태운다
+    else if (e.k === 'y_swing') { o.sfx.jump(); v.jump(); v.say('me', '야호!'); }
     else if (e.k === 'h_bed') v.say('me', '포근해~');
     else if (e.k === 'y_birdhouse') o.sfx.tweet();
     else if (e.k === 'y_mailbox') {
@@ -638,7 +645,7 @@ export function createHomeUI(o) {
   }
 
   return {
-    enter, exit, reset, onPlant, onHomeItem, onShopChanged, startEdit, stopEdit, visit, refreshGuest, openInvite, remotePiano,
+    enter, exit, reset, onPlant, onHomeItem, onSlide, onShopChanged, startEdit, stopEdit, visit, refreshGuest, openInvite, remotePiano,
     get editing() { return editing; },
     get guest() { return guest; },
     onDoor(id) {
