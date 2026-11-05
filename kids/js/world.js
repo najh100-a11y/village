@@ -2727,6 +2727,8 @@ export class Village {
     }
     return false;
   }
+  // 화면 아래쪽 px만큼을 판이 가린다 (0이면 없음)
+  setBottomCover(px) { this.coverB = Math.max(0, px || 0); }
   faceTo(q) {
     if (!this.player) return;
     const p = this.player.root.position;
@@ -3423,10 +3425,16 @@ export class Village {
     this.camera.lookAt(this.camLook);
     // 지도 보기: 바라보는 가운데가 단추에 가리지 않는 칸의 가운데에 오도록 화면을 옮긴다
     this.mapS = (this.mapS || 0) + ((this.mapT || 0) - (this.mapS || 0)) * Math.min(1, dt * 4);
+    // 화면 아래를 가리는 판(집 피아노 건반)이 있으면 내 주민이 그 위 빈 곳 가운데에 보이게 화면을 올린다
+    this.coverS = (this.coverS || 0) + ((this.coverB || 0) - (this.coverS || 0)) * Math.min(1, dt * 5);
     if (this.mapS > 0.002) {
       const r = this.safeRect();
       const dx = (r.W / 2 - (r.left + r.w / 2)) * this.mapS, dy = (r.H / 2 - (r.top + r.h / 2)) * this.mapS;
       this.camera.setViewOffset(r.W, r.H, dx, dy, r.W, r.H);
+    } else if (this.coverS > 1) {
+      const el = this.renderer.domElement, W = el.clientWidth || 1, H = el.clientHeight || 1;
+      const dy = Math.max(0, Math.min(H * 0.38, (this.coverS - 90) / 2));
+      this.camera.setViewOffset(W, H, 0, dy, W, H);
     } else if (this.camera.view && this.camera.view.enabled) this.camera.clearViewOffset();
     this.fitFar();
     const focus = (this.mode === 'play' || this.mode === 'game') && this.player && !(this.mapT > 0.05) ? this.player.root.position : this.camLook;

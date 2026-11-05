@@ -15,7 +15,7 @@ export const HOME_ITEMS = {
   h_lamp: { zone: 'room', name: '스탠드', desc: '밤이 되면 따뜻하게 빛나요.', price: 3, w: 1, d: 1, glow: true },
   h_pot: { zone: 'room', name: '화분', desc: '잎이 넓은 초록 식물이에요.', price: 2, w: 1, d: 1 },
   h_toys: { zone: 'room', name: '장난감 상자', desc: '곰 인형과 공이 들어 있어요.', price: 3, w: 1, d: 1 },
-  h_piano: { zone: 'room', name: '작은 피아노', desc: '누르면 딩동 소리가 날 것 같은 피아노예요.', price: 9, w: 2, d: 1 },
+  h_piano: { zone: 'room', name: '작은 피아노', desc: '의자에 앉아 건반을 누르면 진짜로 연주할 수 있어요. 찬송가 따라 치기도 있어요.', price: 9, w: 2, d: 1 },
   // 마당
   y_bench: { zone: 'yard', name: '벤치', desc: '마당에서 쉬어 가는 나무 벤치예요.', price: 5, w: 2, d: 1 },
   y_lamp: { zone: 'yard', name: '정원등', desc: '밤이 되면 마당을 환하게 밝혀요.', price: 3, w: 1, d: 1, glow: true },

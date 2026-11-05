@@ -10,7 +10,7 @@ export const PHRASES = {
 export const EMOTES = { heart: '❤️', clap: '👏', smile: '😊', wave: '👋', pray: '🙏', star: '⭐' };
 // 놀이기구를 타며 외치는 말 (말하기 판에는 나오지 않는다)
 export const SHOUTS = { yay: '야호!', beep: '빵빵!', yum: '냠냠!' };
-const EVENTS = ['mv', 'st', 'say', 'chat', 'dm', 'done', 'av', 'inv', 'invr', 'act', 'fish', 'art', 'dish', 'ob', 'fw', 'ate', 'bug', 'jp', 'gift', 'hm', 'hinv', 'pc', 'share'];
+const EVENTS = ['mv', 'st', 'say', 'chat', 'dm', 'done', 'av', 'inv', 'invr', 'act', 'fish', 'art', 'dish', 'ob', 'fw', 'ate', 'bug', 'jp', 'gift', 'hm', 'hinv', 'pc', 'share', 'pn'];
 export const GAME_KINDS = ['omok', 'cook', 'ark', 'bg_fruit', 'bg_n77', 'bg_code', 'bg_mancala', 'bg_yut', 'bg_dots'];
 export const ACTS = ['', 'fish', 'omok', 'cook', 'art', 'memory', 'qt', 'copy', 'watch', 'ferris', 'viking', 'carousel', 'bumper', 'bench', 'eat', 'bug', 'home', 'coaster', 'swim', 'sea', 'visit', 'dig', 'skip', 'ark', 'bgame'];
 const ID_RE = /^[A-Za-z0-9-]{1,64}$/;
@@ -67,6 +67,16 @@ export function clean(type, p) {
     if (p.u === 1) out.u = 1;
     return out;
   }
+  // 집 피아노로 친 음: h 집 주인, n [음(midi 36~96), 처음 음부터 지난 ms] 32개까지 (같은 집에 있는 친구만 듣는다)
+  if (type === 'pn') {
+    if (typeof p.h !== 'string' || !ID_RE.test(p.h) || !Array.isArray(p.n) || p.n.length < 1 || p.n.length > 32) return null;
+    const n = [];
+    for (const x of p.n) {
+      if (!Array.isArray(x) || !Number.isInteger(x[0]) || x[0] < 36 || x[0] > 96 || !Number.isInteger(x[1]) || x[1] < 0 || x[1] > 6000) return null;
+      n.push([x[0], x[1]]);
+    }
+    return { h: p.h, n };
+  }
   // 우리 집에 놀러 오라고 부르기 (받는 아이만 본다)
   if (type === 'hinv') return typeof p.to === 'string' && ID_RE.test(p.to) ? { to: p.to } : null;
   // 둘이 대화: 받는 아이만 화면에 띄운다
@@ -111,6 +121,16 @@ export class Outbox {
       this.flush();
       return;
     }
+    if (ev === 'pn') {
+      // 피아노 음은 한 묶음으로 모아 둔다: 아직 못 보낸 묶음이 있으면 뒤에 이어 붙인다(시간 차이만큼 밀어서, 32개까지)
+      const at = Number.isFinite(payload._t) ? payload._t : performance.now();
+      if (this.pn && this.pn.h === payload.h) {
+        const shift = Math.max(0, Math.round(at - this.pn.at));
+        for (const [m, dt] of payload.n) if (this.pn.n.length < 32 && dt + shift <= 6000) this.pn.n.push([m, dt + shift]);
+      } else this.pn = { h: payload.h, n: payload.n.slice(0, 32), at };
+      this.flush();
+      return;
+    }
     if (ev === 'ob') this.queue = this.queue.filter((m) => m[0] !== 'ob'); // 오목 판은 가장 새 것만
     if (ev === 'jp') this.queue = this.queue.filter((m) => m[0] !== 'jp'); // 점프는 하나만
     if (ev === 'mv' || ev === 'st') this.move = [ev, payload];
@@ -144,17 +164,18 @@ export class Outbox {
     const t = performance.now();
     this.tokens = Math.min(1, this.tokens + ((t - this.last) / 1000) * this.rate());
     this.last = t;
-    if (this.peerCount() === 0) { this.move = null; this.hmove = null; this.queue.length = 0; return; } // 아무도 없으면 보내지 않는다
+    if (this.peerCount() === 0) { this.move = null; this.hmove = null; this.pn = null; this.queue.length = 0; return; } // 아무도 없으면 보내지 않는다
     while (this.tokens >= 1) {
       let m = this.queue.length ? this.queue.shift() : null;
       if (!m && this.hmove) { m = this.hmove; this.hmove = null; }
+      if (!m && this.pn) { m = ['pn', { h: this.pn.h, n: this.pn.n }]; this.pn = null; }
       if (!m && this.move) m = this.freshMove();
       if (!m) break;
       this.tokens -= 1;
       this.post(m[0], m[1]);
     }
   }
-  stop() { clearInterval(this.timer); this.move = null; this.hmove = null; this.lastHouse = null; this.queue.length = 0; }
+  stop() { clearInterval(this.timer); this.move = null; this.hmove = null; this.pn = null; this.lastHouse = null; this.queue.length = 0; }
 }
 
 class SupabaseNet {

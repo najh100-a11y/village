@@ -6,6 +6,8 @@ import {
   growStage, growHours, canWater, GROW, CROPS, HARVEST, needHours, leftText, setServerNow, serverNow,
 } from './homeitems.js';
 import { h, toast, josa } from './ui.js';
+import { openPiano } from './piano.js';
+import { pianoKey, setScene, sceneNow } from './sound.js';
 
 const ZONES = ['room', 'yard', 'garden'];
 const ZONE_RECTS = { room: [ROOM], garden: [GARDEN], yard: YARD_RECTS };
@@ -17,7 +19,7 @@ const growOf = (pl) => ({ t: pl && pl.t, g: (pl && pl.g) || undefined, w: (pl &&
 
 export function createHomeUI(o) {
   // o: { village, rpc, getToken, getMe, features, sfx, setActivity, openShop, openMaker, openSheet, modal, message, onSessionLost, setFruits,
-  //      onlineFriends, sendHouseInvite }
+  //      onlineFriends, sendHouseInvite, sendPiano }
   const v = o.village;
   let st = null; // { layout, items }
   let guest = null; // 친구 집에 놀러 왔을 때 { id, name }
@@ -86,6 +88,7 @@ export function createHomeUI(o) {
   // quiet: 다른 집으로 바로 옮겨 갈 때 (소리와 하는 일 알림을 건너뛴다)
   async function exit(quiet = false) {
     if (!v.atHome) return;
+    if (piano) piano.close();
     if (editing) stopEdit();
     if (!guest) await flush();
     guest = null;
@@ -203,6 +206,7 @@ export function createHomeUI(o) {
   // ---------- 꾸미기 ----------
   function startEdit() {
     if (!v.atHome || editing || guest) return;
+    if (piano) piano.close();
     editing = true;
     // 아래쪽 꾸미기 판에 가리지 않게 집 전체가 화면 위쪽에 오도록 본다
     const look = new THREE.Vector3(HOME_O.x - 0.5, 0, HOME_O.z + 2.6);
@@ -496,11 +500,57 @@ export function createHomeUI(o) {
       toast(o.message(err), 2800);
     } finally { farmBusy = false; }
   }
+  // ---------- 피아노: 의자에 앉으면 건반이 나온다 (js/piano.js) ----------
+  let piano = null, pianoScene = 'village';
+  let pnBuf = null, pnTimer = null; // 같은 집 친구에게 들려줄 음 (1.2초씩 모아 보낸다)
+  function openPianoHere() {
+    if (piano && piano.open) return;
+    pianoScene = sceneNow() === 'piano' ? 'village' : sceneNow();
+    setScene('piano'); // 치는 동안 배경음악을 멈춘다
+    piano = openPiano({
+      standing: () => !v.sitting,
+      onCover: (px) => v.setBottomCover(px),
+      onPlay: (m) => queueNote(m),
+      onDone: (song) => { v.celebrate(); toast(`🎉 '${song.name}'${josa(song.name, '을', '를').slice(song.name.length)} 끝까지 쳤어요!`, 3000); },
+      onClose: () => {
+        piano = null;
+        v.setBottomCover(0);
+        sendNotes();
+        setScene(pianoScene);
+        if (v.sitting && v.sitting.home) v.standUp();
+      },
+    });
+  }
+  function queueNote(m) {
+    if (!o.sendPiano || !v.house || !v.houseCompany()) return;
+    const now = performance.now();
+    if (!pnBuf) { pnBuf = { t0: now, n: [] }; pnTimer = setTimeout(sendNotes, 1200); }
+    if (pnBuf.n.length < 32) pnBuf.n.push([m, Math.min(5000, Math.round(now - pnBuf.t0))]);
+  }
+  function sendNotes() {
+    clearTimeout(pnTimer);
+    pnTimer = null;
+    const b = pnBuf;
+    pnBuf = null;
+    if (b && b.n.length && v.house) o.sendPiano({ h: v.house, n: b.n, _t: b.t0 });
+  }
+  // 같은 집에 있는 친구가 친 음을 듣는다 (친구가 친 순서와 간격 그대로, 조금 늦게)
+  const pnBubble = new Map(); // 친구 id → 마지막으로 🎵를 띄운 때 (자주 띄우지 않는다)
+  function remotePiano(id, p) {
+    const r = v.remotes && v.remotes.get(id);
+    if (!r || !v.inMyHouse(r) || p.h !== v.house) return;
+    const now = performance.now();
+    if (!(now - (pnBubble.get(id) || 0) < 6000)) { pnBubble.set(id, now); v.say(id, '🎵'); }
+    for (const [m, dt] of p.n) {
+      setTimeout(() => { const rel = pianoKey(m, { vel: 0.65 }); setTimeout(rel, 700); }, dt);
+    }
+  }
+
   // 꾸미기 아닐 때 물건을 누르면 (작은 재미)
   function onHomeItem(id) {
     const e = v.homeSpace && v.homeSpace.entry(id);
     if (!e) return;
-    if (e.k === 'h_piano') { o.sfx.success(); v.say('me', '🎵'); }
+    if (e.k === 'h_piano') openPianoHere();
     else if (e.k === 'y_fountain') { o.sfx.splash(); v.say('me', '시원해!'); }
     else if (e.k === 'y_swing' || e.k === 'y_slide') { o.sfx.jump(); v.jump(); v.say('me', '야호!'); }
     else if (e.k === 'h_bed') v.say('me', '포근해~');
@@ -534,7 +584,7 @@ export function createHomeUI(o) {
   }
 
   return {
-    enter, exit, reset, onPlant, onHomeItem, onShopChanged, startEdit, stopEdit, visit, refreshGuest, openInvite,
+    enter, exit, reset, onPlant, onHomeItem, onShopChanged, startEdit, stopEdit, visit, refreshGuest, openInvite, remotePiano,
     get editing() { return editing; },
     get guest() { return guest; },
     onDoor(id) {

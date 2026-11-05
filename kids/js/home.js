@@ -10,12 +10,14 @@ import {
 } from './homeitems.js';
 
 export const HOME_O = { x: 1000, z: 1000 };
-// 앉거나 누울 수 있는 가구: seats(물건 안 자리 x, z), y(뿌리 높이: 앉으면 발, 누우면 엉덩이), front(앞에 서는 곳 z), side(침대 옆)
+// 앉거나 누울 수 있는 가구: seats(물건 안 자리 x, z), y(뿌리 높이: 앉으면 발, 누우면 엉덩이), front(앞에 서는 곳 z), side(침대 옆),
+// turn(앉아서 보는 쪽을 돌린다: 피아노 의자는 건반 쪽을 본다)
 const REST = {
   h_bed: { lie: true, seats: [[0, -0.05]], y: 0.86, side: 1.45, front: 1.95 },
   h_sofa: { seats: [[-0.38, 0.06], [0.38, 0.06]], y: 0.3, front: 0.95 },
   h_chair: { seats: [[0, 0.02]], y: 0.29, front: 0.8 },
   y_bench: { seats: [[-0.45, 0.02], [0.45, 0.02]], y: 0.24, front: 0.85 },
+  h_piano: { seats: [[0, 0.64]], y: 0.22, front: 1.25, turn: Math.PI },
 };
 const VC = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient() });
 const DOOR_IN = { x: -2.7, z: -6.5 }, DOOR_OUT = { x: -1.0, z: -6.5 };
@@ -820,7 +822,7 @@ export class HomeSpace {
     if (from) seats.sort((a, q) => Math.hypot(a.pos.x - from.x, a.pos.z - from.z) - Math.hypot(q.pos.x - from.x, q.pos.z - from.z));
     const seat = seats[0];
     const outs = R.lie ? [at(R.side, seat.lz), at(-R.side, seat.lz), at(seat.lx, R.front)] : [at(seat.lx, R.front)];
-    return { x: seat.pos.x, y: R.y, z: seat.pos.z, rot: rotY, lie: !!R.lie, out: near(outs) };
+    return { x: seat.pos.x, y: R.y, z: seat.pos.z, rot: rotY + (R.turn || 0), lie: !!R.lie, out: near(outs) };
   }
   plantStand(id) {
     const e = this.entry(id);

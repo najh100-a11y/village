@@ -9,7 +9,7 @@ const MODES = ['all', 'sfx', 'off']; // 음악+효과음 → 효과음만 → �
 const MUSIC_VOL = 0.28;
 const SFX_GAIN = 3.2;
 const FW_GAIN = 0.3; // 불꽃 소리는 원래 커서 덜 키운다
-const SCENE = { village: 1, game: 0.7, quiet: 0.32, login: 0.8 };
+const SCENE = { village: 1, game: 0.7, quiet: 0.32, login: 0.8, piano: 0 }; // 피아노를 치는 동안은 음악을 멈춘다
 
 let mode = 'all';
 try { const s = localStorage.getItem(KEY); if (MODES.includes(s)) mode = s; } catch (e) { /* 기본값 */ }
@@ -99,7 +99,7 @@ function playMusic() {
   wireMusic();
   const p = bgm.play();
   if (p && p.catch) p.catch(() => { /* 아직 터치 전이면 다음 터치 때 다시 */ });
-  fadeTo(MUSIC_VOL * (SCENE[scene] || 1), 900);
+  fadeTo(MUSIC_VOL * (SCENE[scene] ?? 1), 900);
 }
 
 function fadeTo(target, ms) {
@@ -121,9 +121,11 @@ export function stopMusic() { wantMusic = false; fadeTo(0, 600); }
 // 장면에 따라 음악 크기: 마을 / 놀이 / 조용히(암송·묵상·필사)
 export function setScene(s) {
   scene = s;
-  if (bgm && wantMusic && musicOn()) fadeTo(MUSIC_VOL * (SCENE[s] || 1), 700);
+  const vol = MUSIC_VOL * (SCENE[s] ?? 1);
+  if (bgm && wantMusic && musicOn()) { if (vol > 0 && bgm.paused) playMusic(); else fadeTo(vol, 700); } // 멈췄던 음악은 다시 튼다
   applyRain();
 }
+export function sceneNow() { return scene; }
 
 // ---------- 빗소리: 비 오는 날 마을에 잔잔하게 (효과음을 끄면 함께 꺼진다) ----------
 let rainSrc = null, rainGain = null, rainLevel = 0, rainBuf = null;
@@ -312,6 +314,71 @@ function fwBurst(kind = 'spark', vol = 1) {
   if (kind === 'heart') [1568, 2093, 2637, 3136].forEach((f, i) => fxTone({ f, dur: 0.7, vol: 0.05 * v, delay: 0.45 + i * 0.13 }));
 }
 const rnd = (a, b) => a + Math.random() * (b - a);
+
+// ---------- 피아노 (내 집 피아노) ----------
+// 줄을 친 소리처럼: 배음이 많은 소리로 세게 시작해 금방 조금 줄고, 그다음 천천히 사라진다. 높은 음일수록 빨리 사라지고,
+// 시간이 지나면 밝은 배음부터 먼저 줄어든다(낮은 거르개). 줄 두 개를 아주 조금 다르게 맞춰 울림을 만들고, 망치 소리를 살짝 섞는다.
+let pianoWave = null;
+const voices = [];
+function pianoTimbre() {
+  if (!pianoWave) {
+    const amp = [0, 1, 0.5, 0.33, 0.22, 0.16, 0.1, 0.07, 0.05, 0.035, 0.025, 0.018, 0.012];
+    const re = new Float32Array(amp.length), im = new Float32Array(amp.length);
+    amp.forEach((a, i) => { im[i] = a; });
+    pianoWave = ac.createPeriodicWave(re, im);
+  }
+  return pianoWave;
+}
+// 피아노 소리를 낼 수 있는지 (소리를 껐거나 아직 화면을 누르기 전이면 false)
+export function pianoReady() { return ready(); }
+// midi 번호(가운데 도 60)의 음을 친다. vel 세기(0~1), delay 몇 초 뒤. 돌려주는 함수를 부르면 건반에서 손을 뗀 것처럼 소리를 멈춘다.
+export function pianoKey(midi, { vel = 1, delay = 0 } = {}) {
+  if (!ready()) return () => {};
+  try {
+    const f = 440 * Math.pow(2, (midi - 69) / 12);
+    const t = ac.currentTime + delay;
+    const tc = Math.max(0.35, Math.min(1.6, 1.25 - (midi - 60) * 0.03)); // 사라지는 빠르기 (낮은 음은 길게)
+    const peak = 0.062 * Math.max(0.2, Math.min(1, vel)) * (midi < 52 ? 1.15 : midi > 76 ? 0.85 : 1);
+    const g = ac.createGain(), lp = ac.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.Q.value = 0.3;
+    lp.frequency.setValueAtTime(Math.min(14000, f * 9), t);
+    lp.frequency.setTargetAtTime(Math.min(9000, f * 3), t + 0.02, tc * 0.8);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(peak, t + 0.005);
+    g.gain.setTargetAtTime(peak * 0.42, t + 0.005, 0.09);
+    g.gain.setTargetAtTime(0.0001, t + 0.25, tc);
+    const oscs = [1, 1.0011].map((k) => {
+      const o = ac.createOscillator();
+      o.setPeriodicWave(pianoTimbre());
+      o.frequency.setValueAtTime(f * k, t);
+      o.connect(lp);
+      return o;
+    });
+    lp.connect(g);
+    g.connect(master);
+    const end = t + 0.25 + tc * 7;
+    for (const o of oscs) { o.start(t); o.stop(end); }
+    noise({ dur: 0.03, vol: 0.025 * vel, freq: Math.min(6000, f * 5), q: 1.2, delay }); // 망치가 줄을 치는 소리
+    const voice = { g, oscs, done: false, end };
+    const release = () => {
+      if (voice.done) return;
+      voice.done = true;
+      const now = Math.max(ac.currentTime, t + 0.06);
+      g.gain.cancelScheduledValues(now);
+      g.gain.setTargetAtTime(0.0001, now, 0.07);
+      for (const o of oscs) { try { o.stop(now + 0.5); } catch (e) { /* 이미 멈춤 */ } }
+    };
+    voice.release = release;
+    voices.push(voice);
+    // 너무 많이 겹치면 오래된 음부터 멈춘다
+    while (voices.length && (voices.length > 28 || voices[0].end < ac.currentTime)) {
+      const old = voices.shift();
+      if (voices.length >= 28) old.release();
+    }
+    return release;
+  } catch (e) { return () => {}; }
+}
 
 export const sfx = {
   // 천둥: 멀리서 우르릉 (휴대폰 스피커에도 들리게 낮은 소리에 조금 높은 소리를 섞는다)

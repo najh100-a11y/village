@@ -191,7 +191,7 @@ async function boot() {
   homeUI = createHomeUI({
     village, rpc, getToken: token, getMe: () => state.me, features: () => state.features || {}, sfx, setActivity, message,
     openShop: (t) => openShop(t), openMaker: (first) => openMaker(first), openSheet, modal, onSessionLost: sessionLost, setFruits,
-    onlineFriends, sendHouseInvite: (id) => net && net.send('hinv', { to: id }),
+    onlineFriends, sendHouseInvite: (id) => net && net.send('hinv', { to: id }), sendPiano: (p) => net && net.send('pn', p),
     openMail: () => (mailOk() ? openMail() : null),
     onCrops: (c) => setCrops(c), openBasket: () => openBasket(),
   });
@@ -861,6 +861,8 @@ async function startNet() {
           toast(village.atHome && village.house === me ? `${josa(person.name, '이가', '가')} 우리 집에 놀러 왔어요!` : `${josa(person.name, '이가', '가')} 우리 집에 놀러 갔어요. '내 집'에 들어가면 만날 수 있어요!`, 3600);
         }
         if (p.u && homeUI.guest && homeUI.guest.id === id) homeUI.refreshGuest();
+      } else if (type === 'pn') {
+        if (homeUI) homeUI.remotePiano(id, p); // 같은 집에 있으면 친구가 치는 피아노 소리를 듣는다
       } else if (type === 'hinv') {
         if (state.features.visit) showHomeInvite(id, person.name);
       } else if (type === 'gift') {
@@ -1608,6 +1610,7 @@ function showNews() {
   news.push(['weather', "새 소식! 마을 날씨가 대구의 지금 날씨를 따라 바뀌어요. 대구에 비가 오면 마을에도 비가, 눈이 오면 눈이 내려요. 위쪽 열매 옆의 날씨를 누르면 자세히 볼 수 있어요."]);
   news.push(['boardisle', '새 소식! 마을 서쪽 다리를 건너면 보드게임 섬이 있어요. 과일 종 치기, 77 피하기, 숫자 암호, 만칼라, 윷놀이, 땅따먹기를 컴퓨터 친구나 마을 친구와 해 봐요.']);
   news.push(['boardisle4', '새 소식! 보드게임 섬에서 방을 만들면 친구 넷까지 함께 놀 수 있어요(만칼라는 둘). 빈자리에는 컴퓨터 친구를 앉히고, 윷놀이는 2:2 편을 먹고 할 수도 있어요.']);
+  if (state.features.home) news.push(['piano', '새 소식! 내 집 피아노 의자에 앉으면 건반이 나와서 직접 연주할 수 있어요. 반짝반짝 작은 별과 찬송가 세 곡은 다음 건반이 빛나서 따라 칠 수 있어요.']);
   if (state.features.hair) news.push(['hairshop', "새 소식! 열매 상점에 '머리' 칸이 생겼어요. 뭉게구름 머리, 공룡 머리, 댕기 머리, 상투 머리처럼 여러 머리 모양을 사서 옷장의 머리 칸에서 바꿔 가며 해요."]);
   news.push(['bghouses', '새 소식! 보드게임 섬 놀이 탁자마다 그 놀이를 닮은 작은 집이 생겼어요. 줄무늬 과일 가게, 윷놀이 정자, 카드 집, 해와 달 지붕, 만칼라 돌 정원, 연필 공방을 찾아가 봐요.']);
   news.push(['clothes2', "새 소식! 옷장('꾸미기')에 옷이 많이 늘었어요. 이제 상의와 하의를 따로 골라 입어요. 치마, 반바지, 청바지, 한복 저고리와 한복 치마, 패딩, 야구 점퍼도 있어요."]);
