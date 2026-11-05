@@ -15,6 +15,7 @@ const mapFrom = (mode) => (mode === 'game' ? 2.0 : 1.6);
 import { Bugs, makeBug } from './bugs.js';
 import { Fireworks } from './fireworks.js';
 import { HomeSpace, HOME_O, buildCrop } from './home.js';
+import { centerOf } from './homeitems.js';
 import { Villagers } from './villagers.js';
 import { Sea } from './sea.js';
 import { Beach, makeShovel, digPoseAt, remoteDigPose, DIG_SPOTS } from './beach.js';
@@ -1555,17 +1556,31 @@ export class Village {
     pl.root.rotation.y = spot.rot;
     pl.pose = spot.lie ? bedPose : benchPose;
     this.sitting = { home: true, lie: spot.lie, out: out || pl.root.position.clone().setY(0) };
+    // 그네: 발판에 붙어서 함께 흔들린다 (updatePlayer가 매번 발판 자리를 따라간다)
+    if (spot.swing && this.homeSpace && this.homeSpace.ride(spot.swing, 0.45)) {
+      const H = this.homeSpace, e = H.entry(spot.swing), c = centerOf(e);
+      // 카메라는 그네 가운데를 보고, 흔들리는 모습이 잘 보이게 비스듬히 옆으로 돈다 (내리면 원래대로)
+      const v0 = this.view.play, yaw = spot.rot + 0.95;
+      this.sitting.swing = { id: spot.swing, yaw: spot.rot, focus: H.toWorld(c.x, c.z), prevYaw: v0.yaw, setYaw: yaw };
+      v0.yaw = yaw;
+      this.viewChanged();
+    }
     this.target = null;
     this.sendHouse(); // 같은 집 친구에게도 앉은 모습이 보이게
   }
   standUp(quiet = false) {
     if (!this.sitting || !this.player) return;
-    const out = this.sitting.out;
+    const out = this.sitting.out, sw = this.sitting.swing;
     if (this.sitting.home) quiet = true; // 내 집에서는 하는 일(🏠)을 그대로 둔다
     this.sitting = null;
     const pl = this.player;
     pl.pose = null;
     resetLimbs(pl);
+    if (sw) { // 그네에서 내리면 몸을 바로 세우고, 카메라를 돌리지 않았으면 원래 보던 쪽으로
+      if (this.homeSpace) this.homeSpace.ride(sw.id, null);
+      pl.root.rotation.set(0, sw.yaw, 0);
+      if (Math.abs(this.view.play.yaw - sw.setYaw) < 0.01) { this.view.play.yaw = sw.prevYaw; this.viewChanged(); }
+    }
     pl.root.position.set(out.x, 0, out.z);
     this.resolve(pl.root.position);
     if (!quiet && this.on.onSit) this.on.onSit(null);
@@ -2306,7 +2321,15 @@ export class Village {
     if (!extra.a && !extra.u && !this.houseCompany()) return;
     const H = this.homeSpace, pr = this.player.root, p = H.toLocal(pr.position);
     const m = { h: this.house, x: +p.x.toFixed(2), z: +p.z.toFixed(2), ...extra };
-    if (this.sitting && this.sitting.home) { m.y = +pr.position.y.toFixed(2); m.ro = +pr.rotation.y.toFixed(2); if (this.sitting.lie) m.l = 1; }
+    if (this.sitting && this.sitting.home) {
+      m.y = +pr.position.y.toFixed(2); m.ro = +pr.rotation.y.toFixed(2); if (this.sitting.lie) m.l = 1;
+      if (this.sitting.swing) { // 그네: 앉은 자리 대신 그네 가운데와 흔들리는 크기를 알린다
+        const rd = H.ride(this.sitting.swing.id), e = H.entry(this.sitting.swing.id);
+        if (e) { const c = centerOf(e); m.x = +c.x.toFixed(2); m.z = +c.z.toFixed(2); }
+        m.ro = +this.sitting.swing.yaw.toFixed(2);
+        m.w = rd ? Math.round(rd.want * 20) / 20 : 0.3;
+      }
+    }
     this.on.onHouseMove(m);
   }
   inMyHouse(r) { return !!(this.atHome && this.house && r.house === this.house && this.homeSpace); }
@@ -2339,6 +2362,15 @@ export class Village {
         r.tag.classList.add('home-ok');
         for (const pet of pets) { H.scene.add(pet.root); pet.placed = false; }
       }
+      // 그네를 탄 친구: 내 화면의 그 그네 발판에 붙여 함께 흔든다
+      const sw = q.w != null && q.y != null ? H.swingNear(q.x, q.z) : null;
+      if (r.swingId && r.swingId !== sw) { H.ride(r.swingId, null); r.swingId = null; }
+      if (sw && H.rider(sw)) {
+        H.ride(sw, q.w);
+        r.swingId = sw;
+        this.pinRemote(r.id, { kind: 'hrest', obj: H.rider(sw), pose: benchPose, auto: false });
+        return;
+      }
       if (q.y != null) {
         this.pinRemote(r.id, { kind: 'hrest', x: at.x, y: q.y, z: at.z, rot: q.ro, pose: q.l ? bedPose : benchPose, auto: false });
         return;
@@ -2349,6 +2381,7 @@ export class Village {
       r.stuck = 0;
       return;
     }
+    if (r.swingId) { if (H) H.ride(r.swingId, null); r.swingId = null; }
     if (!r.inHouse) return;
     r.inHouse = false;
     if (r.pin && r.pin.kind === 'hrest') this.unpinRemote(r.id);
@@ -3399,7 +3432,8 @@ export class Village {
       this.camLook.lerp(map ? this.wantLook : this.game.cam.look, k);
     } else if (this.mode === 'play' && this.player) {
       // 기본: 주민 뒤쪽 위(남쪽)에서 앞을 조금 넓게 내려다본다. 끌어서 돌리면 그 방향에서 본다.
-      const p = this.player.root.position;
+      // 그네를 타면 흔들리는 주민 대신 그네 가운데를 본다 (화면이 같이 흔들리지 않게)
+      const p = (this.sitting && this.sitting.swing && this.sitting.swing.focus) || this.player.root.position;
       const v0 = this.view.play;
       // 불꽃놀이를 할 때는 잠깐 하늘을 올려다본다
       this.lookUpT = Math.max(0, (this.lookUpT || 0) - dt);
@@ -3490,7 +3524,14 @@ export class Village {
     // 벤치에 앉아 있거나 열매를 먹는 중: 움직이려고 하면 일어나서(그만 먹고) 간다
     if (this.sitting) {
       if (this.keys.size || this.target) this.standUp();
-      else { pl.update(dt, false); return; }
+      else {
+        if (this.sitting.swing && this.homeSpace) {
+          const a = this.homeSpace.rider(this.sitting.swing.id); // 그네 발판을 따라 흔들린다
+          if (a) { a.updateWorldMatrix(true, false); a.getWorldPosition(p); a.getWorldQuaternion(pl.root.quaternion); }
+        }
+        pl.update(dt, false);
+        return;
+      }
     }
     if (this.eating) {
       if (this.keys.size || this.target) this.cancelEat();

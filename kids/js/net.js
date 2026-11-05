@@ -56,13 +56,15 @@ export function clean(type, p) {
     return p.n === 0 && typeof p.p === 'string' && PET_RE.test(p.p) ? { to: p.to, n: 0, m: p.m, p: p.p } : null;
   }
   // 집 안에서 움직이기: h 집 주인(빈 글자면 집에서 나감), x·z 집 안 자리, tx·tz 가는 곳,
-  // 앉거나 누웠으면 y 높이·ro 방향·l(1 누움), a: 1 막 들어옴(먼저 있던 친구가 자기 자리를 알려 준다), u: 1 집을 새로 꾸몄음
+  // 앉거나 누웠으면 y 높이·ro 방향·l(1 누움), w: 그네를 타면 흔들리는 크기(x·z는 그네 가운데),
+  // a: 1 막 들어옴(먼저 있던 친구가 자기 자리를 알려 준다), u: 1 집을 새로 꾸몄음
   if (type === 'hm') {
     if (p.h === '') return { h: '' };
     if (typeof p.h !== 'string' || !ID_RE.test(p.h) || !num(p.x) || !num(p.z)) return null;
     const out = { h: p.h, x: p.x, z: p.z };
     if (num(p.tx) && num(p.tz)) { out.tx = p.tx; out.tz = p.tz; }
     if (num(p.y) && p.y >= 0 && p.y < 3 && num(p.ro)) { out.y = p.y; out.ro = p.ro; if (p.l === 1) out.l = 1; }
+    if (num(p.w) && p.w >= 0 && p.w <= 1.2) out.w = p.w; // 그네를 타는 중 (흔들리는 크기)
     if (p.a === 1) out.a = 1;
     if (p.u === 1) out.u = 1;
     return out;

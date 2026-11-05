@@ -89,6 +89,7 @@ export function createHomeUI(o) {
   async function exit(quiet = false) {
     if (!v.atHome) return;
     if (piano) piano.close();
+    if (swingUi) swingUi.stop();
     if (editing) stopEdit();
     if (!guest) await flush();
     guest = null;
@@ -207,6 +208,7 @@ export function createHomeUI(o) {
   function startEdit() {
     if (!v.atHome || editing || guest) return;
     if (piano) piano.close();
+    if (v.sitting && v.sitting.swing) v.standUp();
     editing = true;
     // 아래쪽 꾸미기 판에 가리지 않게 집 전체가 화면 위쪽에 오도록 본다
     const look = new THREE.Vector3(HOME_O.x - 0.5, 0, HOME_O.z + 2.6);
@@ -546,12 +548,64 @@ export function createHomeUI(o) {
     }
   }
 
+  // ---------- 그네 타기: 그네에 앉으면 '힘껏 구르기'로 높이 흔든다 ----------
+  let swingUi = null;
+  function startSwing(id) {
+    if (swingUi) swingUi.stop();
+    const H = v.homeSpace;
+    const meter = h('i');
+    let yay = false, lastSide = 0, lastPush = 0;
+    const pump = () => {
+      const rd = H && H.ride(id);
+      if (!rd || !v.sitting || !v.sitting.swing) return;
+      const now = performance.now();
+      if (now - lastPush < 180) return; // 너무 빨리 누르면 한 번으로
+      lastPush = now;
+      H.ride(id, rd.want + 0.13);
+      o.sfx.hop();
+      if (rd.want >= 0.95 && !yay) { yay = true; v.say('me', '야호!'); }
+      v.sendHouse(); // 같은 집 친구 화면의 그네도 그만큼 높이
+    };
+    const el = h('div', { class: 'swing-bar', role: 'group', 'aria-label': '그네 타기' },
+      h('div', { class: 'swing-meter', 'aria-hidden': 'true' }, h('span', {}, '높이'), h('b', {}, meter)),
+      h('button', { class: 'btn btn-sun swing-push', type: 'button', 'data-quiet': '', onclick: pump }, '힘껏 구르기!'),
+      h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => v.standUp() }, '내리기'));
+    document.body.append(el);
+    document.body.classList.add('swing-on');
+    const onKey = (e) => {
+      if (e.target && ['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); e.stopImmediatePropagation(); if (!e.repeat) pump(); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); v.standUp(); }
+    };
+    window.addEventListener('keydown', onKey, true);
+    const tick = setInterval(() => {
+      if (!v.sitting || !v.sitting.swing || v.sitting.swing.id !== id) { stop(); return; }
+      const rd = H.ride(id);
+      if (!rd) return;
+      meter.style.width = `${Math.round(Math.min(1, rd.amp) * 100)}%`;
+      // 높이 흔들리면 가운데를 지날 때마다 바람 소리
+      const side = Math.sign(Math.sin(rd.phase));
+      if (side !== lastSide && lastSide !== 0 && rd.amp > 0.5) o.sfx.whoosh();
+      lastSide = side;
+    }, 50);
+    function stop() {
+      clearInterval(tick);
+      window.removeEventListener('keydown', onKey, true);
+      el.remove();
+      document.body.classList.remove('swing-on');
+      if (swingUi && swingUi.el === el) swingUi = null;
+    }
+    swingUi = { el, stop };
+    toast("그네에 앉았어요! '힘껏 구르기'를 누를수록 높이 올라가요.", 2600);
+  }
+
   // 꾸미기 아닐 때 물건을 누르면 (작은 재미)
   function onHomeItem(id) {
     const e = v.homeSpace && v.homeSpace.entry(id);
     if (!e) return;
     if (e.k === 'h_piano') openPianoHere();
     else if (e.k === 'y_fountain') { o.sfx.splash(); v.say('me', '시원해!'); }
+    else if (e.k === 'y_swing' && v.sitting && v.sitting.swing) startSwing(id);
     else if (e.k === 'y_swing' || e.k === 'y_slide') { o.sfx.jump(); v.jump(); v.say('me', '야호!'); }
     else if (e.k === 'h_bed') v.say('me', '포근해~');
     else if (e.k === 'y_birdhouse') o.sfx.tweet();

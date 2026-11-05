@@ -1107,6 +1107,21 @@ body.home-editing .pad, body.home-editing .jump-btn, body.home-editing #hud .hud
 /* ---------- 보드게임 섬: 놀이 화면 ---------- */
 body.bg-on #hud, body.bg-on .pad, body.bg-on .jump-btn, body.bg-on .run-btn, body.bg-on .view-ctl, body.bg-on #gameUi, body.bg-on .chat-log, body.bg-on .pet-bar, body.bg-on .swim-bar, body.bg-on #sayPanel, body.bg-on #prompt, body.bg-on #hint, body.bg-on .demo-ribbon { display: none !important; }
 body.bg-on #toast { top: calc(84px + env(safe-area-inset-top)); }
+/* ---------- 내 집 그네 타기 (js/homeui.js) ---------- */
+body.swing-on .home-bar, body.swing-on .jump-btn, body.swing-on .pad, body.swing-on .run-btn, body.swing-on #prompt, body.swing-on #hint { display: none !important; }
+.swing-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom)); z-index: 26; display: flex; align-items: center; gap: 10px;
+  background: var(--paper); border-radius: 999px; padding: 8px 10px 8px 16px; box-shadow: var(--shadow); max-width: calc(100vw - 24px); box-sizing: border-box; }
+.swing-meter { display: grid; gap: 3px; width: 92px; }
+.swing-meter span { font-size: 12px; color: var(--ink-soft); }
+.swing-meter b { display: block; height: 10px; border-radius: 999px; background: var(--paper-2); overflow: hidden; border: 1px solid var(--line); }
+.swing-meter i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--leaf), var(--sun)); border-radius: inherit; transition: width .1s linear; }
+.swing-push { min-height: 58px; font-size: 21px; padding: 0 22px; white-space: nowrap; }
+.swing-bar .btn-soft { white-space: nowrap; }
+@media (max-width: 520px) {
+  .swing-bar { gap: 8px; padding: 6px 8px 6px 12px; bottom: calc(104px + env(safe-area-inset-bottom)); }
+  .swing-meter { width: 62px; }
+  .swing-push { min-height: 52px; font-size: 18px; padding: 0 16px; }
+}
 /* ---------- 내 집 피아노 (js/piano.js) ---------- */
 body.piano-on .pad, body.piano-on .jump-btn, body.piano-on .run-btn, body.piano-on .view-ctl, body.piano-on .home-bar, body.piano-on .chat-log,
 body.piano-on .pet-bar, body.piano-on #sayPanel, body.piano-on #prompt, body.piano-on #hint { display: none !important; }

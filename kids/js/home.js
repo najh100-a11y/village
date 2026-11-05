@@ -11,13 +11,15 @@ import {
 
 export const HOME_O = { x: 1000, z: 1000 };
 // 앉거나 누울 수 있는 가구: seats(물건 안 자리 x, z), y(뿌리 높이: 앉으면 발, 누우면 엉덩이), front(앞에 서는 곳 z), side(침대 옆),
-// turn(앉아서 보는 쪽을 돌린다: 피아노 의자는 건반 쪽을 본다)
+// turn(앉아서 보는 쪽을 돌린다: 피아노 의자는 건반 쪽을 본다), swing(그네: 앉으면 발판과 함께 흔들린다)
+const SWING_REST = 0.3, SWING_MAX = 1.0, SWING_W = 2.45; // 그네: 가만히 탈 때 흔들림, 가장 높이, 흔들리는 빠르기(라디안/초, 한 번 오가는 데 약 2.6초)
 const REST = {
   h_bed: { lie: true, seats: [[0, -0.05]], y: 0.86, side: 1.45, front: 1.95 },
   h_sofa: { seats: [[-0.38, 0.06], [0.38, 0.06]], y: 0.3, front: 0.95 },
   h_chair: { seats: [[0, 0.02]], y: 0.29, front: 0.8 },
   y_bench: { seats: [[-0.45, 0.02], [0.45, 0.02]], y: 0.24, front: 0.85 },
   h_piano: { seats: [[0, 0.64]], y: 0.22, front: 1.25, turn: Math.PI },
+  y_swing: { seats: [[0, 0.02]], y: 0.33, front: 1.4, swing: true },
 };
 const VC = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient() });
 const DOOR_IN = { x: -2.7, z: -6.5 }, DOOR_OUT = { x: -1.0, z: -6.5 };
@@ -178,6 +180,11 @@ export function buildItem(id, glow) {
       g.add(seat);
       seat.traverse((o) => { if (o.isMesh) o.userData.noMerge = true; });
       anim.swing = seat;
+      // 그네를 탄 주민이 붙는 자리 (발판 위에 앉은 뿌리 자리: 앉는 판 0.26 아래)
+      const rider = new THREE.Object3D();
+      rider.position.set(0, -1.79, 0.02);
+      seat.add(rider);
+      anim.rider = rider;
       break;
     }
     case 'y_fountain': {
@@ -822,7 +829,32 @@ export class HomeSpace {
     if (from) seats.sort((a, q) => Math.hypot(a.pos.x - from.x, a.pos.z - from.z) - Math.hypot(q.pos.x - from.x, q.pos.z - from.z));
     const seat = seats[0];
     const outs = R.lie ? [at(R.side, seat.lz), at(-R.side, seat.lz), at(seat.lx, R.front)] : [at(seat.lx, R.front)];
-    return { x: seat.pos.x, y: R.y, z: seat.pos.z, rot: rotY + (R.turn || 0), lie: !!R.lie, out: near(outs) };
+    return { x: seat.pos.x, y: R.y, z: seat.pos.z, rot: rotY + (R.turn || 0), lie: !!R.lie, out: near(outs), swing: R.swing ? id : null };
+  }
+  // 그네 타기: want는 흔들리는 크기(라디안, 0.25~1). null을 주면 내려서 다시 살랑살랑 흔들린다.
+  // 지금 타는 상태({ amp, want, phase })를 돌려준다. 그네가 아니면 null
+  ride(id, want) {
+    const it = this.items.get(id);
+    if (!it || !it.anim || !it.anim.swing) return null;
+    if (want === null) { it.ride = null; return null; }
+    if (want === undefined) return it.ride || null; // 지금 상태만 본다
+    if (!it.ride) {
+      const ang = it.anim.swing.rotation.x; // 지금 기운 데서 이어서 흔든다
+      it.ride = { amp: Math.abs(ang), want: SWING_REST, phase: (Math.PI / 2) * (ang < 0 ? -1 : 1) };
+    }
+    it.ride.want = Math.max(SWING_REST, Math.min(SWING_MAX, want));
+    return it.ride;
+  }
+  rider(id) { const it = this.items.get(id); return (it && it.anim && it.anim.rider) || null; }
+  // 집 안 좌표 (x, z)에서 가장 가까운 그네 (2.5칸 안)
+  swingNear(x, z) {
+    let best = null, bd = 2.5;
+    for (const it of this.items.values()) {
+      if (!it.anim || !it.anim.swing) continue;
+      const c = centerOf(it.e), d = Math.hypot(c.x - x, c.z - z);
+      if (d < bd) { bd = d; best = it.e.id; }
+    }
+    return best;
   }
   plantStand(id) {
     const e = this.entry(id);
@@ -838,7 +870,16 @@ export class HomeSpace {
     for (const it of this.items.values()) {
       const a = it.anim;
       if (!a) continue;
-      if (a.swing) a.swing.rotation.x = Math.sin(this.t * 1.6 + it.e.x) * 0.28;
+      if (a.swing) {
+        const rd = it.ride;
+        if (rd) {
+          // 누가 타고 있으면: 구를수록(want) 높이 흔들리고, 가만히 있으면 조금씩 낮아진다
+          rd.want = Math.max(SWING_REST, rd.want - dt * 0.035);
+          rd.amp += (rd.want - rd.amp) * Math.min(1, dt * 0.9);
+          rd.phase += dt * SWING_W;
+          a.swing.rotation.x = rd.amp * Math.sin(rd.phase);
+        } else a.swing.rotation.x = Math.sin(this.t * 1.6 + it.e.x) * 0.28;
+      }
       if (a.drops) a.drops.children.forEach((d, i) => {
         const k = ((this.t * 0.9 + i / 6) % 1);
         const ang = (i / 6) * Math.PI * 2;

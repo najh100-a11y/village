@@ -19,7 +19,7 @@ export const HOME_ITEMS = {
   // 마당
   y_bench: { zone: 'yard', name: '벤치', desc: '마당에서 쉬어 가는 나무 벤치예요.', price: 5, w: 2, d: 1 },
   y_lamp: { zone: 'yard', name: '정원등', desc: '밤이 되면 마당을 환하게 밝혀요.', price: 3, w: 1, d: 1, glow: true },
-  y_swing: { zone: 'yard', name: '그네', desc: '바람에 살랑살랑 흔들리는 그네예요.', price: 8, w: 3, d: 2 },
+  y_swing: { zone: 'yard', name: '그네', desc: "앉아서 '힘껏 구르기'를 누를수록 높이 올라가는 그네예요.", price: 8, w: 3, d: 2 },
   y_fountain: { zone: 'yard', name: '분수', desc: '맑은 물이 퐁퐁 솟는 작은 분수예요.', price: 9, w: 2, d: 2 },
   y_birdhouse: { zone: 'yard', name: '새집', desc: '작은 새가 쉬어 가는 나무 새집이에요.', price: 3, w: 1, d: 1 },
   y_picnic: { zone: 'yard', name: '피크닉 탁자', desc: '가족과 친구가 둘러앉는 나무 탁자예요.', price: 7, w: 2, d: 2 },
