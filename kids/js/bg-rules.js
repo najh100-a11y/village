@@ -346,6 +346,52 @@ export const Code = {
     });
   },
 };
+// 컴퓨터(숲지기 솔 같은 컴퓨터 친구)가 숨은 타일을 짐작하는 법: 사람처럼 눈에 보이는 단서만 간단히 따진다.
+// 위의 Code.odds처럼 될 수 있는 경우를 모두 세어 보지 않는다(그렇게 하면 다 아는 것처럼 잘 맞혀서 아이들이 이기기 어렵다).
+// 모든 난이도: 타일 색, 자기 타일, 열린 타일, 그 타일에 이미 틀린 숫자는 뺀다.
+// 쉬움: 바로 옆 타일이 열려 있을 때만 그보다 크거나 작은 수로 좁힌다. 아무 숨은 타일이나 고른다.
+// 보통: 왼쪽·오른쪽으로 가장 가까운 열린 타일 사이의 수로 좁힌다. 아무 숨은 타일이나 고른다.
+// 어려움: 보통에 더해, 사이에 숨은 타일 수만큼 칸을 비워 두고(줄은 커지는 차례라서), 열 번에 세 번쯤은 가장 좁혀진 타일을 고른다.
+// 숫자는 좁혀진 수 가운데 아무거나 고른다(sharp를 0보다 크게 하면 자리에 맞는 수를 더 자주 고른다. 지금은 모두 0).
+// 컴퓨터끼리 둔 결과는 README '보드게임 섬'의 '컴퓨터 친구가 두는 법'에 있다.
+const CODE_K = CODE_MAX * 2 + 2;
+// sharp: 자리(왼쪽 작고 오른쪽 큰)를 따지는 정도, focus: 가장 좁혀진 타일을 고르는 비율, more: 맞힌 뒤 더 맞히려면 필요한 자신감(남은 수가 n개면 1/n)
+// near: 바로 옆 열린 타일만 본다, gaps: 사이에 숨은 타일 수만큼 칸을 비워 둔다
+export const CODE_AI = {
+  easy: { near: true, gaps: false, sharp: 0, focus: 0, more: 0.99 },
+  normal: { near: false, gaps: false, sharp: 0, focus: 0, more: 0.5 },
+  hard: { near: false, gaps: true, sharp: 0, focus: 0.3, more: 0.33 },
+};
+function codeHunch(s, p, q, level) {
+  const row = s.rows[q], m = row.length;
+  const known = new Set();
+  for (const t of s.rows[p]) known.add(t.k);
+  if (s.drawn != null && s.turn === p) known.add(s.drawn);
+  for (const r of s.rows) for (const t of r) if (t.open) known.add(t.k);
+  const c = CODE_AI[level] || CODE_AI.normal;
+  return row.map((t, i) => {
+    if (t.open) return null;
+    let lo = -1, hi = CODE_K, li = -1, ri = m;
+    for (let j = i - 1; j >= 0; j--) { if (row[j].open) { lo = row[j].k; li = j; break; } if (c.near) break; }
+    for (let j = i + 1; j < m; j++) { if (row[j].open) { hi = row[j].k; ri = j; break; } if (c.near) break; }
+    if (c.near) { li = Math.max(li, i - 1); ri = Math.min(ri, i + 1); }
+    if (c.gaps) { lo += i - li - 1; hi -= ri - i - 1; } // 사이에 숨은 타일마다 한 칸씩
+    const ks = [];
+    for (let k = codeColor(t.k); k < CODE_K; k += 2) if (k > lo && k < hi && !known.has(k) && !t.no.includes(codeNum(k))) ks.push(k);
+    if (!ks.length) return null;
+    // 자리 짐작: 양쪽 단서 사이에서 이 칸이 놓인 만큼의 수 근처를 조금 더 자주 고른다
+    const e = Math.max(lo, -1) + (Math.min(hi, CODE_K) - Math.max(lo, -1)) * (i - li) / (ri - li);
+    const sharp = c.sharp;
+    const w = ks.map((k) => 1 / (1 + sharp * Math.abs(k - e)));
+    const sum = w.reduce((x, y) => x + y, 0);
+    return { ks, w, conf: Math.max(...w) / sum };
+  });
+}
+function pickWeighted(ks, w) {
+  let r = Math.random() * w.reduce((x, y) => x + y, 0);
+  for (let i = 0; i < ks.length; i++) { r -= w[i]; if (r <= 0) return ks[i]; }
+  return ks[ks.length - 1];
+}
 // 컴퓨터의 한 수 (지금 단계에 맞게)
 export function aiCode(s, p, level = 'normal') {
   if (s.phase === 'draw') return { k: 'draw' };
@@ -353,42 +399,29 @@ export function aiCode(s, p, level = 'normal') {
     const idx = s.rows[p].map((t, i) => (t.open ? -1 : i)).filter((i) => i >= 0);
     return { k: 'reveal', i: level === 'easy' ? pick(idx) : idx[0] };
   }
-  // 판에 남은 다른 사람들의 숨은 타일마다 가능성
   const all = [];
   for (const q of activeOf(s)) {
     if (q === p) continue;
-    Code.odds(s, p, q).forEach((list, i) => { if (list && list.length) all.push({ t: q, i, list }); });
-  }
-  const bestOne = () => {
-    let b = null;
-    for (const x of all) if (!b || x.list[0].p > b.p) b = { t: x.t, i: x.i, n: x.list[0].n, p: x.list[0].p };
-    return b;
-  };
-  if (s.phase === 'more') {
-    const b = bestOne();
-    // 더 맞히는 쪽이 대개 유리하다 (쉬움은 확실할 때만 더 맞힌다)
-    const need = { easy: 0.99, normal: 0.5, hard: 0.3 }[level] || 0.5;
-    return { k: b && b.p >= need ? 'again' : 'stop' };
+    codeHunch(s, p, q, level).forEach((h, i) => { if (h) all.push({ t: q, i, ...h }); });
   }
   if (!all.length) {
-    // 따질 수 없으면 (그럴 일은 없지만) 아무 숨은 타일에 아무 숫자나
+    // 단서끼리 어긋나 짐작할 수 없으면 아무 숨은 타일에 아무 숫자나
+    if (s.phase === 'more') return { k: 'stop' };
     for (const q of activeOf(s)) {
       if (q === p) continue;
       const i = s.rows[q].findIndex((t) => !t.open);
       if (i >= 0) return { k: 'guess', t: q, i, n: Math.floor(Math.random() * (CODE_MAX + 1)) };
     }
   }
-  if (level === 'easy') {
-    const x = pick(all);
-    return { k: 'guess', t: x.t, i: x.i, n: Math.random() < 0.5 ? x.list[0].n : pick(x.list).n };
+  // 가장 자신 있는 타일 (같으면 아무거나)
+  const top = Math.max(...all.map((x) => x.conf));
+  const sure = all.filter((x) => x.conf >= top - 1e-9);
+  if (s.phase === 'more') {
+    // 맞힌 뒤 더 맞힐지: 쉬움은 확실할 때만, 보통은 반반이면, 어려움은 셋 중 하나쯤이어도 해 본다
+    return { k: top >= (CODE_AI[level] || CODE_AI.normal).more ? 'again' : 'stop' };
   }
-  const b = bestOne();
-  if (level === 'normal' && b.p < 0.999 && Math.random() < 0.15) {
-    // 보통: 가끔은 아무 숨은 타일에서 가장 그럴듯한 수를 고른다
-    const x = pick(all);
-    return { k: 'guess', t: x.t, i: x.i, n: x.list[0].n };
-  }
-  return { k: 'guess', t: b.t, i: b.i, n: b.n };
+  const x = Math.random() < (CODE_AI[level] || CODE_AI.normal).focus ? pick(sure) : pick(all);
+  return { k: 'guess', t: x.t, i: x.i, n: codeNum(pickWeighted(x.ks, x.w)) };
 }
 
 // =====================================================================
