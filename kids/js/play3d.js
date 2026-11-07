@@ -3263,7 +3263,7 @@ export function createPlay3D(ctx) {
 
   // 놀이동산 놀이기구
   const rides = createRides({ v, ui, begin, stopAll, portrait, shout: (id) => ctx.shout && ctx.shout(id), setActivity });
-  const skip = createSkipGame({ v, ui, begin, stopAll, portrait, rpc, getToken, lost, live, onCelebrate });
+  const skip = createSkipGame({ v, ui, begin, stopAll, portrait, rpc, getToken, lost, live, onCelebrate, features: () => (ctx.features ? ctx.features() : {}) });
   const arkGame = createArkGame({ v, ui, begin, stopAll, portrait, live, hub, onlineFriends, friendPicker, waitInvite,
     menuTok: { next: () => ++menuTok, is: (t) => t === menuTok }, myId: () => (ctx.myId ? ctx.myId() : null), seatPose, SEAT_Y, onCelebrate,
     rpc, getToken, lost, features: () => (ctx.features ? ctx.features() : {}) });

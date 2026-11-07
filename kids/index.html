@@ -339,7 +339,7 @@ body.in-game #hud .hud-btns, body.in-game #hint, body.in-game #prompt, body.in-g
 .g-banner { position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%) scale(.7); opacity: 0; transition: opacity .25s, transform .3s cubic-bezier(.3, 1.6, .5, 1); background: #FFF8E7; border: 5px solid #fff; border-radius: 34px; padding: 16px 28px; box-shadow: var(--shadow); text-align: center; pointer-events: none; max-width: calc(100% - 40px); }
 .g-banner.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 .g-banner b { display: block; font-family: var(--display); font-weight: 400; font-size: clamp(24px, 4vw, 34px); color: var(--leaf-deep); }
-.g-banner span { display: block; margin-top: 4px; font-family: var(--display); color: var(--ink-soft); font-size: 18px; }
+.g-banner span { display: block; margin-top: 4px; font-family: var(--display); color: var(--ink-soft); font-size: 18px; white-space: pre-line; }
 .g-panel { position: absolute; left: 50%; bottom: calc(150px + env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(520px, calc(100% - 32px)); display: grid; gap: 10px; justify-items: center; }
 .g-panel:empty { display: none; }
 #gameUi .g-panel.ghost, #gameUi .g-panel.ghost * { pointer-events: none; }
@@ -383,6 +383,20 @@ button.g-chip:active { transform: scale(.96); }
 .fl-row:has(.rank) { grid-template-columns: 28px 52px minmax(0, 1fr); }
 .fl-row.me { box-shadow: 0 0 0 3px var(--sun), 0 3px 0 var(--line); }
 .heat-bar.skip-bar { background: linear-gradient(90deg, #EF6461, #F6D55C 28%, #7CC46A 50%, #F6D55C 72%, #EF6461); }
+/* 물수제비: 힘 막대와 스핀 다이얼 */
+.skip-meters { width: min(460px, 100%); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: stretch; }
+.sk-box { display: grid; gap: 6px; justify-items: center; align-content: center; padding: 8px 12px 10px; border-radius: 20px; background: rgba(255, 253, 247, .95); box-shadow: 0 6px 18px rgba(40, 60, 30, .18); opacity: .6; transition: opacity .2s, box-shadow .2s; }
+.sk-box.on { opacity: 1; box-shadow: 0 0 0 4px var(--sun), 0 6px 18px rgba(40, 60, 30, .18); }
+.sk-name { font-family: var(--display); font-size: 17px; color: var(--ink); }
+.sk-val { min-height: 20px; font-family: var(--display); font-weight: 400; font-size: 14px; color: var(--leaf-deep); text-align: center; }
+.g-panel .heat-bar.skip-power { width: 100%; height: 30px; background: linear-gradient(90deg, #CFE8F7, #7EC8F2 45%, #5DA9E9 70%, #4D7DDB 90%); }
+.skip-power .needle { z-index: 2; }
+.skip-power::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 2px), rgba(255,255,255,.7) calc(10% - 2px) 10%); pointer-events: none; }
+.skip-power .pw-good { position: absolute; top: 0; bottom: 0; left: 90%; right: 0; background: #F6D55C; border-radius: 0 999px 999px 0; }
+.skip-power .pw-best { position: absolute; top: 0; bottom: 0; left: 97%; right: 0; background: #E9A23B; border-radius: 0 999px 999px 0; }
+.spin-dial { width: 92px; height: 92px; }
+.spin-dial svg { width: 100%; height: 100%; display: block; }
+@media (max-width: 420px) { .spin-dial { width: 80px; height: 80px; } .sk-box { padding: 6px 8px 8px; } .sk-val { font-size: 13px; } }
 /* 바다 낚시 줄다리기 */
 .fight-box { width: min(440px, 100%); display: grid; gap: 8px; background: rgba(255, 253, 247, .95); border-radius: 20px; padding: 10px 14px 12px; box-shadow: 0 6px 18px rgba(40, 60, 30, .18); }
 .fight-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }

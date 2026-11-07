@@ -338,7 +338,7 @@ export class DemoBackend {
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true, breeds: true }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true, breeds: true, skip2: true }; }
   // 쪽지함: 친구별 마지막 쪽지와 안 읽은 수 (최근 30일)
   kids_dm_box({ p_token }) {
     const me = this.session(p_token, 'child');
@@ -515,6 +515,30 @@ export class DemoBackend {
     const bestToday = Math.max(0, ...todays.map((x) => x.n)), best = Math.max(0, ...mine.map((x) => x.n));
     const a = Math.max(0, Math.min(1, Number(p_aim) || 0));
     const n = a < 0.08 ? 0 : Math.min(20, Math.max(1, Math.round((1 + 14 * a ** 1.5) * (0.8 + Math.random() * 0.4))));
+    this.db.skips.push({ child: me, n, at: nowIso() });
+    return { skips: n, best_today: Math.max(bestToday, n), best: Math.max(best, n), new_best: n > best && n > 0, today_best_new: n > bestToday && n > 0, top: this.skipTop(me) };
+  }
+  // 힘과 스핀 (서버 kids_skip_throw2와 같은 계산. 운은 섞지 않는다)
+  kids_skip_throw2({ p_token, p_power, p_spin }) {
+    const P = Math.max(0, Math.min(1, Number(p_power) || 0)), S = Math.max(0, Math.min(1, Number(p_spin) || 0));
+    let n = 0;
+    if (P >= 0.2) {
+      n = Math.round(24 * (P - 0.2) / 0.8 * (0.15 + 0.85 * S ** 1.2));
+      if (S === 0) n = Math.min(n, 1);
+      n = Math.max(1, Math.min(24, n));
+    }
+    return this.skipRecord(p_token, n);
+  }
+  skipRecord(p_token, n) {
+    const me = this.session(p_token, 'child');
+    this.gate(me);
+    this.db.skips = this.db.skips || [];
+    const mine = this.db.skips.filter((x) => x.child === me);
+    const last = mine.map((x) => x.at).sort().pop();
+    if (last && Date.now() - new Date(last).getTime() < 2000) fail('TOO_FAST');
+    const t0 = startOfToday(), todays = mine.filter((x) => x.at >= t0);
+    if (todays.length >= 300) fail('SKIP_DAY');
+    const bestToday = Math.max(0, ...todays.map((x) => x.n)), best = Math.max(0, ...mine.map((x) => x.n));
     this.db.skips.push({ child: me, n, at: nowIso() });
     return { skips: n, best_today: Math.max(bestToday, n), best: Math.max(best, n), new_best: n > best && n > 0, today_best_new: n > bestToday && n > 0, top: this.skipTop(me) };
   }

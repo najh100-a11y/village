@@ -2,8 +2,9 @@
 // 1) 모래사장 보물 캐기: 모래밭 열두 자리 가운데 넷이 40초마다 바뀌며 반짝인다. 반짝이는 곳을 누르면 걸어가서 삽으로 판다.
 //    어느 자리가 반짝일지는 마을 시계(Date.now)로 정해서 친구 화면에서도 같은 곳이 반짝인다. 한 자리는 40초에 한 번 팔 수 있다(아이마다).
 //    무엇이 나올지는 서버(kids_dig)가 정한다.
-// 2) 물수제비 터: 섬 동쪽 작은 나무 다리 끝에서 돌을 던진다. 막대가 가운데 초록 칸에 왔을 때 누를수록 많이 튄다.
-//    튄 횟수는 서버(kids_skip_throw)가 아이가 누른 때와 운을 섞어 정하고, 오늘의 물수제비 왕을 보여 준다.
+// 2) 물수제비 터: 섬 동쪽 작은 나무 다리 끝에서 돌을 던진다. 두 번 누른다: 힘 막대가 오른쪽 끝까지 찼을 때, 도는 스핀 바늘이 위쪽 빨간 점에 왔을 때.
+//    힘이 셀수록 멀리 많이 튀고, 스핀이 잘 걸릴수록 돌이 흔들리지 않아 오래 튄다. 튄 횟수는 서버(kids_skip_throw2)가 운 없이 정하고,
+//    오늘의 물수제비 왕을 보여 준다(서버에 skip2가 없으면 예전 kids_skip_throw).
 import * as THREE from './three.module.min.js';
 import { toon, toonGradient } from './avatar.js';
 import { mergeStatic, mergeColored } from './merge.js';
@@ -251,7 +252,26 @@ export class Beach {
 // =====================================================================
 // 물수제비 놀이 (play3d가 begin/stopAll과 함께 만든다)
 // =====================================================================
-export function createSkipGame({ v, ui, begin, stopAll, portrait, rpc, getToken, lost, live, onCelebrate }) {
+// 물수제비 힘과 스핀 (서버 kids_skip_throw2와 같은 값)
+export const SKIP = { POW_UP: 1.0, SPIN_REV: 1.2, SPIN_W: 45, MAX: 24 };
+export function skipCount(P, S) { // 힘 P, 스핀 S (0~1)
+  if (P < 0.2) return 0;
+  let n = Math.round(SKIP.MAX * (P - 0.2) / 0.8 * (0.15 + 0.85 * S ** 1.2));
+  if (S === 0) n = Math.min(n, 1);
+  return Math.max(1, Math.min(SKIP.MAX, n));
+}
+// 스핀 다이얼 그림 (위쪽이 과녁: 초록 45도, 노랑 20도, 빨강 6도)
+function spinDialSvg() {
+  const arc = (deg, r, color, w) => {
+    const a = (deg * Math.PI) / 180, x = r * Math.sin(a), y = -r * Math.cos(a);
+    return `<path d="M ${(-x).toFixed(2)} ${y.toFixed(2)} A ${r} ${r} 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)}" stroke="${color}" stroke-width="${w}" fill="none" stroke-linecap="butt"/>`;
+  };
+  const ticks = Array.from({ length: 12 }, (_, i) => { const a = (i * 30 * Math.PI) / 180; return `<line x1="${(36 * Math.sin(a)).toFixed(2)}" y1="${(-36 * Math.cos(a)).toFixed(2)}" x2="${(40 * Math.sin(a)).toFixed(2)}" y2="${(-40 * Math.cos(a)).toFixed(2)}" stroke="#D9CBB0" stroke-width="2"/>`; }).join('');
+  return `<svg viewBox="-50 -50 100 100" aria-hidden="true"><circle r="45" fill="#FFFDF7" stroke="#E8DCC4" stroke-width="3"/>${ticks}`
+    + arc(SKIP.SPIN_W, 40, '#7CC46A', 11) + arc(20, 40, '#F6D55C', 11) + arc(6, 40, '#EF6461', 11)
+    + `<circle cx="0" cy="-40" r="2.6" fill="#fff"/><g class="sp-needle"><line x1="0" y1="6" x2="0" y2="-38" stroke="#5A4A42" stroke-width="5" stroke-linecap="round"/></g><circle r="7" fill="#8DA0B0" stroke="#5A4A42" stroke-width="2.5"/></svg>`;
+}
+export function createSkipGame({ v, ui, begin, stopAll, portrait, rpc, getToken, lost, live, onCelebrate, features = () => ({}) }) {
   function skipBoard() {
     const box = h('div', { class: 'mem' }, h('p', { class: 'empty-big' }, '기록을 꺼내고 있어요…'));
     modal.open('오늘의 물수제비 왕', box, { cls: 'game-sheet' });
@@ -298,20 +318,48 @@ export function createSkipGame({ v, ui, begin, stopAll, portrait, rpc, getToken,
     stone.visible = false;
     grp.add(stone);
     pl.pose = readyPose;
-    // 막대: 바늘이 왔다 갔다, 가운데 초록 칸이 가장 좋다
-    const needle = h('i', { class: 'needle' });
-    const bar = h('div', { class: 'heat-bar skip-bar' }, h('span', { class: 'heat-zone', style: 'left:41%;width:18%' }), needle);
-    let st = 'idle', mt = Math.random() * 2, t = 0, plan = null, result = null, hopI = 0, throwK = 0, idleSay = 0;
+    // 두 번 눌러 던진다. 힘: 바늘이 왼쪽에서 오른쪽 끝까지 1초에 차고 다시 돌아온다(끝 금색 칸이 가장 세다).
+    // 스핀: 바늘이 1.2초에 한 바퀴 돈다. 위쪽 과녁의 빨간 점(6도 안)이 가장 좋고, 노랑(20도), 초록(45도) 순서다.
+    // 매번 같은 자리에서 같은 빠르기로 시작해서 박자를 익히면 점점 잘 맞힐 수 있다.
+    const pNeedle = h('i', { class: 'needle' });
+    const pBar = h('div', { class: 'heat-bar skip-power' }, h('span', { class: 'pw-good' }), h('span', { class: 'pw-best' }), pNeedle);
+    const dial = h('div', { class: 'spin-dial' });
+    dial.innerHTML = spinDialSvg();
+    const sNeedle = dial.querySelector('.sp-needle');
+    const pVal = h('b', { class: 'sk-val' }), sVal = h('b', { class: 'sk-val' });
+    const powBox = h('div', { class: 'sk-box pow' }, h('span', { class: 'sk-name' }, '힘'), pBar, pVal);
+    const spinBox = h('div', { class: 'sk-box spin' }, h('span', { class: 'sk-name' }, '스핀'), dial, sVal);
+    const meters = h('div', { class: 'skip-meters' }, powBox, spinBox);
+    let st = 'idle', pt = 0, sp = 0, t = 0, plan = null, result = null, hopI = 0, throwK = 0, idleSay = 0;
+    let P = 0, S = 0, sDeg = 0; // 정한 힘, 스핀(0~1), 스핀 바늘이 과녁에서 어긋난 각도(-180~180, 음수는 이르게)
     const fx = [];
     const labels = [];
-    const meter = () => { const q = (mt / 1.3) % 2; return q < 1 ? q : 2 - q; }; // 0~1, 1.3초에 한 번 끝까지
+    const power = () => { const q = (pt / SKIP.POW_UP) % 2; return q < 1 ? q : 2 - q; };
+    const spinAngle = () => (180 + (sp / SKIP.SPIN_REV) * 360) % 360; // 아래쪽(180도)에서 시작해 시계 방향
+    const powWord = (x) => (x >= 0.97 ? '힘 최고!' : x >= 0.9 ? '힘 좋아요' : x >= 0.7 ? '힘이 조금 약했어요' : x >= 0.2 ? '힘이 약했어요' : '힘이 너무 약했어요');
+    const spinWord = (d) => { const a = Math.abs(d); return a <= 6 ? '스핀 딱!' : a <= 20 ? '스핀 좋아요' : a <= SKIP.SPIN_W ? (d < 0 ? '스핀이 조금 일렀어요' : '스핀이 조금 늦었어요') : '스핀이 안 걸렸어요'; };
     function setIdle(msg) {
       st = 'idle';
+      pt = 0; sp = 0;
       pl.pose = readyPose;
       stone.visible = false;
-      ui.setPanel(bar);
-      ui.say(msg || '바늘이 가운데 초록 칸에 왔을 때 ‘던지기’를 눌러요!');
-      ui.setMain('던지기', { onClick: () => throwNow() });
+      pVal.textContent = ''; sVal.textContent = '';
+      powBox.classList.add('on'); spinBox.classList.remove('on');
+      sNeedle.setAttribute('transform', 'rotate(180)');
+      ui.setPanel(meters);
+      ui.say(msg || '힘 바늘이 오른쪽 끝 금색 칸까지 찼을 때 눌러요!');
+      ui.setMain('힘 정하기', { onClick: () => lockPower() });
+    }
+    function lockPower() {
+      if (st !== 'idle') return;
+      P = power();
+      st = 'spin'; sp = 0;
+      pNeedle.style.left = `${(P * 100).toFixed(1)}%`;
+      pVal.textContent = `${Math.round(P * 100)} · ${powWord(P)}`;
+      powBox.classList.remove('on'); spinBox.classList.add('on');
+      sfx.tick();
+      ui.say('이제 스핀! 도는 바늘이 위쪽 빨간 점에 왔을 때 눌러요. 스핀이 잘 걸리면 돌이 흔들리지 않아요.');
+      ui.setMain('스핀 걸고 던지기', { onClick: () => throwNow() });
     }
     function ripple(x, z, size = 1) {
       const m = new THREE.Mesh(new THREE.RingGeometry(0.07, 0.1, 24), new THREE.MeshBasicMaterial({ color: '#FFFFFF', transparent: true, opacity: 0.85, depthWrite: false }));
@@ -329,14 +377,15 @@ export function createSkipGame({ v, ui, begin, stopAll, portrait, rpc, getToken,
         fx.push({ m, life: 0, max: 0.55, kind: 'drop', vel: V(Math.cos(a) * s * 0.6, 1.2 + Math.random(), Math.sin(a) * s * 0.6) });
       }
     }
-    // 돌이 지나갈 길: 손에서 첫 물까지 한 번, 그다음 n번 튀고 가라앉는다
-    function makePlan(n, aim) {
+    // 돌이 지나갈 길: 손에서 첫 물까지 한 번, 그다음 n번 튀고 가라앉는다 (운 없이 힘과 스핀으로 정한다)
+    // 힘이 셀수록 멀리 떨어지고 한 번에 멀리 튄다. 스핀이 덜 걸리면 일렀는지 늦었는지에 따라 한쪽으로 휘어 간다
+    function makePlan(n) {
       const hand = V(K.x + 0.15, 0.95, K.z + (stand === SKIP_STANDS[0] ? -0.25 : 0.25));
       const legs = [];
-      let x = hand.x + 3.6 + aim * 2.4;
-      const z0 = hand.z + (Math.random() - 0.5) * 0.4, drift = (Math.random() - 0.5) * 0.08;
+      let x = hand.x + 2.6 + P * 2.8;
+      const drift = (1 - S) * 0.12 * Math.sign(sDeg || 1), z0 = hand.z + drift * 2;
       legs.push({ from: hand, to: V(x, SEA_Y + 0.02, z0), hgt: 0.9, dur: 0.62 });
-      let d = 1.5 + aim * 1.3, hh = 0.42, du = 0.36, z = z0;
+      let d = 1.0 + P * 1.6, hh = 0.3 + 0.14 * P, du = 0.36, z = z0;
       for (let i = 0; i < n; i++) {
         const from = legs[legs.length - 1].to;
         x += d; z += drift * d;
@@ -349,17 +398,25 @@ export function createSkipGame({ v, ui, begin, stopAll, portrait, rpc, getToken,
       return legs;
     }
     async function throwNow() {
-      if (st !== 'idle') return;
-      const m = meter();
-      const aim = Math.max(0, 1 - Math.abs(m - 0.5) * 2);
+      if (st !== 'spin') return;
+      const a = spinAngle();
+      sDeg = a > 180 ? a - 360 : a; // 위(0도)보다 앞이면 음수(이르게)
+      S = Math.max(0, 1 - Math.abs(sDeg) / SKIP.SPIN_W);
+      sNeedle.setAttribute('transform', `rotate(${a.toFixed(1)})`);
+      sVal.textContent = spinWord(sDeg);
+      spinBox.classList.remove('on');
       st = 'windup'; t = 0; throwK = 0;
       result = null;
       ui.setMain('…', { disabled: true });
-      ui.say(aim > 0.85 ? '좋아요! 휙!' : '휙!');
+      ui.say(P >= 0.9 && S >= 0.55 ? '좋아요! 휙!' : '휙!');
       try {
-        result = await rpc('kids_skip_throw', { p_token: getToken(), p_aim: +aim.toFixed(3) });
+        if (features().skip2) result = await rpc('kids_skip_throw2', { p_token: getToken(), p_power: +P.toFixed(3), p_spin: +S.toFixed(3) });
+        else { // 예전 서버: 누른 때 하나(0~1)만 받는다
+          const aim = P < 0.2 ? 0 : Math.sqrt(((P - 0.2) / 0.8) * (0.15 + 0.85 * S));
+          result = await rpc('kids_skip_throw', { p_token: getToken(), p_aim: +aim.toFixed(3) });
+        }
         if (!live(game)) return;
-        plan = makePlan(result.skips, aim);
+        plan = makePlan(result.skips);
       } catch (e) {
         if (lost(e)) return;
         if (!live(game)) return;
@@ -380,21 +437,30 @@ export function createSkipGame({ v, ui, begin, stopAll, portrait, rpc, getToken,
       const top = (r.top || [])[0];
       const king = top && top.me && n > 0 && n === top.skips && r.today_best_new;
       let note;
-      if (n === 0) note = '돌이 바로 퐁당 빠졌어요. 다시 해 봐요!';
+      if (n === 0) note = '힘이 너무 약해서 바로 퐁당 빠졌어요.';
       else if (king) note = '오늘의 물수제비 왕이에요!';
       else if (r.new_best) note = '내 최고 기록이에요!';
       else if (r.today_best_new) note = '오늘 내 최고 기록이에요!';
       else note = `오늘 내 최고 ${r.best_today}번`;
-      ui.banner(n === 0 ? '퐁당!' : `물수제비 ${n}번!`, note, 2600);
-      if (king || r.new_best) { confetti(); onCelebrate(); } else if (n >= 8) sfx.success();
-      if (n >= 8) pl.celebrate();
-      setTimeout(() => { if (live(game) && st === 'show') setIdle(n >= 10 ? '대단해요! 또 던져 볼까요?' : '또 던져 볼까요? 가운데 초록 칸을 노려요!'); }, 1800);
+      ui.banner(n === 0 ? '퐁당!' : `물수제비 ${n}번!`, `${powWord(P)} · ${spinWord(sDeg)}\n${note}`, 3000);
+      if (king || r.new_best) { confetti(); onCelebrate(); } else if (n >= 12) sfx.success();
+      if (n >= 12) pl.celebrate();
+      // 다음에 무엇을 고치면 좋을지
+      const tip = P < 0.9 && S < 0.56 ? '힘은 오른쪽 끝까지 꽉 채우고, 스핀은 빨간 점을 노려 봐요!'
+        : P < 0.9 ? '힘 바늘이 오른쪽 끝 금색 칸에 닿을 때 눌러 봐요!'
+          : S === 0 ? '스핀은 도는 바늘이 위쪽 빨간 점에 올 때 눌러요!'
+            : S < 0.56 ? (sDeg < 0 ? '스핀을 조금만 늦게 눌러 봐요!' : '스핀을 조금만 일찍 눌러 봐요!')
+            : n >= 20 ? '대단해요! 또 던져 볼까요?' : '거의 다 왔어요! 빨간 점에 딱 맞춰 봐요!';
+      setTimeout(() => { if (live(game) && st === 'show') setIdle(tip); }, 2200);
     }
     game.update = (dt, time) => {
-      mt += dt;
       if (st === 'idle') {
-        needle.style.left = `${(meter() * 100).toFixed(1)}%`;
+        pt += dt;
+        pNeedle.style.left = `${(power() * 100).toFixed(1)}%`;
         idleSay += dt;
+      } else if (st === 'spin') {
+        sp += dt;
+        sNeedle.setAttribute('transform', `rotate(${spinAngle().toFixed(1)})`);
       } else if (st === 'windup') {
         t += dt;
         throwK = Math.min(0.5, t / 0.35 * 0.5);
@@ -419,7 +485,8 @@ export function createSkipGame({ v, ui, begin, stopAll, portrait, rpc, getToken,
           const k = clamp01(t / leg.dur);
           stone.position.lerpVectors(leg.from, leg.to, k);
           stone.position.y += Math.sin(k * Math.PI) * leg.hgt;
-          stone.rotation.y = time * 25;
+          stone.rotation.y = time * (6 + 26 * S); // 스핀이 잘 걸리면 빨리 돌고
+          stone.rotation.z = (1 - S) * 0.5 * Math.sin(time * 9); // 덜 걸리면 흔들린다
         }
         game.cam = camWide;
       } else if (st === 'show') {
@@ -444,7 +511,7 @@ export function createSkipGame({ v, ui, begin, stopAll, portrait, rpc, getToken,
         if (o.life > 1.4) { o.el.remove(); labels.splice(i, 1); }
       }
     };
-    game.onTap = () => { if (st === 'idle') throwNow(); };
+    game.onTap = () => { if (st === 'idle') lockPower(); else if (st === 'spin') throwNow(); };
     game.stop = () => {
       st = 'stopped';
       for (const o of labels) o.el.remove();
@@ -454,7 +521,7 @@ export function createSkipGame({ v, ui, begin, stopAll, portrait, rpc, getToken,
     };
     game.state = () => st;
     begin('skip', '물수제비 터', game, [['star', '오늘 기록', skipBoard]]);
-    setIdle('물수제비 터에 왔어요! 바늘이 가운데 초록 칸에 왔을 때 ‘던지기’를 눌러요.');
+    setIdle('물수제비 터에 왔어요! 먼저 힘 바늘이 오른쪽 끝 금색 칸까지 찼을 때, 다음엔 스핀 바늘이 위쪽 빨간 점에 왔을 때 눌러요.');
   }
   return { skipping };
 }
