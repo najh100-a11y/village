@@ -310,6 +310,7 @@ export class Village {
     this.fadeables = [];
     this.glowMats = [];
     this.keys = new Set();
+    this.umbrellaOn = false; // 내 우산을 폈는지 (마을 밖, 내 집 안에서는 접혀 보인다)
     this.target = null;
     // 시점: 마을(play)과 놀이(game) 따로. yaw는 옆으로 돈 각도, elev는 위아래로 더한 각도, zoom은 거리 배율
     this.view = { play: { yaw: 0, elev: 0, zoom: 1 }, game: { yaw: 0, elev: 0, zoom: 1 } };
@@ -2216,6 +2217,7 @@ export class Village {
     const r = this.remotes.get(id);
     if (!r) return;
     r.villageP = { x: p.tx != null ? p.tx : p.x, z: p.tz != null ? p.tz : p.z };
+    r.umb = p.u === 1;
     if (r.inHouse) return; // 내가 있는 집 안에 있는 친구 (마을 자리는 기억만 해 둔다)
     const pos = r.av.root.position;
     const d = Math.hypot(pos.x - p.x, pos.z - p.z);
@@ -2229,6 +2231,7 @@ export class Village {
     const r = this.remotes.get(id);
     if (!r) return;
     r.villageP = { x: p.x, z: p.z };
+    r.umb = p.u === 1;
     if (r.inHouse) return;
     const pos = r.av.root.position;
     if (Math.hypot(pos.x - p.x, pos.z - p.z) > 0.6) r.target = new THREE.Vector3(p.x, 0, p.z);
@@ -2283,10 +2286,13 @@ export class Village {
     this.myTag.classList.toggle('kv-teacher', !!teacher);
   }
   // 내 집 안에 있을 때 친구들에게는 마을 '내 집' 문 앞에 있는 것으로 보인다
+  // u: 우산을 폈으면 1 (움직임 소식에 같이 실어 친구 화면에서도 우산이 보인다)
   playerPos() {
-    if (this.atHome && this.homeDoor) return { x: this.homeDoor.x, z: this.homeDoor.z };
-    return this.player ? { x: this.player.root.position.x, z: this.player.root.position.z } : null;
+    const u = this.umbrellaOn ? 1 : 0;
+    if (this.atHome && this.homeDoor) return { x: this.homeDoor.x, z: this.homeDoor.z, u };
+    return this.player ? { x: this.player.root.position.x, z: this.player.root.position.z, u } : null;
   }
+  setUmbrella(on) { this.umbrellaOn = !!on; }
 
   // 내 움직임을 친구들에게 알리기
   reportMove(tx, tz) {
@@ -2467,6 +2473,7 @@ export class Village {
         }
       }
       if (!r.pin && !r.sliding) this.swimTick(r.av, pos, moving, dt, r);
+      r.av.setUmbrella(!!r.umb && !r.inHouse && !this.atHome); // 친구가 우산을 폈다 (mv·st 소식의 u)
       r.av.update(dt, moving, r.run && moving ? 2.0 : 1.2);
       if (r.care) {
         // 애완동물 돌보기 자세 (걸어가면 그만, 안고 있던 동물은 내려온다)
@@ -3491,6 +3498,7 @@ export class Village {
 
     // 숲지기
     const g = this.guide;
+    g.setUmbrella(['drizzle', 'rain', 'storm', 'snow'].includes(this.wx && this.wx.kind)); // 비나 눈이 오면 숲지기도 우산을 쓴다
     g.update(dt, false);
     if (this.player && this.mode === 'play') {
       const p = this.player.root.position;
@@ -3503,7 +3511,8 @@ export class Village {
       else this.myTag.style.display = 'none';
     }
 
-    // 내 주민
+    // 내 주민 (우산은 마을을 다닐 때만 편다. 놀이 중 자세나 손에 든 물건이 있으면 아바타가 잠깐 접는다)
+    if (this.player) this.player.setUmbrella(this.umbrellaOn && this.mode === 'play' && !this.atHome);
     if (this.player && this.mode === 'play') this.updatePlayer(dt);
     else if (this.player) this.player.update(dt, false);
     if (this.mode === 'game' && this.game && this.game.update) this.game.update(dt, t);

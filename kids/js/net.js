@@ -22,9 +22,9 @@ const PET_RE = /^pet_[a-z]{2,10}$/;
 export function clean(type, p) {
   if (!p || typeof p !== 'object') return null;
   const num = (v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 100; // 섬 넷을 다 담는 넓이
-  // r: 1이면 달리는 중
-  if (type === 'mv') return num(p.x) && num(p.z) && num(p.tx) && num(p.tz) ? { x: p.x, z: p.z, tx: p.tx, tz: p.tz, ...(p.r === 1 ? { r: 1 } : {}) } : null;
-  if (type === 'st') return num(p.x) && num(p.z) ? { x: p.x, z: p.z } : null;
+  // r: 1이면 달리는 중, u: 1이면 우산을 폈다
+  if (type === 'mv') return num(p.x) && num(p.z) && num(p.tx) && num(p.tz) ? { x: p.x, z: p.z, tx: p.tx, tz: p.tz, ...(p.r === 1 ? { r: 1 } : {}), ...(p.u === 1 ? { u: 1 } : {}) } : null;
+  if (type === 'st') return num(p.x) && num(p.z) ? { x: p.x, z: p.z, ...(p.u === 1 ? { u: 1 } : {}) } : null;
   if (type === 'say') return PHRASES[p.p] || EMOTES[p.p] || SHOUTS[p.p] ? { p: p.p } : null;
   if (type === 'chat') { const t = typeof p.m === 'string' ? cleanChat(p.m) : ''; return t ? { m: t } : null; }
   if (type === 'done') return ['memory', 'qt', 'copy'].includes(p.k) ? { k: p.k } : null;
@@ -157,11 +157,12 @@ export class Outbox {
     const now = this.posNow();
     if (!now) return p ? [ev, p] : null;
     const x = round2(now.x), z = round2(now.z);
+    const u = now.u === 1 ? { u: 1 } : {}; // 우산
     if (ev === 'mv' && p) {
-      if (Math.hypot(p.tx - x, p.tz - z) < 0.2) return ['st', { x, z }];
-      return ['mv', { x, z, tx: p.tx, tz: p.tz, ...(p.r === 1 ? { r: 1 } : {}) }];
+      if (Math.hypot(p.tx - x, p.tz - z) < 0.2) return ['st', { x, z, ...u }];
+      return ['mv', { x, z, tx: p.tx, tz: p.tz, ...(p.r === 1 ? { r: 1 } : {}), ...u }];
     }
-    return ['st', { x, z }];
+    return ['st', { x, z, ...u }];
   }
   flush() {
     const t = performance.now();

@@ -4,6 +4,7 @@ import { h, showImage } from './ui.js';
 import { drawFaceIcon, normalizeAvatar } from './face.js';
 import { HOME_ITEMS, HARVEST } from './homeitems.js';
 import { WARDROBE } from './wardrobe.js';
+import { PET_ITEMS, PET_IDS } from './pets-data.js';
 import { SALES, SELL_DAY_CHOICES, salePrice, GIFT_MSGS, BUG_NAMES } from './economy.js';
 import { FISH } from './play-data.js';
 import { treasureById } from './beach-data.js';
@@ -407,7 +408,7 @@ function renderVillage() {
       renderVillage();
     } }, d.hidden ? '다시 보이기' : '숨기기'))) : [h('div', { class: 'card empty' }, '아직 올린 요리가 없어요.')]));
   const sl = $('#shopList');
-  const ITEM = { fw_spark: '반짝 불꽃', fw_flower: '꽃 불꽃', fw_heart: '하트 불꽃', pet_dog: '애완동물 강아지', pet_cat: '애완동물 고양이', pet_rabbit: '애완동물 토끼', pet_chick: '애완동물 병아리', pet_parrot: '애완동물 앵무새',
+  const ITEM = { fw_spark: '반짝 불꽃', fw_flower: '꽃 불꽃', fw_heart: '하트 불꽃', ...Object.fromEntries(PET_IDS.map((id) => [id, `애완동물 ${PET_ITEMS[id].name}`])),
     ...Object.fromEntries(Object.entries(HOME_ITEMS).map(([k, it]) => [k, `내 집 ${it.name}`])),
     ...Object.fromEntries(Object.entries(WARDROBE).map(([k, it]) => [k, `꾸미기 ${it.name}`])) };
   const FISH_NAME = Object.fromEntries(FISH.map((f) => [f.id, f.name]));

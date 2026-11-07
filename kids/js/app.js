@@ -14,9 +14,10 @@ import { ACT_ICON, ACT_TEXT, fishById, recipeById, RECIPES, FISH } from './play-
 import { BUGS, bugById, bugIcon, catchChance, RARITY_TEXT } from './bugs.js';
 import { TREASURES, treasureById, treasureIcon, treasureShadow, TREASURE_RARITY, BOTTLE_NOTES } from './beach-data.js';
 import { FIREWORKS, FW_IDS, fireworkIcon } from './fireworks.js';
-import { PET_ITEMS, PET_IDS, PET_FOOD } from './critters.js';
+import { PET_ITEMS, PET_IDS, PET_FOOD, makeAnyPet } from './critters.js';
+import { PET_GROUPS, petGroup, shopPets } from './pets-data.js';
 import { HOME_ITEMS, HOME_IDS, ZONE_NAMES, HARVEST, CROP_IDS } from './homeitems.js';
-import { itemThumb, avatarThumb } from './home.js';
+import { itemThumb, avatarThumb, objThumb } from './home.js';
 import { WARDROBE, WARDROBE_IDS, WEAR_OFF } from './wardrobe.js';
 import { COVER_HATS } from './avatar.js';
 import { GIFT, GIFT_MSGS } from './economy.js';
@@ -78,7 +79,7 @@ async function boot() {
     },
     placePrompt: (x, y) => { $('#prompt').style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`; },
     onMove: () => hideHint(),
-    onLocalMove: (p) => net && net.send('mv', p),
+    onLocalMove: (p) => { lastMove = ['mv', p]; if (net) net.send('mv', p); },
     onViewChange: (changed, canMap, isMap) => {
       $('#btnView').hidden = !changed;
       $('#btnMap').hidden = !canMap;
@@ -94,7 +95,7 @@ async function boot() {
       const now = performance.now();
       if (net && now - jumpSent > 800) { jumpSent = now; net.send('jp', {}); }
     },
-    onLocalStop: (p) => net && net.send('st', p),
+    onLocalStop: (p) => { lastMove = ['st', p]; if (net) net.send('st', p); },
     onHouseMove: (p) => net && net.send('hm', p), // 집 안 움직임 (같은 집에 있는 친구만 본다)
     // 벤치에 앉기 (seat: 자리 번호, 일어나면 null)
     onSit: (seat, lie) => {
@@ -611,6 +612,14 @@ function setupPad() {
   setRun(store.get('run') === '1');
   runBtn.addEventListener('click', () => { setRun(!village.running, true); sfx.pop(); });
   runBtn.addEventListener('contextmenu', (e) => e.preventDefault());
+  // 우산 단추: 누르면 펴고 다시 누르면 접는다. 무늬와 색은 옷장의 '우산' 칸에서 고른다
+  $('#btnUmb').addEventListener('click', () => {
+    const on = !village.umbrellaOn;
+    setUmbrella(on);
+    sfx.pop();
+    toast(on ? '☂️ 우산을 폈어요! 다시 누르면 접어요. 무늬는 옷장(꾸미기)의 \'우산\' 칸에서 바꿔요.' : '우산을 접었어요.', on ? 3000 : 1600);
+  });
+  $('#btnUmb').addEventListener('contextmenu', (e) => e.preventDefault());
   const jump = $('#btnJump');
   jump.addEventListener('pointerdown', (e) => {
     e.preventDefault();
@@ -1216,9 +1225,12 @@ function fwRow(id, count, { buy = false, launch = false, shop = null } = {}) {
 }
 
 // ---------- 애완동물 ----------
-// 상점과 가방에 쓰는 작은 그림
+// 상점과 가방에 쓰는 작은 그림: 마을에서 따라다니는 3D 모습 그대로 (그리지 못하면 아래 그림)
 function petIcon(id) {
-  const c = (PET_ITEMS[id] || {}).coat || '#ccc';
+  const d = PET_ITEMS[id];
+  const src = d ? objThumb('pet:' + id, () => { const p = makeAnyPet(d); p.root.rotation.y = 0.55; return p.root; }) : '';
+  if (src) return `<img src="${src}" alt="">`;
+  const c = (d || {}).coat || '#ccc';
   const eye = '<circle cx="19" cy="25" r="2.2" fill="#2E2A2A"/><circle cx="29" cy="25" r="2.2" fill="#2E2A2A"/>';
   const face = `<circle cx="24" cy="27" r="13" fill="${c}" stroke="#5A3D2B" stroke-width="1.5"/>${eye}`;
   if (id === 'pet_dog') return `<svg viewBox="0 0 48 48" aria-hidden="true"><ellipse cx="11" cy="22" rx="5" ry="10" fill="#8A5A33"/><ellipse cx="37" cy="22" rx="5" ry="10" fill="#8A5A33"/>${face}<ellipse cx="24" cy="32" rx="6" ry="4.5" fill="#FFF3DA"/><circle cx="24" cy="30" r="2.2" fill="#2E2A2A"/></svg>`;
@@ -1613,6 +1625,8 @@ function showNews() {
   news.push(['boardisle4', '새 소식! 보드게임 섬에서 방을 만들면 친구 넷까지 함께 놀 수 있어요(만칼라는 둘). 빈자리에는 컴퓨터 친구를 앉히고, 윷놀이는 2:2 편을 먹고 할 수도 있어요.']);
   if (state.features.home) news.push(['swing', "새 소식! 내 집 마당 그네를 탈 수 있어요. 그네에 앉아 '힘껏 구르기'를 누를수록 높이 올라가요. 놀러 온 친구에게도 그네 타는 모습이 보여요."]);
   if (state.features.home) news.push(['slide', '새 소식! 내 집 마당 미끄럼틀도 탈 수 있어요. 미끄럼틀을 누르면 사다리를 올라가서 쭉 미끄러져 내려와요. 같은 집에 있는 친구에게도 타는 모습이 보여요.']);
+  if (state.features.breeds) news.push(['petbreeds', '새 소식! 열매 상점 동물 칸에 강아지 10종, 고양이 7종, 앵무새 8종이 새로 왔어요. 말티즈, 요크셔테리어, 진돗개, 샴, 사랑앵무, 모란앵무 같은 친구를 만나 보세요.']);
+  news.push(['umbrella', "새 소식! 이제 우산을 쓸 수 있어요. 오른쪽 아래 '우산' 단추를 누르면 펴지고, 비나 눈이 오면 저절로 펴져요. 우산 무늬는 옷장(꾸미기)의 '우산' 칸에서 골라요."]);
   if (state.features.home) news.push(['piano', '새 소식! 내 집 피아노 의자에 앉으면 건반이 나와서 직접 연주할 수 있어요. 반짝반짝 작은 별과 찬송가 세 곡은 다음 건반이 빛나서 따라 칠 수 있어요.']);
   if (state.features.hair) news.push(['hairshop', "새 소식! 열매 상점에 '머리' 칸이 생겼어요. 뭉게구름 머리, 공룡 머리, 댕기 머리, 상투 머리처럼 여러 머리 모양을 사서 옷장의 머리 칸에서 바꿔 가며 해요."]);
   news.push(['bghouses', '새 소식! 보드게임 섬 놀이 탁자마다 그 놀이를 닮은 작은 집이 생겼어요. 줄무늬 과일 가게, 윷놀이 정자, 카드 집, 해와 달 지붕, 만칼라 돌 정원, 연필 공방을 찾아가 봐요.']);
@@ -1676,6 +1690,25 @@ function buyBtn(id, shop, verb, onclick) {
   return h('button', { class: 'btn btn-go btn-small', type: 'button', disabled: (shop ? shop.fruits : 0) < p, onclick },
     p < b ? h('s', { class: 'was' }, String(b)) : null, `열매 ${p}개로 ${verb}`);
 }
+// 동물 칸: 서버에 품종이 있으면 강아지·고양이·앵무새·토끼와 병아리 작은 칸으로 나눈다
+let petTab = 'dog';
+const PET_GROUP_NOTE = {
+  dog: '강아지는 꼬리를 흔들며 졸졸 따라와요.',
+  cat: '고양이는 살금살금 곁을 따라와요.',
+  parrot: '앵무새는 모두 머리 위를 훨훨 날아 따라오고, 내가 한 말을 따라 해요.',
+  small: '토끼는 깡충깡충, 병아리는 종종걸음으로 따라와요.',
+};
+function petShopRows(shop, items, body) {
+  const ids = shopPets(!!state.features.breeds);
+  if (!state.features.breeds) return ids.map((id) => petRow(id, { owned: items[id] > 0, buy: true, shop, back: 'shop' }));
+  const chips = h('div', { class: 'pet-groups', role: 'tablist', 'aria-label': '동물 종류' }, PET_GROUPS.map(([k, label]) => {
+    const n = ids.filter((id) => petGroup(id) === k && items[id] > 0).length;
+    return h('button', { class: 'pet-group', type: 'button', role: 'tab', 'aria-selected': String(petTab === k), onclick: () => { petTab = k; drawShop(body, shop); } },
+      label, n ? h('small', {}, ` ${n}`) : null);
+  }));
+  return [chips, h('p', { class: 'pet-group-note' }, PET_GROUP_NOTE[petTab]),
+    ...ids.filter((id) => petGroup(id) === petTab).map((id) => petRow(id, { owned: items[id] > 0, buy: true, shop, back: 'shop' }))];
+}
 function drawShop(body, shop) {
   if (!shop) { body.replaceChildren(h('p', { class: 'note' }, '상점을 열지 못했어요. 잠시 뒤에 다시 와 주세요.')); return; }
   const items = shop.items || {};
@@ -1689,7 +1722,7 @@ function drawShop(body, shop) {
   }, label))) : null;
   let rows;
   if (shopTab === 'fw') rows = FW_IDS.map((id) => fwRow(id, items[id] || 0, { buy: true, launch: true, shop }));
-  else if (shopTab === 'pet') rows = PET_IDS.map((id) => petRow(id, { owned: items[id] > 0, buy: true, shop, back: 'shop' }));
+  else if (shopTab === 'pet') rows = petShopRows(shop, items, body);
   else if (shopTab === 'wear') rows = WARDROBE_IDS.filter((id) => WARDROBE[id].slot !== 'hair').map((id) => wearRow(id, shop));
   else if (shopTab === 'hair') rows = WARDROBE_IDS.filter((id) => WARDROBE[id].slot === 'hair').map((id) => wearRow(id, shop));
   else if (shopTab === 'sell') rows = sellRows(shop);
@@ -2484,6 +2517,31 @@ function openMail() {
   });
 }
 
+// ---------- 우산 ----------
+// 친구에게는 움직임 소식(mv, st)에 u를 실어 알린다. 비나 눈이 오기 시작하면 저절로 펴고(auto), 그치면 저절로 접는다.
+// 아이가 직접 접거나 편 것은 날씨가 바뀌어도 그대로 둔다.
+let lastMove = null, umbAuto = false;
+const WET_KINDS = ['drizzle', 'rain', 'storm', 'snow'];
+function setUmbrella(on, auto = false) {
+  if (!village) return;
+  village.setUmbrella(on);
+  umbAuto = !!on && auto;
+  $('#btnUmb').setAttribute('aria-pressed', on ? 'true' : 'false');
+  const pp = village.playerPos();
+  if (net && pp) net.send(lastMove ? lastMove[0] : 'st', lastMove ? lastMove[1] : pp); // 친구 화면에도 바로 (자리는 보낼 때 새로 잰다)
+}
+function umbrellaForWeather(prev, w) {
+  const was = !!(prev && WET_KINDS.includes(prev.kind)), wet = !!(w && WET_KINDS.includes(w.kind));
+  const inVillage = state.me && !$('#hud').hidden;
+  if (wet && !was && !village.umbrellaOn) {
+    setUmbrella(true, true);
+    if (inVillage) toast(`☂️ ${w.kind === 'snow' ? '눈이' : '비가'} 와서 우산을 폈어요. '우산' 단추를 누르면 접어요.`, 3600);
+  } else if (!wet && was && umbAuto) {
+    setUmbrella(false);
+    if (inVillage) toast(`${w && w.kind === 'clear' ? '☀️' : '🌥️'} ${prev.kind === 'snow' ? '눈이' : '비가'} 그쳐서 우산을 접었어요.`, 2600);
+  }
+}
+
 // ---------- 화면 ----------
 // ---------- 대구 지금 날씨: 마을 하늘, 비·눈, 빗소리 (js/weather.js, Open-Meteo.com) ----------
 let weather = null;
@@ -2498,6 +2556,7 @@ function applyWeather(w) {
   const chip = $('#hudWeather');
   const prev = state.weather;
   state.weather = w;
+  if (village) umbrellaForWeather(prev, w);
   if (!w) {
     chip.hidden = !DEMO;
     chip.textContent = '🌤️ 날씨';

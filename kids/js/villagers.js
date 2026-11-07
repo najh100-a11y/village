@@ -64,6 +64,7 @@ const SAY = {
   shell: ['예쁜 조개껍데기 찾았다!', '반짝이는 모래를 파면 보물이 나온대.'],
 };
 // 날씨 혼잣말 (대구 지금 날씨는 모두 같으므로 친구 화면에서도 같은 때 같은 말을 한다). 세 번에 한 번
+const WET = new Set(['drizzle', 'rain', 'storm', 'snow']);
 const WX_SAY = {
   clear: ['오늘 날씨 정말 좋다!', '햇살이 반짝반짝!'],
   partly: ['구름이 솜사탕 같아.', '하늘에 구름이 둥실둥실.'],
@@ -446,13 +447,16 @@ export class Villagers {
       // 소품과 자세
       this.dress(n, held ? 'hold' : p.act, p, seated, swim);
       av.swimMoving = moving;
+      av.setUmbrella(WET.has(this.weather) && !swim && !seated && !v.atHome); // 비나 눈이 오면 마을 주민도 우산을 쓴다
       av.update(dt, moving && !swim, 1);
       if (!held && p.act === 'toss' && !moving) ballOn = this.tossBall(n, p) || ballOn;
       if (!held && p.act === 'jump' && !moving) { ropeOn = true; this.jumpRope(n, p); }
       if (n.waveT > 0 && !swim && !seated) {
         n.waveT -= dt;
-        av.arms[1].rotation.x = -2.7;
-        av.arms[1].rotation.z = 0.25 + Math.sin(v.time * 14) * 0.35;
+        const umb = av.umbrella && av.umbrella.visible; // 우산을 들었으면 다른 손으로 흔든다
+        const arm = av.arms[umb ? 0 : 1], sgn = umb ? -1 : 1;
+        arm.rotation.x = -2.7;
+        arm.rotation.z = sgn * (0.25 + Math.sin(v.time * 14) * 0.35);
       } else if (n.waveT > 0) n.waveT -= dt;
       // 가끔 혼잣말 (자리에 닿고 조금 뒤 한 번, 그 뒤로 40초마다)
       if (!held && p.act !== 'walk') this.chatter(n, i, p);

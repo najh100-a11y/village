@@ -2,6 +2,10 @@
 import * as THREE from './three.module.min.js';
 import { PALETTE, normalizeAvatar, drawFace, colorOf, shade, isLight, FACE_TEX, ONE_PIECE } from './face.js';
 import { mergeStatic } from './merge.js';
+import { makeUmbrella } from './umbrella.js';
+// 우산 든 자세: 오른팔(화면에서 볼 때 오른쪽, arms[1])을 옆으로 들어 어깨 높이에서 대를 잡는다
+const UMB_ARM = new THREE.Euler(-0.5, 0, 1.25);
+const UMB_TILT = 0.08; // 대가 머리 쪽으로 살짝 기운다 (지붕이 머리 위에 오게)
 
 const R = 0.6;
 const HS = new THREE.Vector3(1, 0.94, 0.96);
@@ -1086,8 +1090,38 @@ export class Avatar {
     this.drop(); // 들고 있던 물건은 지우지 않고 새 팔에 다시 쥐여 준다
     this.data = normalizeAvatar(data);
     this.clear();
+    this.umbrella = null; // clear()가 지웠다. 쓰고 있었으면 새 무늬로 다시 만든다
     this.build();
     if (held) this.hold(held.obj, held.arm);
+    if (this.umbOn) this.buildUmbrella();
+  }
+
+  // 우산 쓰기 (on). 손에 다른 물건을 들었거나 앉기·낚시·헤엄 같은 자세일 때는 저절로 잠깐 접힌다
+  setUmbrella(on) {
+    on = !!on;
+    if (this.umbOn === on) return;
+    this.umbOn = on;
+    if (on && !this.umbrella) this.buildUmbrella();
+    if (this.umbrella) this.umbrella.visible = on && !this.held && !this.pose;
+  }
+  buildUmbrella() {
+    const d = this.data;
+    // 지붕 가장자리가 머리(모자, 높이 솟은 머리 모양 포함) 꼭대기보다 조금 위에 오게
+    const by = this.body.position.y;
+    this.root.updateMatrixWorld(true);
+    const rootY = this.root.getWorldPosition(new THREE.Vector3()).y;
+    const bb = new THREE.Box3().setFromObject(this.head);
+    const topY = (bb.isEmpty() ? HEAD_Y + 0.6 : (bb.max.y - rootY) / Math.max(0.01, this.root.scale.y)) - by;
+    const rim = Math.max(2.32, topY + 0.14);
+    const arm = this.arms[1];
+    const hand = new THREE.Vector3(0, -0.42, 0).applyEuler(UMB_ARM).add(arm.position);
+    const len = (rim - hand.y) / Math.cos(UMB_TILT);
+    const u = makeUmbrella(d.umbrella || 'solid', colorOf(d, 'umbrellaColor'), len);
+    u.position.copy(hand);
+    u.rotation.z = UMB_TILT;
+    u.visible = false;
+    this.body.add(u);
+    this.umbrella = u;
   }
 
   clear() {
@@ -1365,6 +1399,11 @@ export class Avatar {
       this.arms[0].rotation.x = this.arms[1].rotation.x = -2.7 * jmp;
       this.arms[0].rotation.z = -0.2 - 0.25 * jmp;
       this.arms[1].rotation.z = 0.2 + 0.25 * jmp;
+    }
+    if (this.umbrella) { // 우산을 쓰고 있으면 오른팔은 대를 잡고 있다 (뛰어도 그대로)
+      const show = this.umbOn && !this.held && !this.pose;
+      this.umbrella.visible = show;
+      if (show) this.arms[1].rotation.copy(UMB_ARM);
     }
     // 천사 고리는 둥실, 날개는 파닥, 망토는 달리면 펄럭
     if (this.halo) this.halo.position.y = this.halo.userData.bob + Math.sin(t * 2.2) * 0.035;

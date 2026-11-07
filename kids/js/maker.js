@@ -4,6 +4,7 @@ import { Avatar, toon } from './avatar.js';
 import { PARTS, PALETTE, randomAvatar, normalizeAvatar, drawPartTile, ONE_PIECE } from './face.js';
 import { h, icon, josa } from './ui.js';
 import { WARDROBE, WEAR_OFF, wearItem, missingItems } from './wardrobe.js';
+import { makeUmbrella } from './umbrella.js';
 
 const TABS = [
   { id: 'face', label: '얼굴', view: 'head', sections: [
@@ -42,6 +43,11 @@ const TABS = [
     { key: 'back', title: '등에 메는 것', type: 'thumb', part: 'back' },
     { key: 'backColor', title: '등 물건 색 (나비 날개, 망토, 가방)', type: 'color', pal: 'cloth' },
   ] },
+  // 우산: 누구나 고른다. 마을에서 '우산' 단추를 누르거나 비·눈이 오면 편다
+  { id: 'umb', label: '우산', view: 'umb', sections: [
+    { key: 'umbrella', title: '우산 무늬', type: 'thumb', part: 'umbrella' },
+    { key: 'umbrellaColor', title: '우산 색 (한 가지 색, 줄무늬, 물방울 우산)', type: 'color', pal: 'cloth' },
+  ] },
 ];
 const THUMB_DEPS = {
   hair: ['skin', 'hairColor'],
@@ -50,6 +56,7 @@ const THUMB_DEPS = {
   hat: ['skin', 'hair', 'hairColor', 'hatColor'],
   face: ['skin', 'eyes', 'eyeColor', 'hair', 'hairColor'],
   back: ['skin', 'outfit', 'outfitColor', 'backColor'],
+  umbrella: ['umbrellaColor'],
 };
 const FACE_DEPS = ['skin', 'eyeColor', 'hairColor'];
 const LONG_TOPS = new Set(['hoodie', 'sweater', 'turtle', 'cardigan', 'puffer', 'jumper', 'raincoat']);
@@ -57,6 +64,7 @@ const VIEWS = {
   head: { y: 1.45, dist: 4.4 },
   body: { y: 1.0, dist: 7.0 },
   legs: { y: 0.7, dist: 6.0 },
+  umb: { y: 1.35, dist: 9.6 },
 };
 
 export class Maker {
@@ -253,6 +261,7 @@ export class Maker {
   showTab(tab) {
     this.tab = tab;
     this.view = { ...VIEWS[tab.view] };
+    if (this.preview) this.preview.setUmbrella(tab.id === 'umb'); // 우산 칸에서는 우산을 펴서 보여 준다
     for (const b of this.tabsEl.children) b.setAttribute('aria-selected', String(b.dataset.tab === tab.id));
     this.thumbQueue = [];
     this.opts.replaceChildren(...tab.sections.filter((s) => !s.shopHair || (this.shop.on && this.shop.hair)).map((s) => this.section(s)));
@@ -350,6 +359,7 @@ export class Maker {
   }
 
   renderThumb(canvas, part, id) {
+    if (part === 'umbrella') { this.renderUmbThumb(canvas, id); return; }
     const data = { ...this.avatar, [part]: id };
     if (part === 'hair') data.hat = 'none';
     // 하의 그림: 한 벌 옷이나 엉덩이를 덮는 긴 상의를 입었으면 하의가 잘 보이게 민무늬 티로 그린다
@@ -376,6 +386,22 @@ export class Maker {
     ctx.drawImage(this.thumbR.domElement, 0, 0, canvas.width, canvas.height);
     this.thumbScene.remove(av.root);
     av.dispose();
+  }
+
+  // 우산 무늬 그림: 우산만 비스듬히 위에서
+  renderUmbThumb(canvas, id) {
+    const pal = PALETTE.cloth[this.avatar.umbrellaColor] || PALETTE.cloth[2];
+    const u = makeUmbrella(id, pal[0], 0.9);
+    u.rotation.set(0.25, 0.4, 0.12);
+    this.thumbScene.add(u);
+    this.thumbCam.position.set(0, 2.9, 3.4);
+    this.thumbCam.lookAt(0, 0.82, 0);
+    this.thumbR.render(this.thumbScene, this.thumbCam);
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(this.thumbR.domElement, 0, 0, canvas.width, canvas.height);
+    this.thumbScene.remove(u);
+    u.traverse((o) => { if (o.isMesh) o.geometry.dispose(); });
   }
 }
 

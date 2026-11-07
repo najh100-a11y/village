@@ -8,11 +8,12 @@ import { HOME_ITEMS, HOME_IDS, isSeed, CROPS, HARVEST } from './homeitems.js';
 import { WARDROBE, WARDROBE_IDS, wearItem } from './wardrobe.js';
 import { SELL_BUNDLE, SELL_DAY_DEFAULT, GIFT, GIFT_MSGS, SALES, salePrice } from './economy.js';
 import { TREASURES } from './beach-data.js';
+import { PET_ITEMS, PET_IDS } from './pets-data.js';
 // 보물 무게 (서버 kids_treasure_kinds와 같다)
 const TREASURE_WEIGHT = { shell: 24, conch: 18, seaglass: 14, starfish: 10, crab: 8, coin: 6, pearl: 3, bottle: 3, fossil: 2, chest: 1, can: 7, sandal: 5 };
 const BUG_KINDS = ['cabbage_white', 'swallowtail', 'honeybee', 'ladybug', 'grasshopper', 'red_dragonfly', 'mantis', 'cicada', 'stag_beetle', 'rhino_beetle', 'firefly'];
 const BUG_RARITY = [0, 1, 0, 0, 0, 0, 1, 1, 2, 2, 2]; // js/bugs.js와 같은 차례
-const ITEM_PRICE = { fw_spark: 1, fw_flower: 3, fw_heart: 5, pet_dog: 30, pet_cat: 30, pet_rabbit: 30, pet_chick: 30, pet_parrot: 30, ...Object.fromEntries(HOME_IDS.map((id) => [id, HOME_ITEMS[id].price])),
+const ITEM_PRICE = { fw_spark: 1, fw_flower: 3, fw_heart: 5, ...Object.fromEntries(PET_IDS.map((id) => [id, PET_ITEMS[id].price])), ...Object.fromEntries(HOME_IDS.map((id) => [id, HOME_ITEMS[id].price])),
   ...Object.fromEntries(WARDROBE_IDS.map((id) => [id, WARDROBE[id].price])) };
 // 열매 1개가 되는 묶음 마릿수 (서버 kids__sell_bundle과 같다)
 function sellBundle(kind, id) {
@@ -337,7 +338,7 @@ export class DemoBackend {
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true, breeds: true }; }
   // 쪽지함: 친구별 마지막 쪽지와 안 읽은 수 (최근 30일)
   kids_dm_box({ p_token }) {
     const me = this.session(p_token, 'child');
@@ -749,7 +750,7 @@ export class DemoBackend {
     const me = this.session(p_token, 'child');
     const to = this.db.children.find((c) => c.id === p_to);
     if (!to || p_to === me || !to.village_name) fail('NOT_FOUND');
-    if (!GIFT_MSGS[p_msg] || !['pet_dog', 'pet_cat', 'pet_rabbit', 'pet_chick', 'pet_parrot'].includes(p_pet)) fail('BAD_GIFT');
+    if (!GIFT_MSGS[p_msg] || !PET_IDS.includes(p_pet)) fail('BAD_GIFT');
     this.db.gifts = this.db.gifts || [];
     if (this.db.gifts.some((g) => g.from === me && Date.now() - Date.parse(g.at) < 3000)) fail('TOO_FAST');
     if (this.petGiftLeft(me) < 1) fail('PET_GIFT_DAY');

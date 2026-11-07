@@ -363,6 +363,31 @@ function ensureThumbR() {
   thumbScene.add(sun);
   thumbCam = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
 }
+// 아무 3D 물건의 작은 그림 (애완동물 상점 칸 등). build()는 Group을 돌려준다. dir: 카메라가 보는 쪽
+export function objThumb(key, build, dir = [0.15, 0.45, 1]) {
+  if (thumbs.has(key)) return thumbs.get(key);
+  try {
+    ensureThumbR();
+    const g = build();
+    thumbScene.add(g);
+    g.updateMatrixWorld(true);
+    const bb = new THREE.Box3().setFromObject(g);
+    const ctr = bb.getCenter(new THREE.Vector3()), size = bb.getSize(new THREE.Vector3());
+    const r = Math.max(size.x, size.y, size.z) * 0.5 + 0.03;
+    const dist = r / Math.tan(THREE.MathUtils.degToRad(15));
+    thumbCam.position.copy(ctr).addScaledVector(new THREE.Vector3(...dir).normalize(), dist);
+    thumbCam.lookAt(ctr);
+    thumbR.setClearColor(0x000000, 0);
+    thumbR.render(thumbScene, thumbCam);
+    const url = thumbR.domElement.toDataURL('image/png');
+    thumbScene.remove(g);
+    g.traverse((o) => { if (o.isMesh) o.geometry.dispose(); });
+    thumbs.set(key, url);
+    return url;
+  } catch (e) {
+    return '';
+  }
+}
 // 내 주민이 꾸미기 물건을 입은 작은 그림 (상점 목록). view: 'head' 머리, 'hair' 머리 모양(비스듬히 옆에서, 어깨까지), 'body' 앞모습, 'back' 뒷모습
 export function avatarThumb(data, view = 'body') {
   const key = view + JSON.stringify(data);

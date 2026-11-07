@@ -46,14 +46,16 @@ export const PARTS = {
   // 열매 상점 꾸미기 물건 (js/wardrobe.js): 안경과 등에 메는 것
   face: [['none', '없음'], ['glasses', '동그란 안경'], ['sunglasses', '선글라스'], ['heart', '하트 안경']],
   back: [['none', '없음'], ['angel', '천사 날개'], ['butterfly', '나비 날개'], ['cape', '망토'], ['backpack', '책가방']],
+  // 우산 무늬 (누구나 고를 수 있다. 색은 umbrellaColor)
+  umbrella: [['solid', '한 가지 색'], ['stripe', '줄무늬'], ['dots', '물방울'], ['rainbow', '무지개'], ['clear', '투명 우산'], ['frog', '개구리']],
 };
 
 const KEYS = {
-  eyes: 'eyes', brows: 'brows', nose: 'nose', mouth: 'mouth', cheek: 'cheek', hair: 'hair', outfit: 'outfit', bottom: 'bottom', hat: 'hat', face: 'face', back: 'back',
+  eyes: 'eyes', brows: 'brows', nose: 'nose', mouth: 'mouth', cheek: 'cheek', hair: 'hair', outfit: 'outfit', bottom: 'bottom', hat: 'hat', face: 'face', back: 'back', umbrella: 'umbrella',
 };
 // 한 벌 옷: 이 옷을 입으면 하의(bottom)는 보이지 않는다
 export const ONE_PIECE = new Set(['overall', 'dress', 'robe', 'pajama', 'hero']);
-const COLOR_KEYS = { skin: 'skin', hairColor: 'hair', eyeColor: 'eye', outfitColor: 'cloth', bottomColor: 'bottom', shoeColor: 'shoe', hatColor: 'cloth', backColor: 'cloth' };
+const COLOR_KEYS = { skin: 'skin', hairColor: 'hair', eyeColor: 'eye', outfitColor: 'cloth', bottomColor: 'bottom', shoeColor: 'shoe', hatColor: 'cloth', backColor: 'cloth', umbrellaColor: 'cloth' };
 // 상점에서 사야 하는 값 (무작위 꾸미기와 처음 모습에서는 고르지 않는다)
 const SHOP_VALUES = { outfit: ['sailor', 'raincoat', 'hero'], hat: ['halo', 'bunny', 'catband', 'chef'], face: ['glasses', 'sunglasses', 'heart'], back: ['angel', 'butterfly', 'cape', 'backpack'],
   hair: ['cloud', 'spacebuns', 'twintails', 'sidetail', 'wavy', 'princess', 'quiff', 'messy', 'dino', 'daenggi', 'sangtu'] };
@@ -62,7 +64,7 @@ export function defaultAvatar() {
   return {
     v: 1, skin: 1, eyes: 'round', eyeColor: 0, brows: 'soft', nose: 'dot', mouth: 'smile', cheek: 'pink',
     hair: 'short', hairColor: 1, outfit: 'tee', outfitColor: 4, bottom: 'pants', bottomColor: 0, shoeColor: 0, hat: 'none', hatColor: 0,
-    face: 'none', back: 'none', backColor: 0,
+    face: 'none', back: 'none', backColor: 0, umbrella: 'solid', umbrellaColor: 2,
   };
 }
 

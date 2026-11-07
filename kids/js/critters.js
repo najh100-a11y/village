@@ -4,6 +4,7 @@ import * as THREE from './three.module.min.js';
 import { toon, toonGradient } from './avatar.js';
 import { mergeStatic, mergeGeos, mergeColored } from './merge.js';
 import { inPool } from './pool.js';
+import { PET_ITEMS, PET_IDS } from './pets-data.js';
 
 const TAU = Math.PI * 2;
 // 부품 색을 꼭짓점 색으로 합쳐 한 번에 그리는 재질 (그림·빛나는 재질은 따로 합친다)
@@ -67,19 +68,60 @@ const PETS = [
 ];
 const CYCLE = 15, WALK = 10; // 15초마다 10초 걷고 5초 쉰다
 
+// 개와 고양이. d.look이 있으면 품종 모양 (값은 js/pets-data.js 맨 위 설명). 없으면 처음 모양 그대로
 function makePet(d) {
   const cat = d.kind === 'cat';
-  const H = cat ? 0.32 : 0.38; // 엉덩이 높이
-  const coat = toon(d.coat), dark = toon('#2E2A2A'), cream = toon('#FFF3DA');
+  const L = d.look || {};
+  const H = (cat ? 0.32 : 0.38) * (L.leg || 1); // 엉덩이 높이
+  const len = L.len || 1, wide = L.wide || 1;
+  const coat = toon(d.coat), dark = toon('#2E2A2A'), cream = toon(L.muzzle || '#FFF3DA');
+  const headC = L.head ? toon(L.head) : coat;
+  const pointC = L.points ? toon(L.points) : null; // 샴, 랙돌: 귀·얼굴·다리·꼬리가 진하다
+  const legC = pointC || (L.legC ? toon(L.legC) : coat);
+  const pawC = L.mitts ? toon(L.mitts) : legC;
+  const tailC = pointC || (L.tailC ? toon(L.tailC) : coat);
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
+  const bw = (cat ? 0.17 : 0.2) * wide, bh = (cat ? 0.16 : 0.19) * wide, bl = (cat ? 0.34 : 0.36) * len;
+  const ty = H + 0.08;
   const torsoG = new THREE.Group();
-  const torso = ball(1, coat, 0, H + 0.08, 0, 14);
-  torso.scale.set(cat ? 0.17 : 0.2, cat ? 0.16 : 0.19, cat ? 0.34 : 0.36);
+  const torso = ball(1, coat, 0, ty, 0, 14);
+  torso.scale.set(bw, bh, bl);
   torsoG.add(torso);
+  const shell = (c, sx, sy, sz, x, y, z, g = torsoG) => { const m = ball(1, c, x, y, z, 12); m.scale.set(sx, sy, sz); g.add(m); return m; };
+  if (L.saddle) shell(toon(L.saddle), bw * 1.04, bh * 0.72, bl * 0.82, 0, ty + bh * 0.32, -bl * 0.06); // 등 무늬
+  if (L.chest) { // 가슴(과 고양이는 배) 무늬
+    shell(toon(L.chest), bw * 0.8, bh * 0.78, bl * 0.42, 0, ty - bh * 0.15, bl * 0.62);
+    if (cat) shell(toon(L.chest), bw * 0.86, bh * 0.6, bl * 0.72, 0, ty - bh * 0.45, bl * 0.08);
+  }
+  if (L.stripes) { // 태비 줄무늬: 등과 옆구리를 감싸는 띠
+    const sc = toon(L.stripes);
+    for (const k of [-0.62, -0.36, -0.1, 0.16, 0.42]) {
+      const f = Math.sqrt(1 - k * k);
+      shell(sc, bw * f * 1.04, bh * f * 0.88, 0.024, 0, ty + bh * f * 0.22, bl * k);
+    }
+  }
+  if (L.fluff === 'skirt') { // 바닥까지 늘어진 긴 털 (말티즈, 요크셔테리어): 몸 가운데서 시작해 아래로 살짝 퍼진다
+    const prof = [[0, 0], [0.86, 0], [1.02, 0.05], [1.07, 0.2], [1.0, 0.55], [0.93, 0.84], [0.62, 1], [0, 1]].map(([r, y]) => new THREE.Vector2(r, y));
+    const sk = mesh(new THREE.LatheGeometry(prof, 18), toon(L.skirt || d.coat), 0, 0.06, -bl * 0.04);
+    sk.scale.set(bw * 1.02, ty - 0.06, bl * 0.93);
+    torsoG.add(sk);
+  }
+  if (L.fluff === 'curly') { // 곱슬 털: 몸 위에 작은 털 뭉치
+    const n = 18;
+    for (let i = 0; i < n; i++) {
+      const el = Math.asin(1 - (i + 0.5) / n * 1.55); // 위에서 옆구리 아래까지
+      const az = i * 2.39996;
+      const r = 0.07 * wide;
+      shell(coat, r, r, r, Math.cos(el) * Math.sin(az) * bw * 0.92, ty + Math.sin(el) * bh * 0.92, Math.cos(el) * Math.cos(az) * bl * 0.92);
+    }
+  }
+  if (L.fluff === 'mane') shell(coat, 0.23 * wide, 0.21, 0.17, 0, H + 0.2, bl * 0.62); // 목둘레 갈기 (포메라니안)
+  if (L.fluff === 'puff') shell(coat, 0.16 * wide, 0.15, 0.12, 0, H + 0.18, bl * 0.66); // 목둘레 긴 털 (페르시안, 랙돌)
+  if (L.fluff === 'puff' && L.chest) shell(toon(L.chest), 0.13 * wide, 0.12, 0.08, 0, H + 0.14, bl * 0.76);
   if (d.collar) {
-    const c = mesh(new THREE.TorusGeometry(0.12, 0.024, 6, 18), toon(d.collar), 0, H + 0.2, 0.27);
+    const c = mesh(new THREE.TorusGeometry(0.12 * wide, 0.024, 6, 18), toon(d.collar), 0, H + 0.2, 0.27 * len);
     c.rotation.x = Math.PI / 2 + 0.5;
     torsoG.add(c);
   }
@@ -87,37 +129,73 @@ function makePet(d) {
   body.add(torsoG);
   // 머리
   const head = new THREE.Group();
-  head.position.set(0, H + 0.3, cat ? 0.31 : 0.35);
-  head.add(ball(cat ? 0.17 : 0.19, coat, 0, 0, 0, 14));
+  head.position.set(0, H + 0.3, bl * (cat ? 0.912 : 0.972));
+  const hr = cat ? 0.17 : 0.19;
+  const skull = ball(hr, headC, 0, 0, 0, 14);
+  if (L.fluff === 'puff') skull.scale.set(1.14, 1, 1); // 볼이 통통
+  head.add(skull);
+  // 얼굴이 털에 묻히지 않게 눈·코를 앞으로 낸다 (비숑, 포메라니안)
+  const fz = L.round ? 0.075 : L.fluff === 'mane' ? 0.02 : 0;
+  if (L.round) shell(coat, 0.26, 0.25, 0.25, 0, 0.03, -0.02, head); // 솜뭉치 같은 둥근 머리
+  if (L.fluff === 'mane') shell(coat, 0.22, 0.2, 0.17, 0, -0.03, -0.07, head);
+  const earS = L.earS || 1;
+  const earC = pointC || (cat ? headC : toon(d.ear));
+  const ears = L.ears || (cat ? 'up' : 'drop');
   for (const s of [-1, 1]) {
     if (cat) {
-      const e = mesh(new THREE.ConeGeometry(0.07, 0.15, 4), coat, s * 0.1, 0.17, -0.01);
+      const e = mesh(new THREE.ConeGeometry(0.07 * earS, 0.15 * earS, 4), earC, s * 0.1, 0.17 + (earS - 1) * 0.05, -0.01);
       e.rotation.z = -s * 0.25;
       head.add(e);
-    } else {
-      const e = ball(1, toon(d.ear), s * 0.17, 0.0, -0.02, 10);
+    } else if (ears === 'up') { // 선 귀 (웰시코기, 진돗개, 요크셔테리어, 포메라니안)
+      const e = mesh(new THREE.ConeGeometry(0.07 * earS, 0.16 * earS, 4), earC, s * 0.105, 0.15 + 0.07 * earS, -0.015);
+      e.rotation.set(0.15, 0, -s * 0.3);
+      head.add(e);
+    } else if (ears === 'long') { // 길게 늘어진 귀 (비글, 닥스훈트, 골든 리트리버)
+      shell(earC, 0.06, 0.19, 0.055, s * 0.178, -0.06, -0.01, head).rotation.z = s * 0.15;
+    } else if (ears === 'fluff') { // 긴 털이 덮인 귀 (말티즈)
+      shell(earC, 0.08, 0.2, 0.07, s * 0.17, -0.08, -0.02, head).rotation.z = s * 0.2;
+    } else if (ears === 'curly') { // 곱슬 털 뭉치 귀 (푸들)
+      for (const [x, y, z] of [[0.18, 0.0, -0.02], [0.2, -0.08, -0.01], [0.19, -0.16, 0]]) shell(earC, 0.065, 0.065, 0.065, s * x, y, z, head);
+    } else if (ears !== 'hidden') {
+      const e = ball(1, earC, s * 0.17, 0.0, -0.02, 10);
       e.scale.set(0.06, 0.13, 0.045);
       e.rotation.z = s * 0.35;
       head.add(e);
     }
-    head.add(ball(0.03, dark, s * 0.075, 0.05, cat ? 0.145 : 0.16, 8, false));
+    if (L.eye) { // 고양이 눈동자 색
+      head.add(ball(0.036, toon(L.eye), s * 0.075, 0.05, 0.14 + fz, 8, false));
+      shell(dark, 0.012, 0.024, 0.012, s * 0.075, 0.05, 0.172 + fz, head);
+    } else head.add(ball(0.03, dark, s * 0.075, 0.05, (cat ? 0.145 : 0.16) + fz, 8, false));
   }
-  const snout = ball(1, cream, 0, -0.05, cat ? 0.13 : 0.16, 10);
-  snout.scale.set(cat ? 0.075 : 0.095, cat ? 0.055 : 0.075, cat ? 0.06 : 0.11);
+  if (pointC) shell(pointC, 0.13, 0.12, 0.09, 0, -0.03, 0.09, head); // 얼굴 가운데 진한 무늬
+  if (L.blaze) shell(toon(L.blaze), 0.03, 0.1, 0.03, 0, 0.07, hr - 0.02, head).rotation.x = -0.5; // 이마의 흰 줄
+  if (L.mark) for (const x of [-0.042, 0, 0.042]) shell(toon(L.stripes), 0.011, 0.045, 0.012, x, 0.11, 0.122, head).rotation.x = -0.75; // 이마 M자 무늬
+  const sk = L.snout || 1;
+  const snout = ball(1, cream, 0, -0.05, Math.max(hr * 0.72, (cat ? 0.13 + (sk - 1) * 0.04 : 0.16 + (sk - 1) * 0.06)) + fz, 10);
+  snout.scale.set(cat ? 0.075 : 0.095, cat ? 0.055 : 0.075, (cat ? 0.06 : 0.11) * Math.max(0.6, sk));
   head.add(snout);
-  head.add(ball(0.032, dark, 0, -0.02, cat ? 0.19 : 0.265, 8, false));
+  const noseZ = Math.max(snout.position.z + snout.scale.z * (cat ? 1 : 0.95), hr * 0.98 + fz);
+  head.add(ball(0.032, dark, 0, -0.02, noseZ, 8, false));
+  if (L.bow) { // 머리 위 리본 (말티즈, 요크셔테리어)
+    shell(headC, 0.06, 0.05, 0.06, 0, hr - 0.02, -0.01, head);
+    const bc = toon(L.bow);
+    for (const s of [-1, 1]) shell(bc, 0.045, 0.03, 0.022, s * 0.042, hr + 0.035, 0, head).rotation.z = s * 0.45;
+    shell(bc, 0.02, 0.02, 0.02, 0, hr + 0.035, 0.005, head);
+  }
+  if (L.fluff === 'curly' && !L.round) shell(coat, 0.1, 0.09, 0.1, 0, 0.15, -0.02, head); // 푸들 머리 위 털 뭉치
   merge(head);
   body.add(head);
   // 다리: 대각선 두 짝씩 함께 움직인다 (앞왼+뒤오, 앞오+뒤왼)
-  const legGeo = new THREE.CylinderGeometry(0.045, 0.04, H, 6);
-  const pawGeo = new THREE.SphereGeometry(0.05, 8, 6);
+  const lr = L.fluff === 'curly' ? 1.35 : L.fluff === 'puff' ? 1.3 : 1;
+  const legGeo = new THREE.CylinderGeometry(0.045 * lr, 0.04 * lr, H, 6);
+  const pawGeo = new THREE.SphereGeometry(0.05 * lr, 8, 6);
   const legs = [];
   for (const pair of [[[-1, 1], [1, -1]], [[1, 1], [-1, -1]]]) {
     const g = new THREE.Group();
     g.position.y = H;
     for (const [sx, sz] of pair) {
-      g.add(mesh(legGeo, coat, sx * 0.1, -H / 2, sz * 0.2));
-      g.add(mesh(pawGeo, coat, sx * 0.1, -H + 0.04, sz * 0.2 + 0.02));
+      g.add(mesh(legGeo, legC, sx * 0.1 * wide, -H / 2, sz * 0.2 * len));
+      g.add(mesh(pawGeo, pawC, sx * 0.1 * wide, -H + 0.04, sz * 0.2 * len + 0.02));
     }
     merge(g);
     body.add(g);
@@ -125,22 +203,38 @@ function makePet(d) {
   }
   // 꼬리
   const tail = new THREE.Group();
-  tail.position.set(0, H + 0.12, -0.33);
-  if (cat) { tail.add(rod(V(0, 0, 0), V(0, 0.32, -0.1), 0.03, coat)); tail.add(ball(0.04, coat, 0, 0.33, -0.1, 8)); }
-  else { tail.add(rod(V(0, 0, 0), V(0, 0.15, -0.15), 0.04, coat)); tail.add(ball(0.05, coat, 0, 0.16, -0.16, 8)); }
+  tail.position.set(0, H + 0.12, -bl * (cat ? 0.97 : 0.917));
+  const tt = L.tail || (cat ? 'cat' : 'dog');
+  if (tt === 'cat' || tt === 'fluffy') {
+    const r = tt === 'fluffy' ? 0.055 : 0.03;
+    tail.add(rod(V(0, 0, 0), V(0, 0.32, -0.1), r, tailC));
+    tail.add(ball(r + 0.01, tailC, 0, 0.33, -0.1, 8));
+    if (L.stripes) for (const k of [0.3, 0.55, 0.8]) tail.add(ball(r + 0.006, toon(L.stripes), 0, 0.32 * k, -0.1 * k, 8));
+  } else if (tt === 'stub') tail.add(ball(0.06, tailC, 0, 0.02, -0.03, 8));
+  else if (tt === 'curl') { // 등 위로 말아 올린 꼬리 (진돗개)
+    const c = mesh(new THREE.TorusGeometry(0.1, 0.042, 6, 14, Math.PI * 1.35), tailC, 0, 0.1, 0.0);
+    c.rotation.set(0, Math.PI / 2, -0.35);
+    tail.add(c);
+  } else if (tt === 'plume') { // 등에 얹은 풍성한 꼬리 (포메라니안, 비숑)
+    tail.add(rod(V(0, 0, 0), V(0, 0.08, 0.02), 0.04, tailC));
+    shell(tailC, 0.1, 0.075, 0.15, 0, 0.13, 0.09, tail).rotation.x = -0.25;
+  } else if (tt === 'pom') { // 끝이 동그란 꼬리 (푸들)
+    tail.add(rod(V(0, 0, 0), V(0, 0.16, -0.06), 0.03, tailC));
+    tail.add(ball(0.075, tailC, 0, 0.18, -0.07, 10));
+  } else if (tt === 'feather') { // 아래로 술 같은 털이 난 꼬리 (골든 리트리버)
+    tail.add(rod(V(0, 0, 0), V(0, 0.06, -0.3), 0.04, tailC));
+    shell(tailC, 0.028, 0.06, 0.15, 0, -0.02, -0.17, tail);
+  } else if (tt === 'long') { // 가늘고 긴 꼬리 (닥스훈트, 비글)
+    tail.add(rod(V(0, 0, 0), V(0, 0.2, -0.2), 0.032, tailC));
+    tail.add(ball(0.04, L.tip ? toon(L.tip) : tailC, 0, 0.21, -0.21, 8));
+  } else { tail.add(rod(V(0, 0, 0), V(0, 0.15, -0.15), 0.04, tailC)); tail.add(ball(0.05, tailC, 0, 0.16, -0.16, 8)); }
   merge(tail);
   body.add(tail);
   return { root, body, head, legs, tail, H };
 }
 
 // ---------- 열매 상점에서 데려오는 애완동물 ----------
-export const PET_ITEMS = {
-  pet_dog: { kind: 'dog', name: '강아지', desc: '꼬리를 흔들며 졸졸 따라와요.', coat: '#C98B4E', ear: '#8A5A33', collar: '#5FA9E0', price: 30 },
-  pet_cat: { kind: 'cat', name: '고양이', desc: '살금살금 곁을 지켜 줘요.', coat: '#F2E2C4', ear: '#D9B98A', collar: '#EF6461', price: 30 },
-  pet_rabbit: { kind: 'rabbit', name: '토끼', desc: '깡충깡충 뛰어서 따라와요.', coat: '#FFFFFF', ear: '#F6B8C8', price: 30 },
-  pet_chick: { kind: 'chick', name: '병아리', desc: '삐약삐약 종종걸음으로 따라와요.', coat: '#FFD84D', price: 30 },
-  pet_parrot: { kind: 'parrot', name: '앵무새', desc: '머리 위를 훨훨 날아 따라오고, 내가 한 말을 따라 해요.', coat: '#3DBB5C', ear: '#F6D55C', wing: '#3E8FE0', tail: '#E5484D', price: 30 },
-};
+export { PET_ITEMS, PET_IDS };
 // 눌렀을 때 하는 말
 export const PET_SOUND = { dog: '멍멍!', cat: '야옹~', rabbit: '깡충!', chick: '삐약삐약!', parrot: '안녕! 안녕!' };
 // 먹이 주기: 동물마다 주는 것 (그릇에 담아 바닥에 놓아 준다. 열매나 수확 바구니는 쓰지 않는다)
@@ -182,7 +276,6 @@ function petBowl(kind) {
   return g;
 }
 function disposeTree(o) { o.traverse((m) => { if (m.geometry) m.geometry.dispose(); }); o.removeFromParent(); }
-export const PET_IDS = Object.keys(PET_ITEMS);
 
 function makeRabbit(d) {
   const H = 0.2;
@@ -289,28 +382,41 @@ function makeChick(d) {
   return { root, body, head, legs, tail, H };
 }
 
-// 앵무새: 초록 몸, 노란 얼굴, 파란 날개 끝, 빨간 꼬리. 날개(wings)는 따로 움직인다
+// 앵무새. 처음 앵무새: 초록 몸, 노란 얼굴, 파란 날개 끝, 빨간 꼬리. 품종은 d.look (js/pets-data.js)
+// 날개(wings)는 따로 움직이고, 볏(crest)이 있으면 쓰다듬거나 날 때 선다
 function makeParrot(d) {
   const H = 0.1;
-  const coat = toon(d.coat), face = toon(d.ear), blue = toon(d.wing), red = toon(d.tail);
-  const dark = toon('#2E2A2A'), white = toon('#FFFFFF'), beakC = toon('#F3E6C8'), grey = toon('#8D8A86');
+  const L = d.look || {};
+  const breed = !!d.look;
+  const coat = toon(d.coat), face = toon(d.ear), red = toon(d.tail);
+  const wingC = breed ? toon(d.wing) : coat, tipC = breed ? toon(L.wingTip || d.wing) : toon(d.wing);
+  const tail2 = toon(L.tail2 || (breed ? d.tail : d.wing));
+  const bellyC = toon(L.belly || d.ear);
+  const dark = toon('#2E2A2A'), white = toon(L.ring || '#FFFFFF'), beakC = toon(L.beak || '#F3E6C8'), grey = toon('#8D8A86');
+  const jawC = toon(L.jaw || (breed ? L.beak || '#8D8A86' : '#8D8A86'));
   const root = new THREE.Group();
   const body = new THREE.Group();
   root.add(body);
+  const shell = (g, c, sx, sy, sz, x, y, z) => { const m = ball(1, c, x, y, z, 10); m.scale.set(sx, sy, sz); g.add(m); return m; };
   const torsoG = new THREE.Group();
+  const cw = L.chubby ? 1.12 : 1;
   const torso = ball(1, coat, 0, H + 0.17, 0, 14);
-  torso.scale.set(0.12, 0.17, 0.13);
+  torso.scale.set(0.12 * cw, 0.17, 0.13 * cw);
   torso.rotation.x = 0.25;
   torsoG.add(torso);
-  const belly = ball(1, face, 0, H + 0.13, 0.06, 12);
-  belly.scale.set(0.085, 0.12, 0.08);
+  const belly = ball(1, bellyC, 0, H + 0.13, 0.06, 12);
+  belly.scale.set(0.085 * cw, 0.12, 0.08 * cw);
   belly.rotation.x = 0.25;
   torsoG.add(belly);
-  // 꼬리: 길고 가늘게 아래 뒤로
-  const tl = rod(V(0, H + 0.08, -0.08), V(0, H - 0.04, -0.34), 0.035, red);
+  if (L.rump) shell(torsoG, toon(L.rump), 0.07, 0.06, 0.05, 0, H + 0.08, -0.1); // 허리 쪽 파란 깃털
+  // 꼬리: 길고 가늘게 아래 뒤로 (길면 거의 바닥과 나란히)
+  const tl0 = L.tailLen || 1;
+  const tEnd = (k) => V(0, Math.max(0.03, H + 0.08 - 0.12 * tl0 * k), -0.08 - 0.26 * tl0 * k);
+  const tl = rod(V(0, H + 0.08, -0.08), tEnd(1), 0.035, red);
   tl.scale.set(1.5, 1, 0.45);
   torsoG.add(tl);
-  torsoG.add(rod(V(0.02, H + 0.08, -0.07), V(0.03, H - 0.02, -0.28), 0.022, blue));
+  const t2 = tEnd(0.8);
+  torsoG.add(rod(V(0.02, H + 0.08, -0.07), breed ? V(0.03, t2.y + 0.02, t2.z) : V(0.03, H - 0.02, -0.28), 0.022, tail2));
   merge(torsoG);
   body.add(torsoG);
   const head = new THREE.Group();
@@ -323,25 +429,59 @@ function makeParrot(d) {
   const beak = mesh(new THREE.ConeGeometry(0.035, 0.09, 8), beakC, 0, -0.02, 0.12);
   beak.rotation.x = Math.PI / 2 + 0.7;
   head.add(beak);
-  head.add(ball(0.022, grey, 0, -0.05, 0.095, 8, false));
+  head.add(ball(0.022, jawC, 0, -0.05, 0.095, 8, false));
   for (const s of [-1, 1]) {
+    if (L.bare) { const b = L.bareS || 1; shell(head, toon(L.bare), 0.045 * b, 0.042 * b, 0.03, s * 0.058, 0.005 - (b - 1) * 0.03, 0.06); } // 눈 둘레 맨살 (홍금강앵무, 회색앵무)
     head.add(ball(0.03, white, s * 0.06, 0.025, 0.065, 8, false));
     head.add(ball(0.016, dark, s * 0.066, 0.027, 0.085, 8, false));
+    if (L.cheek) shell(head, toon(L.cheek), 0.022, 0.022, 0.012, s * 0.068, -0.032, 0.078).rotation.y = s * 0.7; // 볼 무늬
   }
-  head.add(rod(V(0, 0.08, -0.01), V(0, 0.15, -0.06), 0.018, coat)); // 머리 깃
+  if (L.bars) { // 사랑앵무: 뒷머리 물결무늬와 목의 점
+    const bc = toon(L.bars);
+    for (let i = 0; i < 3; i++) shell(head, bc, 0.07 - i * 0.008, 0.008, 0.03, 0, 0.05 - i * 0.032, -0.082 + i * 0.006);
+    for (const x of [-0.035, 0, 0.035]) shell(head, bc, 0.01, 0.01, 0.008, x, -0.075, 0.075);
+  }
+  if (!breed) head.add(rod(V(0, 0.08, -0.01), V(0, 0.15, -0.06), 0.018, coat)); // 머리 깃
   merge(head);
   body.add(head);
+  // 볏: 머리 위에서 따로 움직인다 (왕관앵무, 큰유황앵무)
+  let crest = null;
+  if (L.crest) {
+    crest = new THREE.Group();
+    crest.position.set(0, 0.07, 0.0);
+    const cc = toon(L.crest), ctip = toon(L.crestTip || L.crest);
+    if (L.crestType === 'fan') {
+      for (const [a, x] of [[-0.55, 0], [-0.25, -0.02], [-0.25, 0.02], [0.05, -0.03], [0.05, 0.03], [0.3, 0]]) {
+        const f = shell(crest, cc, 0.022, 0.085, 0.012, x, Math.cos(a) * 0.075, -Math.sin(a) * 0.075);
+        f.rotation.x = -a;
+      }
+    } else {
+      for (const x of [-0.02, 0, 0.02]) {
+        crest.add(rod(V(x, 0, 0.03), V(x * 1.3, 0.13, -0.02), 0.013, cc));
+        crest.add(rod(V(x * 1.3, 0.13, -0.02), V(x * 1.5, 0.19, -0.08), 0.01, ctip));
+      }
+    }
+    merge(crest);
+    crest.rotation.x = L.crestType === 'fan' ? -1.3 : -0.35;
+    head.add(crest);
+  }
   // 날개: 어깨에서 돌아간다
   const wings = [];
   for (const s of [-1, 1]) {
     const g = new THREE.Group();
-    g.position.set(s * 0.11, H + 0.27, -0.01);
-    const w = ball(1, coat, s * 0.02, -0.1, -0.02, 10);
+    g.position.set(s * 0.11 * cw, H + 0.27, -0.01);
+    const w = ball(1, wingC, s * 0.02, -0.1, -0.02, 10);
     w.scale.set(0.035, 0.13, 0.09);
     g.add(w);
-    const tip = ball(1, blue, s * 0.025, -0.2, -0.05, 8);
+    if (L.wingMid) shell(g, toon(L.wingMid), 0.033, 0.06, 0.07, s * 0.024, -0.16, -0.04);
+    const tip = ball(1, tipC, s * 0.025, -0.2, -0.05, 8);
     tip.scale.set(0.03, 0.07, 0.06);
     g.add(tip);
+    if (L.patch) shell(g, toon(L.patch), 0.02, 0.05, 0.055, s * 0.045, -0.07, 0.0); // 왕관앵무 날개의 흰 무늬
+    if (L.bars) for (const y of [-0.04, -0.08, -0.12, -0.16]) { // 사랑앵무 날개의 검은 물결무늬
+      const k = Math.sqrt(Math.max(0.05, 1 - ((y + 0.1) / 0.13) ** 2));
+      shell(g, toon(L.bars), 0.017, 0.006, 0.075 * k, s * 0.041, y, -0.02);
+    }
     merge(g);
     body.add(g);
     wings.push(g);
@@ -358,10 +498,10 @@ function makeParrot(d) {
     body.add(g);
     legs.push(g);
   }
-  return { root, body, head, legs, tail: wings[0], wings, H };
+  return { root, body, head, legs, tail: wings[0], wings, crest, H };
 }
 
-function makeAnyPet(d) {
+export function makeAnyPet(d) {
   if (d.kind === 'parrot') return makeParrot(d);
   if (d.kind === 'rabbit') return makeRabbit(d);
   if (d.kind === 'chick') return makeChick(d);
@@ -379,7 +519,8 @@ export class Follower {
     Object.assign(this, p);
     this.root.traverse((o) => { if (o.isMesh) o.castShadow = false; });
     this.body.children[0].traverse((o) => { if (o.isMesh) o.castShadow = true; });
-    if (this.def.kind === 'parrot') this.root.scale.setScalar(1.3); // 날아다니니 조금 크게
+    this.size = (this.def.look && this.def.look.size) || 1; // 품종마다 크기가 다르다 (골든 리트리버는 크고 포메라니안은 작다)
+    this.root.scale.setScalar(this.size * (this.def.kind === 'parrot' ? 1.3 : 1)); // 앵무새는 날아다니니 조금 크게
     this.root.userData.pick = { type: 'mypet', owner: ownerId, item };
     v.scene.add(this.root);
     v.pickRoots.push(this.root);
@@ -601,6 +742,12 @@ export class Follower {
       lift *= this.root.scale.y; // 말풍선·이름표는 세상 높이로
       this.head.rotation.y = !moving && this.fly < 0.2 ? Math.sin(t * 0.9) * 0.5 : 0;
       this.head.rotation.x = 0;
+      if (this.crest) { // 볏은 쓰다듬거나 날아오르면 서고, 쉴 때는 눕는다
+        const fan = this.def.look.crestType === 'fan';
+        const up = this.react > 0 || this.fly > 0.6 || (this.echoQ && this.echoQ.at < 0.6);
+        const want = up ? (fan ? 0.05 : 0.15) : (fan ? -1.3 : -0.35);
+        this.crest.rotation.x += (want - this.crest.rotation.x) * Math.min(1, dt * 7);
+      }
     } else {
       const sw = moving ? Math.sin(this.walk) * (k === 'rabbit' ? 0.25 : 0.55) : 0;
       this.legs[0].rotation.x = sw;
@@ -629,12 +776,12 @@ export class Follower {
     if (this.bubble) {
       this.bubble.life -= dt;
       if (this.bubble.life <= 0) { this.bubble.el.remove(); this.bubble = null; }
-      else { this.bubble.el.style.opacity = String(Math.min(1, this.bubble.life / 0.4)); v.placeLabel(this.bubble.el, pos, 1.0 + lift); }
+      else { this.bubble.el.style.opacity = String(Math.min(1, this.bubble.life / 0.4)); v.placeLabel(this.bubble.el, pos, 1.0 * (this.size || 1) + lift); }
     }
     if (this.tag) {
       // 이름표 (말풍선이 떠 있을 때와 1인칭으로 볼 때는 감춘다)
       const show = this.root.visible && !this.bubble && !v.fp && !(this.care && this.care.what === 'hug');
-      if (show) v.placeLabel(this.tag, pos, (k === 'parrot' ? 0.8 : k === 'chick' ? 0.62 : k === 'rabbit' ? 0.82 : 0.95) + lift);
+      if (show) v.placeLabel(this.tag, pos, (k === 'parrot' ? 0.8 : k === 'chick' ? 0.62 : k === 'rabbit' ? 0.82 : 0.95) * (this.size || 1) + lift);
       else this.tag.style.display = 'none';
     }
     if (this.hearts) {
