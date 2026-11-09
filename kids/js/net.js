@@ -44,7 +44,7 @@ export function clean(type, p) {
   // 애완동물 돌보기 (안아 주기, 먹이 주기). i: 돌보는 동물 (예전 화면은 없이 보낸다)
   if (type === 'pc') return p.k === 'hug' || p.k === 'feed' ? { k: p.k, i: typeof p.i === 'string' && PET_RE.test(p.i) ? p.i : null } : null;
   // 불꽃놀이: 종류와 쏜 자리
-  if (type === 'fw') return ['fw_spark', 'fw_flower', 'fw_heart'].includes(p.k) && num(p.x) && num(p.z) ? { k: p.k, x: p.x, z: p.z } : null;
+  if (type === 'fw') return ['fw_spark', 'fw_flower', 'fw_heart', 'fw_volley'].includes(p.k) && num(p.x) && num(p.z) ? { k: p.k, x: p.x, z: p.z } : null;
   // 마을 식탁 요리를 먹었다 (d: 요리 번호)
   if (type === 'ate') return Number.isSafeInteger(p.d) && p.d > 0 ? { d: p.d } : null;
   // 곤충을 잡았다 (s: 자리, w: 시간 칸, b: 곤충)

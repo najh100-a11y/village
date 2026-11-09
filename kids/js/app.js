@@ -850,7 +850,7 @@ async function startNet() {
       } else if (type === 'fw') {
         if (village.fireworks) village.fireworks.launch(p.k, p.x, p.z);
         const me = village.playerPos();
-        if (me && village.mode === 'play' && Math.hypot(me.x - p.x, me.z - p.z) < 22) village.lookUp(4.5);
+        if (me && village.mode === 'play' && Math.hypot(me.x - p.x, me.z - p.z) < 22) village.lookUp(p.k === 'fw_volley' ? 9 : 4.5);
         const fw = FIREWORKS[p.k];
         if (fw) logLine(person.name, `🎆 ${fw.name}을 터트렸어요`, false);
       } else if (type === 'ate') {
@@ -1625,6 +1625,7 @@ function showNews() {
   news.push(['boardisle4', '새 소식! 보드게임 섬에서 방을 만들면 친구 넷까지 함께 놀 수 있어요(만칼라는 둘). 빈자리에는 컴퓨터 친구를 앉히고, 윷놀이는 2:2 편을 먹고 할 수도 있어요.']);
   if (state.features.home) news.push(['swing', "새 소식! 내 집 마당 그네를 탈 수 있어요. 그네에 앉아 '힘껏 구르기'를 누를수록 높이 올라가요. 놀러 온 친구에게도 그네 타는 모습이 보여요."]);
   if (state.features.home) news.push(['slide', '새 소식! 내 집 마당 미끄럼틀도 탈 수 있어요. 미끄럼틀을 누르면 사다리를 올라가서 쭉 미끄러져 내려와요. 같은 집에 있는 친구에게도 타는 모습이 보여요.']);
+  if (state.features.volley) news.push(['volley', '새 소식! 열매 상점 불꽃 칸에 \'10연발 불꽃\'(열매 7개)이 새로 왔어요. 불꽃 열 발이 차례로 솟아 저마다 다른 모양으로 터지고, 마지막엔 커다란 금빛 버들 불꽃이 쏟아져요.']);
   if (state.features.skip2) news.push(['skip2', '새 소식! 물수제비가 바뀌었어요. 힘 막대를 오른쪽 끝까지 채우고, 도는 스핀 바늘을 위쪽 빨간 점에 맞춰요. 운 없이 잘 맞힐수록 많이 튀어서 둘 다 딱 맞으면 24번까지 튀어요.']);
   if (state.features.breeds) news.push(['petbreeds', '새 소식! 열매 상점 동물 칸에 강아지 10종, 고양이 7종, 앵무새 8종이 새로 왔어요. 말티즈, 요크셔테리어, 진돗개, 샴, 사랑앵무, 모란앵무 같은 친구를 만나 보세요.']);
   news.push(['umbrella', "새 소식! 이제 우산을 쓸 수 있어요. 오른쪽 아래 '우산' 단추를 누르면 펴지고, 비나 눈이 오면 저절로 펴져요. 우산 무늬는 옷장(꾸미기)의 '우산' 칸에서 골라요."]);
@@ -1722,7 +1723,7 @@ function drawShop(body, shop) {
     class: 'shop-tab', role: 'tab', type: 'button', 'aria-selected': String(shopTab === k), onclick: () => { shopTab = k; drawShop(body, shop); },
   }, label))) : null;
   let rows;
-  if (shopTab === 'fw') rows = FW_IDS.map((id) => fwRow(id, items[id] || 0, { buy: true, launch: true, shop }));
+  if (shopTab === 'fw') rows = FW_IDS.filter((id) => id !== 'fw_volley' || f.volley).map((id) => fwRow(id, items[id] || 0, { buy: true, launch: true, shop })); // 10연발은 서버에 있을 때만
   else if (shopTab === 'pet') rows = petShopRows(shop, items, body);
   else if (shopTab === 'wear') rows = WARDROBE_IDS.filter((id) => WARDROBE[id].slot !== 'hair').map((id) => wearRow(id, shop));
   else if (shopTab === 'hair') rows = WARDROBE_IDS.filter((id) => WARDROBE[id].slot === 'hair').map((id) => wearRow(id, shop));
@@ -2036,7 +2037,7 @@ async function launchFirework(id) {
     const a = village.aheadOf(4);
     const x = +a.x.toFixed(2), z = +a.z.toFixed(2);
     village.fireworks.launch(id, x, z);
-    village.lookUp(4.8);
+    village.lookUp(id === 'fw_volley' ? 9.5 : 4.8); // 10연발은 다 터질 때까지 올려다본다
     village.celebrate();
     if (net) {
       const at = village.atHome ? village.playerPos() : { x, z }; // 내 집에서 쏘면 친구들에게는 마을 내 집 위에서 터진다

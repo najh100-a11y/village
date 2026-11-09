@@ -301,8 +301,14 @@ function fwLaunch(vol = 1) {
   fxNoise({ dur: 1.15, vol: 0.045 * vol, freq: 2600, freq2: 6200, q: 0.7, attack: 0.06, hold: 0.7 });
 }
 // 불꽃이 터질 때: 펑(높은 잡음) + 쿵(낮은 울림과 들리는 배음) + 우르릉 잔향 + 메아리 + 타닥타닥
+// 10연발: crackle(타닥타닥)은 작은 소리만, willow(금빛 버들)는 크게 터지고 쏴아 내려앉는 소리, mini(갈래 끝)는 작게
 function fwBurst(kind = 'spark', vol = 1) {
-  const v = vol * (kind === 'flower2' ? 0.6 : 1);
+  if (kind === 'crackle') {
+    for (let i = 0; i < 26; i++) fxNoise({ dur: rnd(0.015, 0.04), vol: rnd(0.06, 0.15) * vol, freq: rnd(3000, 8000), q: 1.6, delay: rnd(0, 0.75), attack: 0.002 });
+    return;
+  }
+  const v = vol * (kind === 'flower2' || kind === 'mini' ? 0.6 : kind === 'willow' ? 1.15 : 1);
+  if (kind === 'willow') fxNoise({ dur: 3.2, vol: 0.08 * v, freq: 5200, freq2: 2400, q: 0.6, delay: 0.3, attack: 0.3 });
   fxNoise({ dur: 0.24, vol: 0.6 * v, freq: 1500, q: 0.5, attack: 0.002 });
   fxTone({ f: 160, f2: 48, type: 'sine', dur: 0.85, vol: 0.55 * v, attack: 0.004 });
   fxTone({ f: 320, f2: 110, type: 'triangle', dur: 0.45, vol: 0.2 * v, attack: 0.004 });
