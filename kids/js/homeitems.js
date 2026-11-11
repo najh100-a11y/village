@@ -1,21 +1,44 @@
-// 진숲 어린이 마을 — 내 집 꾸미기 물건 (방, 마당, 밭)
+// 진숲 어린이 마을 — 내 집 꾸미기 물건 (방, 마당, 밭)과 집 넓히기(거실, 주방, 방 2, 방 3)
 // 상점, 내 집 화면, 체험판, 서버 SQL이 모두 이 목록을 쓴다. 값을 바꾸면 sql도 함께 바꾼다.
 // w, d: 차지하는 칸 수 (가로, 세로). floor: 바닥에 까는 것(다른 가구를 위에 놓을 수 있다).
+// zone: 'room'은 집 안 어느 방에나(내 방, 거실, 주방, 방 2, 방 3), 'kitchen'은 주방에만, 'yard'는 마당, 'garden'은 밭.
+// grp: 상점과 꾸미기 판에서 묶어 보이는 칸 (bed 방, living 거실, kitchen 주방). v2: 집 넓히기와 함께 생긴 물건
 // 씨앗(s_)은 밭 한 칸에 하나씩 심고, 다 자란 채소를 거두면 없어진다. 꽃은 다 자라면 그대로 핀다.
 
 export const HOME_ITEMS = {
   // 방
-  h_bed: { zone: 'room', name: '침대', desc: '포근한 이불이 덮인 침대예요.', price: 8, w: 2, d: 3 },
-  h_desk: { zone: 'room', name: '책상', desc: '공책을 펴고 말씀을 따라 쓰기 좋은 책상이에요.', price: 5, w: 2, d: 1 },
-  h_chair: { zone: 'room', name: '의자', desc: '책상이나 탁자 옆에 두는 나무 의자예요.', price: 2, w: 1, d: 1 },
-  h_sofa: { zone: 'room', name: '소파', desc: '친구와 나란히 앉을 수 있는 폭신한 소파예요.', price: 7, w: 2, d: 1 },
-  h_shelf: { zone: 'room', name: '책장', desc: '좋아하는 책을 가득 꽂아 둔 책장이에요.', price: 6, w: 2, d: 1 },
-  h_table: { zone: 'room', name: '동그란 탁자', desc: '찻잔을 올려 둔 작은 탁자예요.', price: 3, w: 1, d: 1 },
-  h_rug: { zone: 'room', name: '동그란 러그', desc: '바닥에 까는 알록달록한 깔개예요. 위에 가구를 놓을 수 있어요.', price: 4, w: 2, d: 2, floor: true },
-  h_lamp: { zone: 'room', name: '스탠드', desc: '밤이 되면 따뜻하게 빛나요.', price: 3, w: 1, d: 1, glow: true },
-  h_pot: { zone: 'room', name: '화분', desc: '잎이 넓은 초록 식물이에요.', price: 2, w: 1, d: 1 },
-  h_toys: { zone: 'room', name: '장난감 상자', desc: '곰 인형과 공이 들어 있어요.', price: 3, w: 1, d: 1 },
-  h_piano: { zone: 'room', name: '작은 피아노', desc: '의자에 앉아 건반을 누르면 진짜로 연주할 수 있어요. 찬송가 따라 치기도 있어요.', price: 9, w: 2, d: 1 },
+  h_bed: { zone: 'room', grp: 'bed', name: '침대', desc: '포근한 이불이 덮인 침대예요.', price: 8, w: 2, d: 3 },
+  h_desk: { zone: 'room', grp: 'bed', name: '책상', desc: '공책을 펴고 말씀을 따라 쓰기 좋은 책상이에요.', price: 5, w: 2, d: 1 },
+  h_chair: { zone: 'room', grp: 'bed', name: '의자', desc: '책상이나 탁자 옆에 두는 나무 의자예요.', price: 2, w: 1, d: 1 },
+  h_sofa: { zone: 'room', grp: 'living', name: '소파', desc: '친구와 나란히 앉을 수 있는 폭신한 소파예요.', price: 7, w: 2, d: 1 },
+  h_shelf: { zone: 'room', grp: 'bed', name: '책장', desc: '좋아하는 책을 가득 꽂아 둔 책장이에요.', price: 6, w: 2, d: 1 },
+  h_table: { zone: 'room', grp: 'living', name: '동그란 탁자', desc: '찻잔을 올려 둔 작은 탁자예요.', price: 3, w: 1, d: 1 },
+  h_rug: { zone: 'room', grp: 'bed', name: '동그란 러그', desc: '바닥에 까는 알록달록한 깔개예요. 위에 가구를 놓을 수 있어요.', price: 4, w: 2, d: 2, floor: true },
+  h_lamp: { zone: 'room', grp: 'bed', name: '스탠드', desc: '밤이 되면 따뜻하게 빛나요.', price: 3, w: 1, d: 1, glow: true },
+  h_pot: { zone: 'room', grp: 'living', name: '화분', desc: '잎이 넓은 초록 식물이에요.', price: 2, w: 1, d: 1 },
+  h_toys: { zone: 'room', grp: 'bed', name: '장난감 상자', desc: '곰 인형과 공이 들어 있어요.', price: 3, w: 1, d: 1 },
+  h_piano: { zone: 'room', grp: 'living', name: '작은 피아노', desc: '의자에 앉아 건반을 누르면 진짜로 연주할 수 있어요. 찬송가 따라 치기도 있어요.', price: 9, w: 2, d: 1 },
+  h_bunk: { zone: 'room', grp: 'bed', name: '2층 침대', desc: '사다리가 달린 2층 침대예요. 아래 칸에 누울 수 있어요.', price: 10, w: 2, d: 3, v2: true },
+  h_drawer: { zone: 'room', grp: 'bed', name: '서랍장', desc: '옷과 물건을 넣어 두는 세 칸 서랍장이에요.', price: 5, w: 2, d: 1, v2: true },
+  h_dresser: { zone: 'room', grp: 'bed', name: '화장대', desc: '동그란 거울이 달린 화장대와 작은 의자예요.', price: 6, w: 2, d: 1, v2: true },
+  h_globe: { zone: 'room', grp: 'bed', name: '지구본', desc: '빙글빙글 천천히 도는 지구본이에요.', price: 3, w: 1, d: 1, v2: true },
+  // 거실
+  h_bigsofa: { zone: 'room', grp: 'living', name: '큰 소파', desc: '셋이 나란히 앉을 수 있는 커다란 소파예요.', price: 9, w: 3, d: 1, v2: true },
+  h_coffee: { zone: 'room', grp: 'living', name: '거실 탁자', desc: '소파 앞에 두는 낮은 탁자예요. 과일 접시와 책이 놓여 있어요.', price: 4, w: 2, d: 1, v2: true },
+  h_tv: { zone: 'room', grp: 'living', name: '텔레비전', desc: '낮은 장 위에 놓인 텔레비전이에요. 누르면 켜지고 꺼져요.', price: 7, w: 2, d: 1, v2: true },
+  h_fishtank: { zone: 'room', grp: 'living', name: '어항', desc: '작은 물고기 세 마리가 헤엄치고 물방울이 보글보글 올라와요.', price: 8, w: 2, d: 1, v2: true },
+  h_clock: { zone: 'room', grp: 'living', name: '괘종시계', desc: '시계추가 똑딱똑딱 흔들리고, 바늘이 이 기기의 지금 시각을 가리켜요.', price: 6, w: 1, d: 1, v2: true },
+  h_rocking: { zone: 'room', grp: 'living', name: '흔들의자', desc: '쿠션을 얹은 나무 흔들의자예요. 앉아서 쉴 수 있어요.', price: 5, w: 1, d: 1, v2: true },
+  h_beanbag: { zone: 'room', grp: 'living', name: '빈백', desc: '푹 파묻혀 앉는 말랑말랑한 의자예요.', price: 4, w: 1, d: 1, v2: true },
+  h_bigrug: { zone: 'room', grp: 'living', name: '네모 러그', desc: '거실에 까는 커다란 네모 깔개예요. 위에 가구를 놓을 수 있어요.', price: 5, w: 3, d: 2, floor: true, v2: true },
+  h_tallplant: { zone: 'room', grp: 'living', name: '큰 화분', desc: '잎이 넓적한 키 큰 초록 식물이에요.', price: 3, w: 1, d: 1, v2: true },
+  h_fireplace: { zone: 'room', grp: 'living', name: '벽난로', desc: '빨간 벽돌 벽난로예요. 장작불이 일렁일렁 타올라요.', price: 9, w: 2, d: 1, v2: true },
+  // 주방 (식탁은 어느 방에나, 나머지는 주방에만)
+  h_dtable: { zone: 'room', grp: 'kitchen', name: '식탁', desc: '의자 네 개가 딸린 식탁이에요. 넷이 둘러앉을 수 있어요.', price: 8, w: 2, d: 3, v2: true },
+  h_fridge: { zone: 'kitchen', grp: 'kitchen', name: '냉장고', desc: '누르면 문이 열려서 안에 든 음식이 보여요.', price: 7, w: 1, d: 1, v2: true },
+  h_sink: { zone: 'kitchen', grp: 'kitchen', name: '싱크대', desc: '누르면 수도꼭지에서 물이 나와요.', price: 6, w: 2, d: 1, v2: true },
+  h_cupboard: { zone: 'kitchen', grp: 'kitchen', name: '그릇장', desc: '접시와 컵을 가지런히 넣어 둔 그릇장이에요.', price: 6, w: 2, d: 1, v2: true },
+  h_oven: { zone: 'kitchen', grp: 'kitchen', name: '오븐', desc: '유리창으로 안이 보이는 오븐이에요. 밤이 되면 안에 불이 켜져요.', price: 5, w: 1, d: 1, glow: true, v2: true },
   // 마당
   y_bench: { zone: 'yard', name: '벤치', desc: '마당에서 쉬어 가는 나무 벤치예요.', price: 5, w: 2, d: 1 },
   y_lamp: { zone: 'yard', name: '정원등', desc: '밤이 되면 마당을 환하게 밝혀요.', price: 3, w: 1, d: 1, glow: true },
@@ -35,31 +58,126 @@ export const HOME_ITEMS = {
   s_tulip: { zone: 'garden', name: '튤립 알뿌리', grown: '튤립', kind: 'flower', desc: '이틀이 지나면 예쁜 튤립이 피어요.', price: 2, w: 1, d: 1 },
 };
 export const HOME_IDS = Object.keys(HOME_ITEMS);
-export const ZONE_NAMES = { room: '방', yard: '마당', garden: '밭' };
+export const ZONE_NAMES = { room: '방', yard: '마당', garden: '밭', kitchen: '주방' };
+export const GROUP_NAMES = { bed: '🛏️ 방', living: '🛋️ 거실', kitchen: '🍳 주방' };
 export const isSeed = (id) => String(id).startsWith('s_');
+
+// ---------- 집 넓히기: 내 방 왼쪽(서쪽)으로 지은 차례대로 한 칸(가로 8, 세로 6)씩 붙는다 ----------
+// price는 열매 (선생님 할인을 받는다). 서버 kids__build_price와 같다
+export const SPACES = {
+  room: { name: '내 방', icon: '🛏️' },
+  living: { name: '거실', icon: '🛋️', price: 20, desc: '소파와 텔레비전을 두고 친구들과 모여 노는 방이에요.' },
+  kitchen: { name: '주방', icon: '🍳', price: 20, desc: '조리대와 화덕이 함께 생겨서 요리 놀이를 할 수 있어요. 냉장고, 싱크대 같은 주방 물건은 주방에만 놓아요.' },
+  room2: { name: '방 2', icon: '🛏️', price: 15, desc: '침대와 책상을 하나 더 둘 수 있는 방이에요.' },
+  room3: { name: '방 3', icon: '🛏️', price: 15, desc: '방이 하나 더 있으면 좋겠다 싶을 때 지어요.' },
+};
+export const BUILD_IDS = ['living', 'kitchen', 'room2', 'room3'];
+export const INDOOR = ['room', ...BUILD_IDS];
+export const isIndoor = (z) => INDOOR.includes(z);
+export const SLOT_W = 8;
+// 벽지와 바닥 (서버 kids_home_style과 같은 이름)
+export const WALLS = {
+  cream: { name: '크림', c: '#F6E3C2' }, mint: { name: '민트', c: '#CDEBD9' }, sky: { name: '하늘', c: '#CFE6F7' },
+  pink: { name: '분홍', c: '#F9D5E0' }, lemon: { name: '레몬', c: '#FBEFB2' }, lilac: { name: '라벤더', c: '#E1D7F2' },
+  stripe: { name: '줄무늬', c: '#FFF4E2', c2: '#F6C9CF', pat: 'stripe' }, dots: { name: '물방울', c: '#D8ECF8', c2: '#FFFFFF', pat: 'dots' },
+};
+export const FLOORS = {
+  wood: { name: '나무', c: '#D9A86C', c2: '#C48F55', pat: 'plank' }, light: { name: '밝은 나무', c: '#EBCB98', c2: '#D6B07A', pat: 'plank' },
+  dark: { name: '진한 나무', c: '#A8744A', c2: '#8E5F3A', pat: 'plank' }, tile: { name: '바둑판 타일', c: '#FFFDF7', c2: '#BFDDEB', pat: 'check' },
+  mintc: { name: '민트 카펫', c: '#A9DCC4', c2: '#9CD2B9', pat: 'soft' }, pinkc: { name: '분홍 카펫', c: '#F4BCCB', c2: '#EDAFC0', pat: 'soft' },
+  bluec: { name: '파란 카펫', c: '#A9CBEB', c2: '#9BBFE3', pat: 'soft' },
+};
+export const STYLE_DEFAULT = {
+  room: { w: 'cream', f: 'wood' }, living: { w: 'cream', f: 'light' }, kitchen: { w: 'mint', f: 'tile' },
+  room2: { w: 'sky', f: 'wood' }, room3: { w: 'pink', f: 'wood' },
+};
+export function styleOf(style, id) {
+  const s = (style && style[id]) || {};
+  const d = STYLE_DEFAULT[id] || STYLE_DEFAULT.room;
+  return { w: WALLS[s.w] ? s.w : d.w, f: FLOORS[s.f] ? s.f : d.f };
+}
 
 // 내 집 땅 (집 안 좌표, 1칸 = 1). 방 안, 마당, 밭
 export const ROOM = { x0: -10, x1: -2, z0: -10, z1: -4 };
 export const GARDEN = { x0: 2, x1: 8, z0: -10, z1: -7 };
-export const YARD_RECTS = [{ x0: -11, x1: 11, z0: -3, z1: 9 }, { x0: -1, x1: 11, z0: -10, z1: -3 }];
-export const ISLAND = { x0: -12.5, x1: 12.5, z0: -11.5, z1: 10.5 };
-// 비워 두는 칸: 옷장, 방문 안팎, 마당 가운데 길
-const RESERVED = new Set();
-const res = (x, z) => RESERVED.add(`${x},${z}`);
-res(-10, -10); res(-10, -9);
-res(-3, -7); res(-3, -6);
-for (let z = -7; z < -3; z++) res(-1, z);
-for (let z = -3; z < 9; z++) { res(-1, z); res(0, z); }
+// 마당: 대문 쪽 넓은 마당(왼쪽으로 집 넓히기 터 앞까지)과 밭 둘레
+export const YARD_RECTS = [{ x0: -43, x1: 11, z0: -3, z1: 9 }, { x0: -1, x1: 11, z0: -10, z1: -3 }];
+export const ISLAND = { x0: -44.5, x1: 12.5, z0: -11.5, z1: 10.5 };
+export const LOT_X0 = ROOM.x0 - SLOT_W * BUILD_IDS.length; // 공사 터 왼쪽 끝 (-42)
+// 앞마당(원래 마당)과 옆마당(새로 넓어진 마당): 꾸미기 판에서 따로 본다
+export const YARD_PARTS = { yard: { x0: -12, x1: 11 }, yard2: { x0: -43, x1: -12 } };
+
+// 지은 방 차례 (서버 kids_homes.rooms). 처음 보는 이름이나 겹친 것은 뺀다
+export function cleanRooms(list) {
+  const out = [];
+  for (const id of Array.isArray(list) ? list : []) if (BUILD_IDS.includes(id) && !out.includes(id)) out.push(id);
+  return out;
+}
+// 방들의 자리: 내 방(-10~-2) 다음부터 왼쪽으로 8칸씩
+export function spaceList(rooms) {
+  const out = [{ id: 'room', ...ROOM }];
+  cleanRooms(rooms).forEach((id, i) => out.push({ id, x0: ROOM.x0 - SLOT_W * (i + 1), x1: ROOM.x0 - SLOT_W * i, z0: ROOM.z0, z1: ROOM.z1 }));
+  return out;
+}
+// 방문 자리: 방과 방 사이 문(z -6.5), 새 방의 앞문(앞벽 가운데)
+export const frontDoorX = (s) => s.x1 - SLOT_W / 2;
+// 주방 조리대(요리 놀이 자리): 주방 왼쪽 끝에서 3칸, 뒤 벽에서 2.4칸. 요리 놀이의 숲속 부엌과 같은 모양이다
+export const cookAt = (s) => ({ x: s.x0 + 3, z: -7.6 });
+
+// 비워 두는 칸: 옷장, 방문 안팎, 마당 가운데 길, 주방 조리대 둘레
+const BASE_RES = new Set();
+{
+  const res = (x, z) => BASE_RES.add(`${x},${z}`);
+  res(-10, -10); res(-10, -9);
+  res(-3, -7); res(-3, -6);
+  for (let z = -7; z < -3; z++) res(-1, z);
+  for (let z = -3; z < 9; z++) { res(-1, z); res(0, z); }
+}
+function reservedFor(rooms) {
+  const R = new Set(BASE_RES);
+  const res = (x, z) => R.add(`${x},${z}`);
+  for (const s of spaceList(rooms).slice(1)) {
+    // 오른쪽(동쪽) 방과 잇는 문: 문 양쪽 두 칸씩
+    for (const z of [-7, -6]) { res(s.x1 - 1, z); res(s.x1, z); }
+    const c = frontDoorX(s);
+    res(c - 1, -5); res(c, -5);
+    if (s.id === 'kitchen') {
+      const { x } = cookAt(s), x0 = x - 3;
+      for (let i = 1; i <= 4; i++) for (const z of [-9, -8]) res(x0 + i, z); // 조리대와 그 뒤에 서는 곳 (맨 뒤 벽 앞 한 줄은 그릇장 같은 것을 둘 수 있다)
+      res(x0 + 5, -8); res(x0 + 4, -7); res(x0 + 5, -7); // 화덕
+      res(x0 + 2, -7); res(x0 + 3, -7); // 조리대 앞
+    }
+  }
+  return R;
+}
+
+// 지금 보고 있는 집 (내 집 또는 놀러 간 친구 집)의 방 차례. 화면에 집을 그릴 때 정한다
+let ROOMS = [];
+let SPACE_LIST = spaceList([]);
+let RESERVED = reservedFor([]);
+export function setRooms(rooms) {
+  ROOMS = cleanRooms(rooms);
+  SPACE_LIST = spaceList(ROOMS);
+  RESERVED = reservedFor(ROOMS);
+}
+export const builtRooms = () => ROOMS.slice();
+export const spaces = () => SPACE_LIST;
+export const spaceById = (id) => SPACE_LIST.find((s) => s.id === id) || null;
 export function isReserved(x, z) { return RESERVED.has(`${x},${z}`); }
 
 const inRect = (r, x, z) => x >= r.x0 && x < r.x1 && z >= r.z0 && z < r.z1;
-// 칸 (x, z)가 이 구역인지
+// 칸 (x, z)가 어느 구역인지: 방 이름(room, living, kitchen, room2, room3), yard, garden, 아무 데도 아니면 null
 export function cellZone(x, z) {
   if (isReserved(x, z)) return null;
-  if (inRect(ROOM, x, z)) return 'room';
+  for (const s of SPACE_LIST) if (inRect(s, x, z)) return s.id;
   if (inRect(GARDEN, x, z)) return 'garden';
   if (YARD_RECTS.some((r) => inRect(r, x, z))) return 'yard';
   return null;
+}
+// 물건이 그 구역에 놓일 수 있는지 (집 안 물건은 어느 방에나, 주방 물건은 주방에만)
+export function zoneFits(itemZone, cz) {
+  if (itemZone === 'room') return isIndoor(cz);
+  return itemZone === cz;
 }
 // 돌린 뒤의 가로, 세로 칸 수
 export function footprint(id, r = 0) {
@@ -79,7 +197,9 @@ export function canPlace(layout, e, ignoreId = null) {
   const it = HOME_ITEMS[e.k];
   if (!it) return false;
   const mine = cellsOf(e);
-  if (mine.some(([x, z]) => cellZone(x, z) !== it.zone)) return false;
+  if (mine.some(([x, z]) => !zoneFits(it.zone, cellZone(x, z)))) return false;
+  // 한 물건은 한 방 안에만 (방과 방 사이 벽에 걸치지 않게)
+  if (isIndoor(cellZone(mine[0][0], mine[0][1])) && mine.some(([x, z]) => cellZone(x, z) !== cellZone(mine[0][0], mine[0][1]))) return false;
   const taken = new Set();
   for (const o of layout) {
     if (o.id === ignoreId) continue;
@@ -88,6 +208,11 @@ export function canPlace(layout, e, ignoreId = null) {
     for (const [x, z] of cellsOf(o)) taken.add(`${x},${z}`);
   }
   return mine.every(([x, z]) => !taken.has(`${x},${z}`));
+}
+// 놓인 물건이 지금 집 모양에서도 제자리에 맞는지 (집을 넓혀 문이 새로 난 자리에 있던 물건은 가방으로)
+export function fitsZone(e) {
+  const it = HOME_ITEMS[e.k];
+  return !!it && cellsOf(e).every(([x, z]) => zoneFits(it.zone, cellZone(x, z)));
 }
 // 물건 가운데 (집 안 좌표)
 export function centerOf(e) {

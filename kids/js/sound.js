@@ -416,6 +416,8 @@ export const sfx = {
   // 지글지글
   sizzle: play(() => { noise({ dur: 0.5, vol: 0.09, freq: 5200, q: 0.6, kind: 'highpass' }); noise({ dur: 0.35, vol: 0.05, freq: 2600, freq2: 4200, q: 1.2, delay: 0.12 }); }),
   door: play(() => { tone({ f: 330, f2: 410, type: 'triangle', dur: 0.12, vol: 0.08 }); noise({ dur: 0.1, vol: 0.05, freq: 900, q: 1 }); }),
+  // 집 넓히기 공사: 망치로 나무를 두드리는 소리 (통 하고 짧게 울린다)
+  hammer: play(() => { noise({ dur: 0.04, vol: 0.26, freq: rnd(1500, 2100), q: 1.6, kind: 'bandpass' }); tone({ f: rnd(260, 320), f2: 150, type: 'triangle', dur: 0.09, vol: 0.15 }); tone({ f: rnd(900, 1100), dur: 0.05, vol: 0.04, delay: 0.01 }); }),
   // 범퍼카: 쿵 부딪히는 소리와 빵빵
   bonk: play(() => { tone({ f: 190, f2: 90, type: 'sine', dur: 0.16, vol: 0.14 }); noise({ dur: 0.08, vol: 0.12, freq: 700, q: 0.8, kind: 'lowpass' }); tone({ f: 620, f2: 880, type: 'triangle', dur: 0.08, vol: 0.06, delay: 0.05 }); }),
   honk: play(() => { [0, 0.18].forEach((d) => { tone({ f: 415, type: 'square', dur: 0.12, vol: 0.05, delay: d }); tone({ f: 523, type: 'square', dur: 0.12, vol: 0.04, delay: d }); }); }),

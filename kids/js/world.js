@@ -2875,9 +2875,12 @@ export class Village {
   // ---------- 내 집 ----------
   // 내 집은 따로 된 장면이다. 들어가면 내 주민, 애완동물, 해와 하늘빛을 그 장면으로 옮긴다.
   activeScene() { return this.atHome && this.homeSpace ? this.homeSpace.scene : this.scene; }
+  // 요리 놀이 자리: 내 집 주방에 있으면 주방 조리대, 아니면 놀이 마당 숲속 부엌
+  cookSpot() { return this.atHome && this.homeSpace && this.homeSpace.kitchenSpot ? this.homeSpace.kitchenSpot : this.spots.cook; }
   sceneFor(x, z) { return this.homeSpace && nearHome({ x, z }) ? this.homeSpace.scene : this.scene; }
   // house: 집 주인 id, visiting: 친구 집에 놀러 왔으면 true (꾸미기와 밭 돌보기는 주인만)
-  enterHome(layout, ownerName, house = null, visiting = false) {
+  // plan: { rooms(지은 방 차례), style(방마다 벽지·바닥) }
+  enterHome(layout, ownerName, house = null, visiting = false, plan = null) {
     if (!this.homeSpace) this.homeSpace = new HomeSpace(this);
     const H = this.homeSpace;
     if (this.mode === 'game') this.exitGame();
@@ -2886,6 +2889,9 @@ export class Village {
     if (this.netting) this.endNet();
     if (this.digging) this.endDig();
     H.setOwner(ownerName);
+    H.endFx();
+    H.lotOn = !plan || plan.lot !== false; // 집 넓히기 공사 터 (서버에 집 넓히기가 있을 때)
+    H.setPlan((plan && plan.rooms) || [], (plan && plan.style) || {});
     H.setLayout(layout || []);
     const door = this.doors.find((d) => d.id === 'home');
     this.homeDoor = door ? door.pos.clone() : new THREE.Vector3(0, 0, -17.8);
@@ -2913,6 +2919,7 @@ export class Village {
     if (this.mode === 'game') this.exitGame();
     H.clearGhost();
     H.clearSel();
+    H.endFx();
     const was = this.house;
     this.house = null;
     this.visiting = false;
@@ -3394,6 +3401,7 @@ export class Village {
   }
   exitGame() {
     if (this.fp) this.setFirstPerson(false);
+    if (this.homeSpace) this.homeSpace.cookHide(false); // 집 주방에서 요리하며 감춘 가구를 다시 보인다
     const g = this.game;
     this.game = null;
     if (this.mode === 'game') this.mode = 'play';

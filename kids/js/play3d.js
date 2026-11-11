@@ -2115,15 +2115,17 @@ export function createPlay3D(ctx) {
   // =====================================================================
   let cookBook = {};
   let freeReady = false;
+  // 요리하는 곳 이름: 내 집 주방이면 '우리 집 주방', 아니면 놀이 마당 '숲속 부엌'
+  const kitchenName = () => (v.atHome && v.homeSpace && v.homeSpace.kitchenSpot ? '우리 집 주방' : '숲속 부엌');
   async function cookMenu() {
     const tok = ++menuTok;
-    modal.open('숲속 부엌', h('div', { class: 'mem game cook' }, h('p', { class: 'empty-big' }, '요리책을 펴고 있어요…')), { cls: 'game-sheet', onClose: () => { if (tok === menuTok) menuTok++; } });
+    modal.open(kitchenName(), h('div', { class: 'mem game cook' }, h('p', { class: 'empty-big' }, '요리책을 펴고 있어요…')), { cls: 'game-sheet', onClose: () => { if (tok === menuTok) menuTok++; } });
     try { cookBook = await rpc('kids_cook_book', { p_token: getToken() }); } catch (e) { if (lost(e)) return; cookBook = {}; }
     // 서버에 '마음대로 요리' 기능이 준비되어 있을 때만 단추를 보인다
     if (!freeReady) { try { await rpc('kids_dish_table', { p_token: getToken() }); freeReady = true; } catch (e) { if (lost(e)) return; } }
     if (tok !== menuTok) return;
     const starRow = (n) => h('span', { class: 'stars', 'aria-label': `별 ${n}개` }, Array.from({ length: 3 }, (_, i) => h('i', { class: i < n ? 'on' : '' }, '★')));
-    modal.setTitle('숲속 부엌');
+    modal.setTitle(kitchenName());
     modal.setBody(h('div', { class: 'mem game cook' },
       !freeReady ? null : h('div', { class: 'mode-pick' },
         h('button', { class: 'mode free-cook', type: 'button', onclick: () => { menuTok++; modal.close(); cookFree(); } },
@@ -2146,8 +2148,10 @@ export function createPlay3D(ctx) {
       h('ol', { class: 'cook-steps' }, r.steps.map((s) => h('li', {}, s.title))),
       h('div', { class: 'mode-pick' },
         h('button', { class: 'mode', type: 'button', onclick: () => { menuTok++; modal.close(); cook({ recipe: r }); } }, h('b', {}, '혼자 요리하기'), h('span', {}, '세 단계를 모두 내가 해요.'))),
-      h('div', { class: 'sub-head' }, h('h3', {}, '친구와 번갈아 요리하기'), h('p', {}, friends.length ? `${friends.length}명` : '')),
-      friendPicker(friends, (f) => {
+      // 내 집 주방에서는 혼자 요리한다 (친구와 번갈아 하기는 마을 숲속 부엌에서)
+      v.atHome ? h('p', { class: 'note' }, '친구와 번갈아 요리하기는 마을 놀이 마당의 숲속 부엌에서 할 수 있어요.') : null,
+      v.atHome ? null : h('div', { class: 'sub-head' }, h('h3', {}, '친구와 번갈아 요리하기'), h('p', {}, friends.length ? `${friends.length}명` : '')),
+      v.atHome ? null : friendPicker(friends, (f) => {
         waitInvite(hub, f, 'cook', r.id, { setBody: (b) => modal.setBody(b), onBack: () => cookDetail(r, tok) }).then((s) => {
           if (!s) return;
           if (tok !== menuTok || !modal.isOpen) { s.close(); return; }
@@ -2162,12 +2166,14 @@ export function createPlay3D(ctx) {
   function cook({ recipe, session = null }) {
     stopAll();
     const r = recipe;
-    const sp = v.spots.cook;
+    const sp = !session && v.cookSpot ? v.cookSpot() : v.spots.cook; // 혼자 하고 내 집 주방에 있으면 주방 조리대
+    const scene = sp.scene || v.scene;
+    if (sp.onUse) sp.onUse(); // 집 주방: 조리대 앞을 가리는 가구를 잠깐 감춘다
     const pl = v.player;
     const grp = new THREE.Group();
     grp.position.set(sp.x, 0, sp.z);
     grp.rotation.y = sp.rot;
-    v.scene.add(grp);
+    scene.add(grp);
     grp.updateMatrixWorld(true);
     const TOP = 0.98;
     const WORK = V(0.5, TOP, -0.32);
@@ -2741,9 +2747,9 @@ export function createPlay3D(ctx) {
       if (together) standAt('side', 'peer', cheerPose);
       game.cam = camAt(sp, [0.5, 2.5, 3.8], [0.5, 1.25, -0.9], 1.45);
       dish = makeDish(r);
-      v.scene.add(dish);
+      scene.add(dish);
       ui.banner(`${r.name} 완성!`, starText(stars), 3200);
-      ui.say(together ? `${josa(peerName, '과', '와')} 함께 만들었어요. ${r.ref}에 나오는 음식이에요.` : `${r.ref}에 나오는 음식이에요.`, `숲속 부엌 · ${r.name}`);
+      ui.say(together ? `${josa(peerName, '과', '와')} 함께 만들었어요. ${r.ref}에 나오는 음식이에요.` : `${r.ref}에 나오는 음식이에요.`, `${kitchenName()} · ${r.name}`);
       if (stars >= 2) { confetti(); onCelebrate(); } else sfx.success();
       ui.setMain('…', { disabled: true });
       try {
@@ -2787,7 +2793,7 @@ export function createPlay3D(ctx) {
       pl.pose = null;
     };
 
-    begin('cook', `숲속 부엌 · ${r.name}`, game);
+    begin('cook', `${kitchenName()} · ${r.name}`, game);
     if (session) toast(owner(0) === 'me' ? `${josa(peerName, '과', '와')} 번갈아 만들어요. 1단계는 내 차례!` : `${josa(peerName, '과', '와')} 번갈아 만들어요. 2단계가 내 차례예요!`, 3400);
     play();
   }
@@ -2797,12 +2803,14 @@ export function createPlay3D(ctx) {
   // =====================================================================
   async function cookFree() {
     stopAll();
-    const sp = v.spots.cook;
+    const sp = v.cookSpot ? v.cookSpot() : v.spots.cook; // 내 집 주방에 있으면 주방 조리대
+    const scene = sp.scene || v.scene;
+    if (sp.onUse) sp.onUse(); // 집 주방: 조리대 앞을 가리는 가구를 잠깐 감춘다
     const pl = v.player;
     const grp = new THREE.Group();
     grp.position.set(sp.x, 0, sp.z);
     grp.rotation.y = sp.rot;
-    v.scene.add(grp);
+    scene.add(grp);
     grp.updateMatrixWorld(true);
     const TOP = 0.98;
     const BOARD = V(0.2, TOP, -0.32);
@@ -2862,7 +2870,7 @@ export function createPlay3D(ctx) {
     function pickUi() {
       phase = 'pick';
       game.cam = camWide;
-      ui.say(chosen.length ? `재료 ${chosen.length}가지. 더 꺼내거나 ‘썰기’를 눌러요.` : '냉장고에서 재료를 꺼내요. 4가지까지 고를 수 있어요.', '숲속 부엌 · 마음대로 요리');
+      ui.say(chosen.length ? `재료 ${chosen.length}가지. 더 꺼내거나 ‘썰기’를 눌러요.` : '냉장고에서 재료를 꺼내요. 4가지까지 고를 수 있어요.', `${kitchenName()} · 마음대로 요리`);
       const chip = (id) => {
         const inf = ingInfo(id);
         const on = chosen.some((c) => c.id === id);
@@ -2913,10 +2921,10 @@ export function createPlay3D(ctx) {
       const c = chosen[cur];
       fly(c.mesh, V(BOARD.x - 0.02, TOP + 0.035, BOARD.z + 0.06), { dur: 0.35, arc: 0.2 });
       if (NO_CUT.includes(c.id)) {
-        ui.say(`${josa(c.info.name, '은', '는')} 썰지 않고 그대로 넣어요.`, '숲속 부엌 · 썰기');
+        ui.say(`${josa(c.info.name, '은', '는')} 썰지 않고 그대로 넣어요.`, `${kitchenName()} · 썰기`);
         ui.setMain('넣기', { pulse: true, onClick: () => { c.done = true; sfx.pop(); fly(c.mesh, V(BOARD.x - 0.18 + cur * 0.12, TOP + 0.035, BOARD.z - 0.1), { dur: 0.3, arc: 0.15 }); nextIngredient(); } });
       } else {
-        ui.say(`${josa(c.info.name, '을', '를')} 싹둑싹둑 썰어요! ‘싹둑!’을 누르거나 도마를 눌러요.`, '숲속 부엌 · 썰기');
+        ui.say(`${josa(c.info.name, '을', '를')} 싹둑싹둑 썰어요! ‘싹둑!’을 누르거나 도마를 눌러요.`, `${kitchenName()} · 썰기`);
         ui.setMain('싹둑!', { pulse: true, onClick: chop });
       }
       ui.setPanel(h('button', { class: 'g-chip', type: 'button', onclick: () => { for (const cc of chosen) cc.done = true; cur = chosen.length; methodUi(); } }, '다 썰었어요'));
@@ -2955,7 +2963,7 @@ export function createPlay3D(ctx) {
       phase = 'method';
       game.cam = camWide;
       pl.pose = restPose;
-      ui.say('어떻게 요리할까요?', '숲속 부엌 · 요리하기');
+      ui.say('어떻게 요리할까요?', `${kitchenName()} · 요리하기`);
       ui.setMain('…', { disabled: true, hidden: true });
       ui.setPanel(h('div', { class: 'g-row wrap' }, Object.entries(COOK_KIND).map(([k, [, label, ic]]) => h('button', { class: 'g-chip big', type: 'button', 'data-kind': k, onclick: () => startCook(k) }, `${ic} ${label}`))));
     }
@@ -2992,7 +3000,7 @@ export function createPlay3D(ctx) {
       const need = 8;
       const count = h('span', { class: 'g-chip' }, '보글보글 0%');
       ui.setPanel(count, h('span', { class: 'g-chip' }, '냄비 둘레를 손가락으로 빙글빙글!'));
-      ui.say('국자로 빙글빙글 저어 끓여요.', '숲속 부엌 · 끓이기');
+      ui.say('국자로 빙글빙글 저어 끓여요.', `${kitchenName()} · 끓이기`);
       const update = () => {
         const q = Math.floor(Math.abs(acc) / (Math.PI / 2)) + taps;
         if (q !== lastQ) { lastQ = q; sfx.blub(); }
@@ -3071,7 +3079,7 @@ export function createPlay3D(ctx) {
       const verb = k === 'fry' ? '볶기!' : '뒤집기!';
       const count = h('span', { class: 'g-chip' }, `${k === 'fry' ? '볶기' : '굽기'} 0 / ${need}`);
       ui.setPanel(count);
-      ui.say(k === 'fry' ? '지글지글! 프라이팬을 흔들어 골고루 볶아요.' : '화로에 올렸어요. 타지 않게 뒤집어 가며 구워요.', `숲속 부엌 · ${k === 'fry' ? '볶기' : '굽기'}`);
+      ui.say(k === 'fry' ? '지글지글! 프라이팬을 흔들어 골고루 볶아요.' : '화로에 올렸어요. 타지 않게 뒤집어 가며 구워요.', `${kitchenName()} · ${k === 'fry' ? '볶기' : '굽기'}`);
       const toss = () => {
         tosses++;
         sfx.sizzle();
@@ -3111,7 +3119,7 @@ export function createPlay3D(ctx) {
     // 그대로 접시에 (샐러드)
     function salad() {
       phase = 'salad';
-      ui.say('싱싱한 그대로 담아요!', '숲속 부엌 · 샐러드');
+      ui.say('싱싱한 그대로 담아요!', `${kitchenName()} · 샐러드`);
       setTimeout(() => plate(), 400);
     }
 
@@ -3125,14 +3133,14 @@ export function createPlay3D(ctx) {
       const p0 = spotPoint(sp, 0.25, 0, -1.15);
       v.placePlayer(p0.x, p0.z, sp.rot, 0);
       dish = makeFreeDish(kind, items, Date.now() % 10000);
-      v.scene.add(dish);
+      scene.add(dish);
       pl.pose = showPose;
       game.cam = camPlate;
       const name0 = dishName(items, kind);
       ui.banner(`${name0} 완성!`, '이름을 붙여 마을 식탁에 올려 봐요', 2800);
       confetti();
       onCelebrate();
-      ui.say('요리 이름을 바꿔도 돼요. 다 되면 ‘식탁에 올리기’를 눌러요.', `숲속 부엌 · ${name0}`);
+      ui.say('요리 이름을 바꿔도 돼요. 다 되면 ‘식탁에 올리기’를 눌러요.', `${kitchenName()} · ${name0}`);
       const input = h('input', { class: 'dish-name', maxlength: 12, value: name0, 'aria-label': '요리 이름' });
       ui.setPanel(h('div', { class: 'g-row' }, input), h('div', { class: 'g-row wrap' },
         h('button', { class: 'g-chip', type: 'button', onclick: () => { stopAll(); cookFree(); } }, '처음부터 다시'),
@@ -3208,7 +3216,7 @@ export function createPlay3D(ctx) {
       for (const m of pieceMats.values()) m.dispose();
       pl.pose = null;
     };
-    begin('cook', '숲속 부엌 · 마음대로 요리', game);
+    begin('cook', `${kitchenName()} · 마음대로 요리`, game);
     pickUi();
   }
 

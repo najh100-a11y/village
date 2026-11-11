@@ -2,7 +2,7 @@
 import { rpc, message, DEMO, store } from './api.js';
 import { h, showImage } from './ui.js';
 import { drawFaceIcon, normalizeAvatar } from './face.js';
-import { HOME_ITEMS, HARVEST } from './homeitems.js';
+import { HOME_ITEMS, HARVEST, SPACES, BUILD_IDS } from './homeitems.js';
 import { WARDROBE } from './wardrobe.js';
 import { PET_ITEMS, PET_IDS } from './pets-data.js';
 import { SALES, SELL_DAY_CHOICES, salePrice, GIFT_MSGS, BUG_NAMES } from './economy.js';
@@ -410,6 +410,7 @@ function renderVillage() {
   const sl = $('#shopList');
   const ITEM = { fw_spark: '반짝 불꽃', fw_flower: '꽃 불꽃', fw_heart: '하트 불꽃', fw_volley: '10연발 불꽃', ...Object.fromEntries(PET_IDS.map((id) => [id, `애완동물 ${PET_ITEMS[id].name}`])),
     ...Object.fromEntries(Object.entries(HOME_ITEMS).map(([k, it]) => [k, `내 집 ${it.name}`])),
+    ...Object.fromEntries(BUILD_IDS.map((k) => [`home_${k}`, `집 넓히기 공사: ${SPACES[k].name}`])),
     ...Object.fromEntries(Object.entries(WARDROBE).map(([k, it]) => [k, `꾸미기 ${it.name}`])) };
   const FISH_NAME = Object.fromEntries(FISH.map((f) => [f.id, f.name]));
   // 산 것과 판 것을 시간 차례로 함께 보인다
@@ -419,7 +420,7 @@ function renderVillage() {
     h('time', { datetime: l.at }, timeOf(l.at)),
     h('div', {}, h('span', { class: 'who' }, l.name || '-', h('small', {}, l.village_name || '')), ' ',
       l.sell ? h('span', { class: 'pill green' }, `팔아서 열매 +${l.fruits}개`) : h('span', { class: 'pill' }, `열매 ${l.price}개`),
-      h('div', { class: 'body' }, l.sell ? (l.kind === 'pet' ? `${ITEM[l.item] || l.item}를 열매 상점에 다시 팔았어요` : l.kind === 'treasure' ? `${(treasureById(l.item) || {}).name || l.item} ${l.n}개를 팔았어요` : l.kind === 'crop' ? `거둔 ${(HARVEST[l.item] || {}).name || l.item} ${l.n}${(HARVEST[l.item] || {}).unit || '개'}를 팔았어요` : `${(l.kind === 'fish' ? FISH_NAME : BUG_NAMES)[l.item] || l.item} ${l.n}마리를 팔았어요`) : `${ITEM[l.item] || l.item} ${l.n}개`,
+      h('div', { class: 'body' }, l.sell ? (l.kind === 'pet' ? `${ITEM[l.item] || l.item}를 열매 상점에 다시 팔았어요` : l.kind === 'treasure' ? `${(treasureById(l.item) || {}).name || l.item} ${l.n}개를 팔았어요` : l.kind === 'crop' ? `거둔 ${(HARVEST[l.item] || {}).name || l.item} ${l.n}${(HARVEST[l.item] || {}).unit || '개'}를 팔았어요` : `${(l.kind === 'fish' ? FISH_NAME : BUG_NAMES)[l.item] || l.item} ${l.n}마리를 팔았어요`) : String(l.item).startsWith('home_') ? (ITEM[l.item] || l.item) : `${ITEM[l.item] || l.item} ${l.n}개`,
         h('small', { class: 'muted' }, `  · 지금 남은 열매 ${l.fruits_left}개`))))) : [h('div', { class: 'card empty' }, '아직 사거나 판 것이 없어요.')]));
   const gl = $('#giftList');
   const gifts = v.gifts || [];

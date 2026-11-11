@@ -1038,6 +1038,8 @@ button.online[data-unread]:not([data-unread=""])::after { content: ' 💌' attr(
 #labels.at-home > :not(.home-ok) { display: none !important; }
 .home-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(22px + env(safe-area-inset-bottom)); z-index: 12; display: flex; gap: 10px; }
 .home-bar[hidden], .home-edit[hidden], .he-act[hidden] { display: none; }
+body.in-game .home-bar { display: none; }
+body.home-building .home-bar, body.home-building .pad, body.home-building .jump-btn, body.home-building .run-btn, body.home-building .umb-btn, body.home-building .pet-bar, body.home-building #hud .hud-btns, body.home-building #prompt, body.home-building #sayPanel, body.home-building .chat-log { display: none !important; }
 /* 수영장에서 영법 고르기 */
 .swim-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(22px + env(safe-area-inset-bottom)); z-index: 12; display: flex; gap: 4px; padding: 5px; background: rgba(255, 253, 247, .95); border: 3px solid #fff; border-radius: 999px; box-shadow: 0 6px 18px rgba(40, 90, 130, .25); }
 .swim-bar[hidden], body.in-game .swim-bar, body.map-view .swim-bar, #hud[hidden] ~ .swim-bar { display: none !important; }
@@ -1052,7 +1054,21 @@ body.home-editing .pad, body.home-editing .jump-btn, body.home-editing #hud .hud
 .home-edit > * { min-width: 0; }
 .he-panel { pointer-events: auto; width: 100%; min-width: 0; background: var(--paper); border: 3px solid #fff; border-bottom: 0; border-radius: 24px 24px 0 0; box-shadow: 0 -8px 26px rgba(70, 50, 30, .2); padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
 .he-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
-.he-tabs { display: flex; gap: 6px; }
+.he-tabs { display: flex; gap: 6px; flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.he-tabs::-webkit-scrollbar { display: none; }
+.he-tab { flex: 0 0 auto; white-space: nowrap; }
+.he-extra { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 2px 4px; }
+.he-extra[hidden] { display: none; }
+.he-chip { border: 2px dashed #E3D3B4; background: #fff; border-radius: 999px; padding: 5px 12px; font-family: var(--display); font-size: 14px; cursor: pointer; color: var(--ink); }
+.build-row.built { opacity: .78; }
+.build-ic { width: 60px; height: 60px; border-radius: 14px; background: #FFF1D2; display: grid; place-items: center; font-size: 32px; }
+.build-sale { color: #C2453E !important; font-size: 13px !important; }
+.build-done { font-family: var(--display); color: var(--leaf-deep); white-space: nowrap; }
+.home-style h3 { margin: 4px 0 6px; font-family: var(--display); font-weight: 400; font-size: 17px; }
+.style-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.style-sw { width: 78px; display: grid; justify-items: center; gap: 4px; padding: 6px 4px; background: #fff; border: 3px solid #F1E6CF; border-radius: 14px; cursor: pointer; font-family: var(--display); font-size: 12.5px; color: var(--ink); }
+.style-sw i { width: 54px; height: 36px; border-radius: 8px; border: 1px solid rgba(0, 0, 0, .12); display: block; }
+.style-sw.on { border-color: var(--leaf); background: #EEF8E6; }
 .he-tab, .shop-tab { border: 3px solid var(--line); background: #fff; border-radius: 999px; padding: 6px 12px; font-family: var(--display); font-size: 15px; cursor: pointer; }
 .he-tab[aria-selected="true"], .shop-tab[aria-selected="true"] { border-color: var(--leaf); background: #EEF8E6; color: var(--leaf-deep); }
 .he-btns { display: flex; gap: 6px; }

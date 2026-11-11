@@ -4,7 +4,7 @@ import PLAN from './plan-data.js';
 import { FISH, FRIDGE as FRIDGE_IDS } from './play-data.js';
 import { toJpeg } from './images.js';
 import { cleanChat } from './chatfilter.js';
-import { HOME_ITEMS, HOME_IDS, isSeed, CROPS, HARVEST } from './homeitems.js';
+import { HOME_ITEMS, HOME_IDS, isSeed, CROPS, HARVEST, SPACES, BUILD_IDS, WALLS, FLOORS, INDOOR, cleanRooms } from './homeitems.js';
 import { WARDROBE, WARDROBE_IDS, wearItem } from './wardrobe.js';
 import { SELL_BUNDLE, SELL_DAY_DEFAULT, GIFT, GIFT_MSGS, SALES, salePrice } from './economy.js';
 import { TREASURES } from './beach-data.js';
@@ -338,7 +338,7 @@ export class DemoBackend {
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true, breeds: true, skip2: true, volley: true }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true, breeds: true, skip2: true, volley: true, expand: true }; }
   // 쪽지함: 친구별 마지막 쪽지와 안 읽은 수 (최근 30일)
   kids_dm_box({ p_token }) {
     const me = this.session(p_token, 'child');
@@ -816,10 +816,43 @@ export class DemoBackend {
     for (const [k, n] of Object.entries(((this.db.items || {})[me]) || {})) if (n > 0 && HOME_ITEMS[k]) out[k] = n;
     return out;
   }
+  // 집 모양: 지은 방(지은 차례)과 방마다 벽지·바닥 (서버 kids_homes.rooms, style)
+  homePlan(id) {
+    this.db.homePlans = this.db.homePlans || {};
+    const p = this.db.homePlans[id] || (this.db.homePlans[id] = { rooms: [], style: {} });
+    return p;
+  }
   kids_home({ p_token }) {
     const me = this.session(p_token, 'child');
     this.db.homes = this.db.homes || {};
-    return { layout: JSON.parse(JSON.stringify(this.db.homes[me] || [])), items: this.homeItems(me), fruits: this.child(me).fruits, crops: this.cropsOf(me), now: Date.now() };
+    const pl = this.homePlan(me), sale = this.villageConf().sale;
+    return { layout: JSON.parse(JSON.stringify(this.db.homes[me] || [])), items: this.homeItems(me), fruits: this.child(me).fruits, crops: this.cropsOf(me), now: Date.now(),
+      rooms: pl.rooms.slice(), style: JSON.parse(JSON.stringify(pl.style)), sale,
+      build: Object.fromEntries(BUILD_IDS.map((k) => [k, salePrice(SPACES[k].price, sale)])), build_base: Object.fromEntries(BUILD_IDS.map((k) => [k, SPACES[k].price])) };
+  }
+  // 집 넓히기 공사 (서버 kids_home_build와 같다)
+  kids_home_build({ p_token, p_space }) {
+    const me = this.session(p_token, 'child');
+    if (!BUILD_IDS.includes(p_space)) fail('BAD_SPACE');
+    const pl = this.homePlan(me);
+    if (pl.rooms.includes(p_space)) fail('BUILT');
+    const price = salePrice(SPACES[p_space].price, this.villageConf().sale);
+    const c = this.child(me);
+    if (c.fruits < price) fail('NO_FRUIT');
+    c.fruits -= price;
+    pl.rooms = cleanRooms([...pl.rooms, p_space]);
+    this.db.shopLog = this.db.shopLog || [];
+    this.db.shopLog.push({ id: Date.now(), child: me, item: `home_${p_space}`, n: 1, price, at: nowIso() });
+    return { rooms: pl.rooms.slice(), fruits: c.fruits, price };
+  }
+  // 벽지와 바닥 (서버 kids_home_style과 같다)
+  kids_home_style({ p_token, p_space, p_wall, p_floor }) {
+    const me = this.session(p_token, 'child');
+    const pl = this.homePlan(me);
+    if (!INDOOR.includes(p_space) || (p_space !== 'room' && !pl.rooms.includes(p_space))) fail('BAD_SPACE');
+    if (!WALLS[p_wall] || !FLOORS[p_floor]) fail('BAD_STYLE');
+    pl.style = { ...pl.style, [p_space]: { w: p_wall, f: p_floor } };
+    return { style: JSON.parse(JSON.stringify(pl.style)) };
   }
   // ---------- 밭: 수확 바구니, 물 주기, 거두기, 나눔 수레 (서버 kids_garden_*, kids_crop_share, kids_share_*와 같다) ----------
   cropsOf(me) {
@@ -902,7 +935,8 @@ export class DemoBackend {
     this.session(p_token, 'child');
     const c = this.db.children.find((x) => x.id === p_child && x.village_name && x.avatar);
     if (!c) fail('NOT_FOUND');
-    return { name: c.village_name, layout: JSON.parse(JSON.stringify((this.db.homes || {})[p_child] || [])), now: Date.now() };
+    const pl = this.homePlan(p_child);
+    return { name: c.village_name, layout: JSON.parse(JSON.stringify((this.db.homes || {})[p_child] || [])), now: Date.now(), rooms: pl.rooms.slice(), style: JSON.parse(JSON.stringify(pl.style)) };
   }
   kids_home_save({ p_token, p_layout, p_harvest }) {
     const me = this.session(p_token, 'child');
@@ -910,7 +944,7 @@ export class DemoBackend {
     const ids = new Set();
     for (const e of p_layout) {
       if (!e || typeof e !== 'object' || typeof e.id !== 'string' || e.id.length > 24 || !HOME_ITEMS[e.k]
-        || typeof e.x !== 'number' || typeof e.z !== 'number' || Math.abs(e.x) > 12 || Math.abs(e.z) > 12
+        || typeof e.x !== 'number' || typeof e.z !== 'number' || e.x < -44 || e.x > 12 || Math.abs(e.z) > 12
         || (e.r != null && ![0, 1, 2, 3].includes(e.r)) || ids.has(e.id)) fail('BAD_HOME');
       ids.add(e.id);
     }
