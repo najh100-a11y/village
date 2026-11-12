@@ -36,6 +36,7 @@ const DOOR_IN = { x: -2.7, z: -6.5 }, DOOR_OUT = { x: -1.0, z: -6.5 };
 const GATE = { x: 0, z: 9.2 }, CLOSET = { x: -9.45, z: -8.55 };
 const WALK = { x0: ISLAND.x0 + 0.6, x1: ISLAND.x1 - 0.6, z0: ISLAND.z0 + 0.6, z1: ISLAND.z1 - 0.7 };
 const PR = 0.42;
+const PLANT_Y = 0.13; // 밭 식물의 뿌리 높이 (두둑 윗면 0.16보다 조금 아래)
 const WH = 2.4, TRIM = '#C99862';
 
 // 벽지와 바닥 그림 (같은 무늬는 한 번만 만든다)
@@ -676,7 +677,13 @@ export function buildPlant(id, stage, seed = '', n = 0) {
       break;
     case 'strawberry':
       for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2; leaf(Math.cos(a) * 0.14, 0.14, Math.sin(a) * 0.14, 1.2 * s, -a, L2); }
-      if (grown) for (const [x, z] of [[0.18, 0.08], [-0.15, 0.14], [0.02, -0.2]]) { const b = ball(g, 0.07, '#E8394B', x, 0.08, z, 8); b.scale.set(1, 1.2, 1); ball(g, 0.03, L, x, 0.17, z, 5); }
+      // 다 자라면 잎 사이사이 바깥쪽에 빨간 딸기 네 알 (한 번에 거두는 수와 같다). 잎에 가리지 않게 잎과 잎 사이에 단다
+      if (grown) for (let i = 0; i < 4; i++) {
+        const a = ((i + 0.5) / 5) * Math.PI * 2, x = Math.cos(a) * 0.29, z = Math.sin(a) * 0.29;
+        const b = ball(g, 0.085, '#E8394B', x, 0.11, z, 10); b.scale.set(1, 1.2, 1);
+        const cap = ball(g, 0.045, L, x, 0.21, z, 6); cap.scale.set(1.5, 0.45, 1.5);
+        for (const [dx, dz] of [[0.035, 0.045], [-0.045, 0.025], [0.01, -0.05]]) ball(g, 0.01, '#FFE08A', x + dx, 0.13, z + dz, 4); // 씨
+      }
       break;
     case 'sunflower': {
       const h = grown ? 1.5 : 0.7;
@@ -1301,7 +1308,8 @@ export class HomeSpace {
   }
   placeObj(it) {
     const c = centerOf(it.e);
-    it.obj.position.set(c.x, 0, c.z);
+    // 밭 식물은 흙 두둑(윗면 높이 0.16) 위에 심는다. 땅 높이에 두면 씨앗과 딸기, 당근 머리가 두둑 속에 묻혀 안 보인다
+    it.obj.position.set(c.x, isSeed(it.e.k) ? PLANT_Y : 0, c.z);
     it.obj.rotation.y = -(it.e.r || 0) * Math.PI / 2;
   }
   dropObj(it) {
@@ -1360,10 +1368,10 @@ export class HomeSpace {
     wrap.add(g);
     const padWrap = new THREE.Group();
     padWrap.add(pad);
-    const c = centerOf(e);
-    wrap.position.set(c.x, 0, c.z);
+    const c = centerOf(e), y = isSeed(e.k) ? PLANT_Y : 0; // 씨앗은 두둑 위에
+    wrap.position.set(c.x, y, c.z);
     wrap.rotation.y = -(e.r || 0) * Math.PI / 2;
-    padWrap.position.set(c.x, 0, c.z);
+    padWrap.position.set(c.x, y, c.z);
     this.root.add(wrap, padWrap);
     this.ghost = { wrap, padWrap, mat };
   }
