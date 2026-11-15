@@ -1,6 +1,8 @@
 // 진숲 어린이 마을 — 내 집 화면: 들어가고 나가기, 집 꾸미기 판, 밭 돌보기
 import * as THREE from './three.module.min.js';
-import { HOME_O, itemThumb } from './home.js';
+import { HOME_O, itemThumb, objThumb } from './home.js';
+import { buildCottage, HOUSE_STYLES, HOUSE_IDS, ROOF_COLORS, lookOf, isFreeHouse, houseItem } from './houses.js';
+import { salePrice } from './economy.js';
 import {
   HOME_ITEMS, HOME_IDS, ZONE_NAMES, GARDEN, YARD_RECTS, isSeed, footprint, canPlace,
   growStage, growHours, canWater, GROW, CROPS, HARVEST, needHours, leftText, setServerNow, serverNow,
@@ -39,6 +41,8 @@ const TAB_GRP = { room: 'bed', living: 'living', kitchen: 'kitchen', room2: 'bed
 const STAGE_TEXT = ['씨앗을 심었어요. 곧 싹이 나요.', '싹이 났어요!', '쑥쑥 자라는 중이에요.'];
 const AGAIN_TEXT = '열매를 땄어요. 다시 열매가 맺히는 중이에요.';
 const newId = () => Math.random().toString(36).slice(2, 10);
+// 집 모양 작은 그림 (상점과 집 모양 고르기)
+export const houseThumb = (s) => objThumb(`house_${s}`, () => buildCottage(s, HOUSE_STYLES[s].roof), [0.5, 0.4, 1]);
 // 서버가 적은 자람 기록 (없는 칸은 지운다)
 const growOf = (pl) => ({ t: pl && pl.t, g: (pl && pl.g) || undefined, w: (pl && pl.w) || undefined, n: (pl && pl.n) || undefined });
 
@@ -81,8 +85,10 @@ export function createHomeUI(o) {
   const placed = (k) => (v.homeSpace ? v.homeSpace.layout.filter((e) => e.k === k).length : 0);
   const owned = (k) => (st && st.items && st.items[k]) || 0;
   const expandOn = () => !!o.features().expand;
+  const housesOn = () => !!o.features().houses;
   // 서버가 준 집 모양 (집 넓히기가 아직 서버에 없으면 공사 터를 보이지 않는다)
-  const plan = (r) => ({ rooms: cleanRooms(r && r.rooms), style: (r && r.style) || {}, lot: expandOn() });
+  // look: 집 모양, auto: 지붕 색이 '옷 색깔'일 때 쓸 집 주인의 옷 색
+  const plan = (r, auto) => ({ rooms: cleanRooms(r && r.rooms), style: (r && r.style) || {}, lot: expandOn(), look: r && r.look, auto });
   // 집 모양이 바뀌어 제자리에 맞지 않게 된 물건(새로 난 문 자리 등)은 가방으로 돌려 놓는다
   function tidyLayout() {
     const H = v.homeSpace;
@@ -115,7 +121,8 @@ export function createHomeUI(o) {
     const me = o.getMe();
     guest = null;
     st.rooms = cleanRooms(st.rooms);
-    v.enterHome(st.layout || [], me ? me.village_name : '', me ? me.id : null, false, plan(st));
+    v.enterHome(st.layout || [], me ? me.village_name : '', me ? me.id : null, false, plan(st, v.homeAutoRoof));
+    if (housesOn()) v.setHomeLook(st.look); // 마을의 우리 집도 서버에 있는 모양으로
     tidyLayout();
     o.setActivity('home');
     o.sfx.door();
@@ -134,6 +141,7 @@ export function createHomeUI(o) {
   // quiet: 다른 집으로 바로 옮겨 갈 때 (소리와 하는 일 알림을 건너뛴다)
   async function exit(quiet = false) {
     if (!v.atHome) return;
+    if (looking) endLook(false);
     if (piano) piano.close();
     if (swingUi) swingUi.stop();
     if (editing) stopEdit();
@@ -166,7 +174,7 @@ export function createHomeUI(o) {
     busy = false;
     if (v.atHome) await exit(true);
     guest = { id, name: r.name || '친구' };
-    v.enterHome(r.layout || [], guest.name, id, true, plan(r));
+    v.enterHome(r.layout || [], guest.name, id, true, plan(r, r.avatar ? v.autoRoofOf(r.avatar) : null));
     o.setActivity('visit');
     o.sfx.door();
     document.body.classList.add('at-home');
@@ -182,7 +190,10 @@ export function createHomeUI(o) {
       const r = await o.rpc('kids_home_visit', { p_token: o.getToken(), p_child: id });
       if (guest && guest.id === id && v.homeSpace) {
         const H = v.homeSpace;
-        if (JSON.stringify(cleanRooms(r.rooms)) !== JSON.stringify(H.rooms) || JSON.stringify(r.style || {}) !== JSON.stringify(H.style)) H.setPlan(cleanRooms(r.rooms), r.style || {});
+        const auto = r.avatar ? v.autoRoofOf(r.avatar) : H.lookAuto, look = lookOf(r.look);
+        const lookNew = look.s !== H.look.s || look.c !== H.look.c || auto !== H.lookAuto;
+        if (lookNew) { H.look = look; H.lookAuto = auto; }
+        if (lookNew || JSON.stringify(cleanRooms(r.rooms)) !== JSON.stringify(H.rooms) || JSON.stringify(r.style || {}) !== JSON.stringify(H.style)) H.setPlan(cleanRooms(r.rooms), r.style || {});
         H.setLayout(r.layout || []);
       }
     } catch (e) { /* 다음에 */ }
@@ -353,7 +364,8 @@ export function createHomeUI(o) {
     const can = expandOn() && H && H.rooms.length < BUILD_IDS.length;
     extra.replaceChildren(...[
       expandOn() && isIndoor(tab) ? h('button', { class: 'he-chip', type: 'button', onclick: () => openStyle(tab) }, `🎨 ${tabName(tab)} 벽지·바닥`) : null,
-      can ? h('button', { class: 'he-chip', type: 'button', onclick: () => openBuild(true) }, '🏗️ 집 넓히기') : null].filter(Boolean));
+      can ? h('button', { class: 'he-chip', type: 'button', onclick: () => openBuild(true) }, '🏗️ 집 넓히기') : null,
+      housesOn() ? h('button', { class: 'he-chip', type: 'button', onclick: () => openLook() }, '🏡 집 모양') : null].filter(Boolean));
     extra.hidden = !extra.children.length;
   }
   function drawAct() {
@@ -880,13 +892,186 @@ export function createHomeUI(o) {
     } finally { styleBusy = false; }
   }
 
+  // ---------- 집 모양: 마당에서 본 우리 집 모양과 지붕 색 (오두막·벽돌집은 누구나, 나머지는 열매로 산다) ----------
+  const lookPanel = h('div', { class: 'look-panel', hidden: true });
+  document.body.append(lookPanel);
+  let looking = null; // { ctrl, saved: 서버에 있는 모양, cur: 지금 보이는 모양 }
+  let lookTimer = null, lookBusy = false, houseBuying = false;
+  const ownsHouse = (s) => isFreeHouse(s) || !!(st && Array.isArray(st.houses) && st.houses.includes(s));
+  const housePrice = (s) => salePrice(HOUSE_STYLES[s].price, st && st.sale);
+  // 집 전체가 앞에서 보이는 자리: 집 너비가 화면에 다 들어오고, 아래쪽 고르기 판에 가리지 않는 위쪽 빈 곳 가운데에 집이 오게
+  function lookCam() {
+    const H = v.homeSpace, cam = v.camera;
+    const x0 = ROOM.x0 - SLOT_W * H.rooms.length, x1 = ROOM.x1;
+    const halfV = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)), halfH = halfV * cam.aspect;
+    const p = lookPanel.hidden ? 0.4 : Math.min(0.62, lookPanel.getBoundingClientRect().height / innerHeight); // 판이 가리는 몫
+    const el = 0.4, yaw = 0.1;
+    // 세로 화면에서는 긴 집 전체 대신 가운데 18칸 너비만 (너무 작아지지 않게. 끌어서 돌려 볼 수 있다)
+    const span = Math.min(x1 - x0 + 6, cam.aspect < 1 ? 18 : 99);
+    const dist = Math.max(span / 2 / halfH + 3.2, 6.5 / ((1 - p) * halfV), 12); // 앞벽이 가운데보다 3.2쯤 가깝다
+    const C = new THREE.Vector3(HOME_O.x + (x0 + x1) / 2, 2.2, HOME_O.z - 7);
+    const dir = new THREE.Vector3(Math.sin(yaw) * Math.cos(el), Math.sin(el), Math.cos(yaw) * Math.cos(el)); // 집에서 카메라 쪽
+    const up = new THREE.Vector3(-Math.sin(yaw) * Math.sin(el), Math.cos(el), -Math.cos(yaw) * Math.sin(el)); // 화면 위쪽
+    const look = C.addScaledVector(up, -dist * halfV * p);
+    // 멀리서 보면 내 집 섬 안개를 그만큼 뒤로 (끝나면 되돌린다)
+    const fog = H.scene.fog;
+    if (!H.lookFog) H.lookFog = { near: fog.near, far: fog.far };
+    fog.near = Math.max(H.lookFog.near, dist + 12);
+    fog.far = Math.max(H.lookFog.far, dist + 80);
+    return { look, pos: look.clone().addScaledVector(dir, dist) };
+  }
+  function lookFogBack() {
+    const H = v.homeSpace;
+    if (!H || !H.lookFog) return;
+    H.scene.fog.near = H.lookFog.near;
+    H.scene.fog.far = H.lookFog.far;
+    H.lookFog = null;
+  }
+  addEventListener('resize', () => { if (looking && v.homeSpace) looking.ctrl.cam = lookCam(); });
+  function openLook() {
+    if (guest) { toast(`${guest.name}네 집이에요. 집 모양은 우리 집에서 바꿀 수 있어요.`, 2600); return; }
+    if (!st || !v.homeSpace || !v.atHome) return;
+    if (!housesOn()) { toast('집 모양 고르기는 곧 열려요!', 2400); return; }
+    if (looking || building) return;
+    if (editing) stopEdit();
+    if (piano) piano.close();
+    if (swingUi) swingUi.stop();
+    o.modal.close();
+    const saved = lookOf(st.look);
+    const ctrl = { cam: null, camSpeed: 2.4, onTap: () => {}, update: () => {}, stop: () => endLook(false) };
+    looking = { ctrl, saved, cur: { ...saved } };
+    document.body.classList.add('home-looking');
+    drawLook();
+    lookPanel.hidden = false;
+    ctrl.cam = lookCam(); // 판 높이를 안 뒤에
+    v.homeSpace.forceShell = true; // 고르는 동안은 늘 지붕과 앞벽을 덮어 둔다
+    v.enterGame(ctrl);
+    o.sfx.pop();
+  }
+  // 다 골랐을 때: 산 모양이면 저장하고, 미리 보기만 한 모양이면 원래대로
+  function endLook(leaveGame = true) {
+    const L = looking;
+    if (!L) return;
+    looking = null;
+    clearTimeout(lookTimer);
+    lookPanel.hidden = true;
+    document.body.classList.remove('home-looking');
+    const H = v.homeSpace;
+    if (H) H.forceShell = false;
+    lookFogBack();
+    if (ownsHouse(L.cur.s)) saveLook(L.cur);
+    else {
+      if (H && v.atHome && !guest) H.setLook(lookOf(st && st.look), v.homeAutoRoof);
+      toast(`${josa(HOUSE_STYLES[L.cur.s].name, '은', '는')} 미리 보기만 해서 원래 모양으로 돌아왔어요.`, 2800);
+    }
+    if (leaveGame && v.game === L.ctrl) v.exitGame();
+  }
+  function pickLook(patch) {
+    const L = looking;
+    if (!L || !v.homeSpace) return;
+    L.cur = lookOf({ ...L.cur, ...patch });
+    v.homeSpace.setLook(L.cur, v.homeAutoRoof);
+    o.sfx.tick();
+    drawLook();
+    clearTimeout(lookTimer);
+    const want = L.cur;
+    if (ownsHouse(want.s)) lookTimer = setTimeout(() => saveLook(want), 500);
+  }
+  async function saveLook(want) {
+    if (!st || guest) return;
+    const now = lookOf(st.look);
+    if (want.s === now.s && want.c === now.c) return;
+    if (lookBusy) { lookTimer = setTimeout(() => saveLook(want), 300); return; }
+    lookBusy = true;
+    try {
+      const r = await o.rpc('kids_home_look', { p_token: o.getToken(), p_style: want.s, p_roof: want.c });
+      if (!st) return;
+      st.look = r.look || st.look;
+      if (Array.isArray(r.houses)) st.houses = r.houses;
+      if (looking) looking.saved = lookOf(st.look);
+      v.setHomeLook(st.look); // 마을의 우리 집도
+      if (v.atHome && !guest) v.sendHouse({ u: 1 }); // 놀러 온 친구 화면도 새 모양으로
+      if (looking) drawLook();
+    } catch (e) {
+      if (e.code === 'SESSION') { o.onSessionLost(); return; }
+      toast(o.message(e), 3000);
+      const back = lookOf(st && st.look);
+      if (looking) looking.cur = back;
+      if (v.homeSpace && v.atHome && !guest) v.homeSpace.setLook(back, v.homeAutoRoof);
+      if (looking) drawLook();
+    } finally { lookBusy = false; }
+  }
+  function askHouse(s) {
+    const d = HOUSE_STYLES[s], price = housePrice(s);
+    const fruits = o.getFruits ? o.getFruits() : null;
+    if (fruits != null && fruits < price) { toast(`열매가 ${price - fruits}개 더 있어야 ${josa(d.name, '을', '를')} 살 수 있어요. 암송, 묵상, 필사로 열매를 모아요!`, 3600); return; }
+    o.openSheet('집 모양 사기', h('div', { class: 'talk' },
+      h('p', { class: 'result-big' }, `🏡 ${d.name}`),
+      h('p', {}, `열매 ${price}개로 ${josa(d.name, '을', '를')} 살까요? 한 번 사면 계속 내 것이라, 언제든 이 모양으로 바꿀 수 있어요.`),
+      h('div', { class: 'row' },
+        h('button', { class: 'btn btn-plain', type: 'button', onclick: () => o.modal.close() }, '아니요'),
+        h('button', { class: 'btn btn-go', type: 'button', onclick: () => buyHouse(s) }, '네, 살래요!'))), 'talk-sheet');
+  }
+  async function buyHouse(s) {
+    if (houseBuying) return;
+    houseBuying = true;
+    let r;
+    try { r = await o.rpc('kids_shop_buy', { p_token: o.getToken(), p_item: houseItem(s), p_n: 1 }); } catch (e) {
+      houseBuying = false;
+      if (e.code === 'SESSION') { o.onSessionLost(); return; }
+      toast(o.message(e), 3000);
+      return;
+    }
+    houseBuying = false;
+    o.modal.close();
+    if (Number.isFinite(r.fruits)) o.setFruits(r.fruits);
+    if (o.onShopData) o.onShopData(r);
+    if (st) st.houses = HOUSE_IDS.filter((k) => ((r.items || {})[houseItem(k)] || 0) > 0);
+    o.sfx.success();
+    confetti();
+    const name = HOUSE_STYLES[s].name;
+    if (looking && looking.cur.s === s) {
+      clearTimeout(lookTimer);
+      saveLook(looking.cur);
+      drawLook();
+      toast(`${josa(name, '이', '가')} 우리 집 모양이 됐어요!`, 3000);
+    } else toast(`${josa(name, '을', '를')} 샀어요! 집 모양 고르기에서 언제든 바꿀 수 있어요.`, 3200);
+  }
+  function drawLook() {
+    const L = looking;
+    if (!L) return;
+    const cur = L.cur, d = HOUSE_STYLES[cur.s], own = ownsHouse(cur.s);
+    const cards = HOUSE_IDS.map((s) => {
+      const it = HOUSE_STYLES[s], mine = ownsHouse(s), on = cur.s === s, img = houseThumb(s);
+      const tag = L.saved.s === s ? '우리 집' : mine ? (isFreeHouse(s) ? '누구나' : '내 것') : `🍎 ${housePrice(s)}`;
+      return h('button', { class: 'look-card' + (on ? ' on' : '') + (mine ? '' : ' lock'), type: 'button', 'aria-pressed': String(on), onclick: () => pickLook({ s }) },
+        img ? h('img', { src: img, alt: '' }) : h('span', { class: 'he-noimg' }, '🏠'), h('b', {}, it.name), h('small', {}, tag));
+    });
+    const sws = Object.entries(ROOF_COLORS).map(([k, rc]) => {
+      const on = cur.c === k, c = rc.c || v.homeAutoRoof || d.roof;
+      return h('button', { class: 'look-sw' + (on ? ' on' : ''), type: 'button', 'aria-pressed': String(on), onclick: () => pickLook({ c: k }) },
+        h('i', { style: `background:${c}` }, k === 'auto' ? '👕' : ''), h('span', {}, rc.name));
+    });
+    const p = housePrice(cur.s);
+    const info = own ? h('p', { class: 'he-hint' }, `${d.desc} 누르면 바로 바뀌어요. 지붕 색은 열매 없이 몇 번이든 바꿀 수 있어요.`)
+      : h('div', { class: 'look-buy' }, h('p', {}, `${d.desc} 지금은 미리 보는 중이에요.`),
+        h('button', { class: 'btn btn-go btn-small', type: 'button', onclick: () => askHouse(cur.s) }, p < d.price ? h('s', { class: 'was' }, String(d.price)) : null, `🍎 ${p}개로 사기`));
+    lookPanel.replaceChildren(h('div', { class: 'he-panel' },
+      h('div', { class: 'he-top' }, h('b', { class: 'look-title' }, '🏡 집 모양 고르기'),
+        h('div', { class: 'he-btns' }, h('button', { class: 'btn btn-go btn-small', type: 'button', onclick: () => endLook() }, '다 했어요'))),
+      h('div', { class: 'look-cards' }, cards), info,
+      h('div', { class: 'look-roof' }, h('b', {}, '지붕 색'), h('div', { class: 'look-sws' }, sws))));
+  }
+
   // 상점에서 산 뒤 (가진 수가 바뀌었다)
   function onShopChanged(items) {
     if (!st) return;
     const next = {};
     for (const id of HOME_IDS) if (items && items[id] > 0) next[id] = items[id];
     st.items = next;
+    if (items) st.houses = HOUSE_IDS.filter((k) => (items[houseItem(k)] || 0) > 0);
     if (editing) drawList();
+    if (looking) drawLook();
   }
 
   // 로그인 화면으로 돌아갈 때: 저장하지 않고 바로 마을로 돌려 둔다
@@ -902,12 +1087,18 @@ export function createHomeUI(o) {
     guest = null;
     building = false;
     clearTimeout(styleTimer);
+    clearTimeout(lookTimer);
+    looking = null;
+    lookFogBack();
+    lookPanel.hidden = true;
+    document.body.classList.remove('home-looking');
   }
 
   return {
-    enter, exit, reset, onPlant, onHomeItem, onSlide, onShopChanged, startEdit, stopEdit, visit, refreshGuest, openInvite, remotePiano, openBuild,
+    enter, exit, reset, onPlant, onHomeItem, onSlide, onShopChanged, startEdit, stopEdit, visit, refreshGuest, openInvite, remotePiano, openBuild, openLook,
     get editing() { return editing; },
     get guest() { return guest; },
+    get looking() { return !!looking; },
     onDoor(id) {
       if (id === 'home-exit') { exit(); return true; }
       if (id === 'home-build') { openBuild(false); return true; }

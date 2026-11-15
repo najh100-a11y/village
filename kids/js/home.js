@@ -9,6 +9,7 @@ import {
   HOME_ITEMS, ROOM, GARDEN, ISLAND, footprint, centerOf, growStage, isSeed,
   WALLS, FLOORS, BUILD_IDS, LOT_X0, SLOT_W, setRooms, builtRooms, spaces, styleOf, frontDoorX, cookAt,
 } from './homeitems.js';
+import { buildShell, wallSkin, lookOf, roofColor } from './houses.js';
 
 export const HOME_O = { x: 1000, z: 1000 };
 // 앉거나 누울 수 있는 가구: seats(물건 안 자리 x, z), y(뿌리 높이: 앉으면 발, 누우면 엉덩이), front(앞에 서는 곳 z), side(침대 옆),
@@ -872,6 +873,10 @@ export class HomeSpace {
     this.style = {};
     this.kitchenSpot = null;
     this.fx = null;
+    this.look = lookOf(null); // 집 모양 { s: 모양, c: 지붕 색 }
+    this.lookAuto = null; // 지붕 색 '옷 색깔'일 때 쓸 주인 옷 색
+    this.shell = null; // 마당에서 볼 때만 덮이는 지붕과 앞벽
+    this.forceShell = false; // 집 모양 고르기 중에는 늘 덮는다
     this.items = new Map(); // id → { e, obj, anim, stage }
     this.layout = [];
     this.pickRoots = [];
@@ -1019,9 +1024,16 @@ export class HomeSpace {
     this.style = style && typeof style === 'object' ? JSON.parse(JSON.stringify(style)) : {};
     this.buildHouse();
   }
+  // 집 모양 바꾸기 (모양과 지붕 색). autoC: 지붕 색이 '옷 색깔'일 때 쓸 색
+  setLook(look, autoC) {
+    this.look = lookOf(look);
+    if (autoC !== undefined) this.lookAuto = autoC;
+    this.buildHouse();
+  }
   clearHouse() {
     const v = this.v;
     if (!this.houseG) return;
+    if (this.shell) { for (const mt of this.shell.mats) mt.dispose(); this.shell = null; }
     this.houseG.removeFromParent();
     this.houseG.traverse((o) => { if (o.isMesh && o.geometry) o.geometry.dispose(); });
     for (const f of this.houseFades) for (const mt of f.mats) mt.dispose();
@@ -1077,6 +1089,7 @@ export class HomeSpace {
         box(back, 1.8, 0.05, 0.05, '#B7C3CB', kx - 0.6, 2.05, -9.95);
         for (let k = 0; k < 4; k++) { box(back, 0.03, 0.32, 0.03, '#8A8F98', kx - 1.25 + k * 0.42, 1.86, -9.93); cyl(back, 0.07, 0.07, 0.03, '#8A8F98', kx - 1.25 + k * 0.42, 1.7, -9.93, 10).rotation.x = Math.PI / 2; }
       }
+      box(back, len, WH, 0.04, wallSkin(this.look.s, len, WH), bx, WH / 2, -10.22); // 바깥 면은 집 모양
       wallGroup(back, bx, -10.1, len / 2);
       obs(bx, -10.1, len / 2, 0.1);
       // 오른쪽(동쪽) 벽: 내 방은 마당으로 가는 문, 새 방은 오른쪽 방과 잇는 문 (벽 양쪽이 각 방 벽지)
@@ -1088,6 +1101,9 @@ export class HomeSpace {
         box(side, 0.2, 0.5, 1.4, c, -1.9, WH - 0.25, -6.5);
         box(side, 0.26, 0.12, 6.4, TRIM, -1.9, WH, -7);
         box(side, 0.28, 0.12, 1.5, '#8B5E3C', -1.9, WH - 0.52, -6.5);
+        box(side, 0.04, WH, 2.9, wallSkin(this.look.s, 2.9, WH), -1.78, WH / 2, -8.65); // 바깥 면은 집 모양
+        box(side, 0.04, WH, 1.9, wallSkin(this.look.s, 1.9, WH), -1.78, WH / 2, -4.85);
+        box(side, 0.04, 0.5, 1.4, wallSkin(this.look.s, 1.4, 0.5), -1.78, WH - 0.25, -6.5);
         wallGroup(side, -1.9, -7, 3.2);
         obs(-1.9, -8.65, 0.1, 1.45); obs(-1.9, -4.85, 0.1, 0.95);
       } else {
@@ -1109,6 +1125,7 @@ export class HomeSpace {
         box(lw, 0.2, WH, 6.4, wallMat(st.w, 6.4), s.x0 - 0.1, WH / 2, -7);
         box(lw, 0.26, 0.12, 6.4, TRIM, s.x0 - 0.1, WH, -7);
         box(lw, 0.05, 0.9, 1.2, '#BFE3F5', s.x0 + 0.02, 1.45, -6.6);
+        box(lw, 0.04, WH, 6.4, wallSkin(this.look.s, 6.4, WH), s.x0 - 0.22, WH / 2, -7); // 바깥 면은 집 모양
         wallGroup(lw, s.x0 - 0.1, -7, 3.2);
         obs(s.x0 - 0.1, -7, 0.1, 3.2);
       }
@@ -1139,7 +1156,46 @@ export class HomeSpace {
     // 공사 터: 아직 짓지 않은 자리
     if (this.lotOn !== false && this.rooms.length < BUILD_IDS.length) this.buildLot(G, west.x0);
     this.areaDoors = doorDefs;
+    this.buildShellFor(G, list);
     this.root.add(G);
+  }
+  // 지붕과 앞벽 (집 모양). 마당에 있을 때만 덮이고, 방에 들어가거나 꾸미기를 하면 걷힌다
+  buildShellFor(G, list) {
+    const sh = buildShell(this.look.s, roofColor(this.look, this.lookAuto), list, { front: -3.8, back: -10.2, wh: WH, doorX: (s) => (s.id === 'room' ? null : frontDoorX(s)) });
+    sh.traverse((o) => { if (o.isMesh) o.receiveShadow = true; });
+    mergeColored(sh, VC);
+    mergeStatic(sh);
+    const mats = [];
+    sh.traverse((o) => {
+      if (!o.isMesh) return;
+      const one = (mt) => { const c = mt.clone(); mats.push(c); return c; };
+      o.material = Array.isArray(o.material) ? o.material.map(one) : one(o.material);
+    });
+    this.shell = { g: sh, mats, op: -1 };
+    G.add(sh);
+    this.fadeShell(1); // 지금 자리에 맞게 바로
+  }
+  shellWant() {
+    const v = this.v;
+    if (this.forceShell) return 1;
+    if (!v.atHome || v.mode !== 'play' || this.fx || !v.player) return 0;
+    const l = this.toLocal(v.player.root.position);
+    return this.areaAt(l.x, l.z) === 'yard' && l.z > -10.25 ? 1 : 0;
+  }
+  fadeShell(dt) {
+    const f = this.shell;
+    if (!f) return;
+    const want = this.shellWant();
+    if (f.op === want) return;
+    f.op = f.op < 0 ? want : f.op + (want - f.op) * Math.min(1, dt * 5);
+    if (Math.abs(f.op - want) < 0.01) f.op = want;
+    const tr = f.op < 0.999;
+    for (const mt of f.mats) {
+      if (mt.transparent !== tr) { mt.transparent = tr; mt.needsUpdate = true; }
+      mt.opacity = f.op;
+      mt.depthWrite = !tr;
+    }
+    f.g.visible = f.op > 0.02;
   }
   // 주방 조리대: 숲속 부엌(요리 놀이)과 같은 크기와 자리 (조리대 윗면 0.98, 냄비는 오른쪽 앞)
   buildKitchen(G, s, obs) {
@@ -1658,6 +1714,7 @@ export class HomeSpace {
     }
     if (tvTex) tvTex.offset.x = (this.t * 0.02) % 1;
     this.tickFx(dt);
+    this.fadeShell(dt);
     this.plantTick = (this.plantTick || 0) - dt;
     if (this.plantTick <= 0) { this.plantTick = 20; this.refreshPlants(); }
     if (this.ghost) this.ghost.mat.opacity = 0.45 + Math.sin(this.t * 6) * 0.12;

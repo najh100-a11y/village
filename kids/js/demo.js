@@ -9,12 +9,13 @@ import { WARDROBE, WARDROBE_IDS, wearItem } from './wardrobe.js';
 import { SELL_BUNDLE, SELL_DAY_DEFAULT, GIFT, GIFT_MSGS, SALES, salePrice } from './economy.js';
 import { TREASURES } from './beach-data.js';
 import { PET_ITEMS, PET_IDS } from './pets-data.js';
+import { HOUSE_ITEMS, HOUSE_STYLES, ROOF_COLORS, isFreeHouse, houseItem, HOUSE_IDS } from './houses-data.js';
 // 보물 무게 (서버 kids_treasure_kinds와 같다)
 const TREASURE_WEIGHT = { shell: 24, conch: 18, seaglass: 14, starfish: 10, crab: 8, coin: 6, pearl: 3, bottle: 3, fossil: 2, chest: 1, can: 7, sandal: 5 };
 const BUG_KINDS = ['cabbage_white', 'swallowtail', 'honeybee', 'ladybug', 'grasshopper', 'red_dragonfly', 'mantis', 'cicada', 'stag_beetle', 'rhino_beetle', 'firefly'];
 const BUG_RARITY = [0, 1, 0, 0, 0, 0, 1, 1, 2, 2, 2]; // js/bugs.js와 같은 차례
 const ITEM_PRICE = { fw_spark: 1, fw_flower: 3, fw_heart: 5, fw_volley: 7, ...Object.fromEntries(PET_IDS.map((id) => [id, PET_ITEMS[id].price])), ...Object.fromEntries(HOME_IDS.map((id) => [id, HOME_ITEMS[id].price])),
-  ...Object.fromEntries(WARDROBE_IDS.map((id) => [id, WARDROBE[id].price])) };
+  ...Object.fromEntries(WARDROBE_IDS.map((id) => [id, WARDROBE[id].price])), ...Object.fromEntries(Object.entries(HOUSE_ITEMS).map(([id, it]) => [id, it.price])) };
 // 열매 1개가 되는 묶음 마릿수 (서버 kids__sell_bundle과 같다)
 function sellBundle(kind, id) {
   if (kind === 'fish') { const f = FISH.find((x) => x.id === id); return f && f.rarity >= 0 ? SELL_BUNDLE.fish[f.rarity] : null; }
@@ -338,7 +339,7 @@ export class DemoBackend {
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true, breeds: true, skip2: true, volley: true, expand: true }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true, breeds: true, skip2: true, volley: true, expand: true, houses: true }; }
   // 쪽지함: 친구별 마지막 쪽지와 안 읽은 수 (최근 30일)
   kids_dm_box({ p_token }) {
     const me = this.session(p_token, 'child');
@@ -632,12 +633,14 @@ export class DemoBackend {
     const price = ITEM_PRICE[p_item] ? salePrice(ITEM_PRICE[p_item], this.villageConf().sale) : 0;
     const pet = String(p_item || '').startsWith('pet_');
     const wear = String(p_item || '').startsWith('av_');
-    const n = pet || wear ? 1 : p_n || 1;
+    const house = String(p_item || '').startsWith('hs_');
+    const n = pet || wear || house ? 1 : p_n || 1;
     if (!price || n < 1 || n > 5) fail('BAD_ITEM');
     this.db.items = this.db.items || {};
     const bag = this.db.items[me] || (this.db.items[me] = {});
     if (pet && (bag[p_item] || 0) >= 1) fail('HAVE_PET');
     if (wear && (bag[p_item] || 0) >= 1) fail('HAVE_ITEM');
+    if (house && (bag[p_item] || 0) >= 1) fail('HAVE_HOUSE');
     if ((bag[p_item] || 0) + n > 99) fail('BAG_FULL');
     const c = this.child(me);
     if (c.fruits < price * n) fail('NO_FRUIT');
@@ -822,12 +825,27 @@ export class DemoBackend {
     const p = this.db.homePlans[id] || (this.db.homePlans[id] = { rooms: [], style: {} });
     return p;
   }
+  // 산 집 모양 (서버 kids__houses와 같다)
+  housesOf(me) { const bag = (this.db.items || {})[me] || {}; return HOUSE_IDS.filter((s) => (bag[houseItem(s)] || 0) > 0).sort(); }
+  // 집 모양 보기와 바꾸기 (서버 kids_home_look과 같다)
+  kids_home_look({ p_token, p_style = null, p_roof = null }) {
+    const me = this.session(p_token, 'child');
+    const pl = this.homePlan(me);
+    const look = pl.look || {};
+    if (p_style != null || p_roof != null) {
+      const s = p_style ?? look.s ?? 'cabin', c = p_roof ?? look.c ?? 'auto';
+      if (!HOUSE_STYLES[s] || !ROOF_COLORS[c]) fail('BAD_LOOK');
+      if (!isFreeHouse(s) && !this.housesOf(me).includes(s)) fail('NEED_HOUSE');
+      pl.look = { s, c };
+    }
+    return { look: { ...(pl.look || {}) }, houses: this.housesOf(me) };
+  }
   kids_home({ p_token }) {
     const me = this.session(p_token, 'child');
     this.db.homes = this.db.homes || {};
     const pl = this.homePlan(me), sale = this.villageConf().sale;
     return { layout: JSON.parse(JSON.stringify(this.db.homes[me] || [])), items: this.homeItems(me), fruits: this.child(me).fruits, crops: this.cropsOf(me), now: Date.now(),
-      rooms: pl.rooms.slice(), style: JSON.parse(JSON.stringify(pl.style)), sale,
+      rooms: pl.rooms.slice(), style: JSON.parse(JSON.stringify(pl.style)), look: { ...(pl.look || {}) }, houses: this.housesOf(me), sale,
       build: Object.fromEntries(BUILD_IDS.map((k) => [k, salePrice(SPACES[k].price, sale)])), build_base: Object.fromEntries(BUILD_IDS.map((k) => [k, SPACES[k].price])) };
   }
   // 집 넓히기 공사 (서버 kids_home_build와 같다)
@@ -936,7 +954,7 @@ export class DemoBackend {
     const c = this.db.children.find((x) => x.id === p_child && x.village_name && x.avatar);
     if (!c) fail('NOT_FOUND');
     const pl = this.homePlan(p_child);
-    return { name: c.village_name, layout: JSON.parse(JSON.stringify((this.db.homes || {})[p_child] || [])), now: Date.now(), rooms: pl.rooms.slice(), style: JSON.parse(JSON.stringify(pl.style)) };
+    return { name: c.village_name, avatar: c.avatar, layout: JSON.parse(JSON.stringify((this.db.homes || {})[p_child] || [])), now: Date.now(), rooms: pl.rooms.slice(), style: JSON.parse(JSON.stringify(pl.style)), look: { ...(pl.look || {}) } };
   }
   kids_home_save({ p_token, p_layout, p_harvest }) {
     const me = this.session(p_token, 'child');

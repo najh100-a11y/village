@@ -15,6 +15,7 @@ const mapFrom = (mode) => (mode === 'game' ? 2.0 : 1.6);
 import { Bugs, makeBug } from './bugs.js';
 import { Fireworks } from './fireworks.js';
 import { HomeSpace, HOME_O, buildCrop } from './home.js';
+import { buildCottage, HOUSE_STYLES, lookOf, roofColor } from './houses.js';
 import { centerOf } from './homeitems.js';
 import { Villagers } from './villagers.js';
 import { Sea } from './sea.js';
@@ -938,21 +939,9 @@ export class Village {
     {
       const g = new THREE.Group();
       this.home = g;
-      g.add(box(5.0, 0.32, 4.4, toon('#D9C8A8'), 0, 0.16, 0));
-      g.add(box(4.4, 2.5, 3.8, toon('#E2B47F'), 0, 1.57, 0));
-      for (let i = 0; i < 6; i++) g.add(box(4.46, 0.06, 3.86, toon('#C99862'), 0, 0.55 + i * 0.4, 0));
-      const roofMat = toon('#4FA36C').clone();
-      roofMat.userData.isRoof = true;
-      const roof = prism(5.4, 2.1, 4.6, roofMat);
-      roof.position.y = 2.82;
-      g.add(roof);
-      const gable = prism(4.2, 1.7, 0.12, toon('#E2B47F'));
-      gable.position.set(0, 2.84, 1.86);
-      g.add(gable);
-      g.add(box(1.2, 1.8, 0.14, toon('#8B5E3C'), -0.6, 1.22, 1.94));
-      g.add(ball(0.07, toon('#F4C542'), -0.25, 1.2, 2.04));
-      g.add(this.windowMesh(1.0, 0.9, 1.15, 1.6, 1.94));
-      g.add(box(0.5, 0.9, 0.5, toon('#9C8F86'), 1.3, 4.0, -0.8));
+      // 집 몸체는 집 모양(houses.js)에 따라 다시 짓는다. 우체통, 울타리, 이름판은 그대로
+      this.homeBody = this.makeHomeBody('cabin', HOUSE_STYLES.cabin.roof);
+      g.add(this.homeBody);
       // 우체통
       g.add(box(0.1, 1.0, 0.1, toon('#8B5E3C'), -2.6, 0.5, 2.4));
       g.add(box(0.45, 0.35, 0.6, toon('#EF6461'), -2.6, 1.15, 2.4));
@@ -965,15 +954,59 @@ export class Village {
       this.homeSign.position.set(0, 4.15, 2.0);
       g.add(this.homeSign);
       this.placeBuilding('home', g, { x: 0, z: -21, rot: 0, hw: 2.6, hd: 2.3, doorZ: 3.2, name: '내 집' });
+      this.homeFade = this.fadeables[this.fadeables.length - 1];
+      this.homeBodyMats = [];
+      this.homeBody.traverse((o) => { if (o.isMesh) this.homeBodyMats.push(...(Array.isArray(o.material) ? o.material : [o.material])); });
+      this.homeKey = `cabin|${HOUSE_STYLES.cabin.roof}`;
     }
+  }
+
+  // 마을 '○○의 집' 몸체 (합쳐 두고, 둘레 건물 합치기에서는 빼 둔다)
+  makeHomeBody(style, roofC) {
+    const b = buildCottage(style, roofC);
+    mergeStatic(b);
+    b.traverse((o) => { if (o.isMesh) o.userData.noMerge = true; });
+    return b;
+  }
+  // 지붕 색 '옷 색깔': 주민의 옷 색을 조금 어둡게
+  autoRoofOf(avatar) { return shade(colorOf(avatar, 'outfitColor'), 0.05); }
+  // 집 모양 바꾸기: look { s, c }. 지붕 색이 '옷 색깔'이면 내 옷 색을 쓴다
+  setHomeLook(look) {
+    this.homeLookV = look;
+    this.applyHomeLook();
+  }
+  applyHomeLook() {
+    if (!this.home || !this.homeFade) return;
+    const l = lookOf(this.homeLookV), c = roofColor(l, this.homeAutoRoof);
+    const key = `${l.s}|${c}`;
+    if (key === this.homeKey) return;
+    this.homeKey = key;
+    const f = this.homeFade;
+    const old = this.homeBody;
+    const body = this.makeHomeBody(l.s, c);
+    const mats = [];
+    body.traverse((o) => {
+      if (!o.isMesh) return;
+      const one = (mt) => { const cl = mt.clone(); cl.userData.base = mt.opacity; cl.transparent = f.op < 0.99; cl.opacity = f.op * mt.opacity; cl.depthWrite = f.op > 0.99; mats.push(cl); return cl; };
+      o.material = Array.isArray(o.material) ? o.material.map(one) : one(o.material);
+    });
+    f.mats = f.mats.filter((mt) => !this.homeBodyMats.includes(mt)).concat(mats);
+    for (const mt of this.homeBodyMats) mt.dispose();
+    this.homeBodyMats = mats;
+    if (old) { old.removeFromParent(); old.traverse((o) => { if (o.isMesh) o.geometry.dispose(); }); }
+    this.home.add(body);
+    this.homeBody = body;
   }
 
   setHome(name, avatar) {
     const tex = signTexture(`${name}의 집`, { bg: '#FFFDF7', fg: '#6B4429', border: '#8B5E3C' });
     const mats = Array.isArray(this.homeSign.material) ? this.homeSign.material : [this.homeSign.material];
     for (const mt of mats) if (mt.map) { mt.map.dispose(); mt.map = tex; mt.needsUpdate = true; }
-    const roofC = shade(colorOf(avatar, 'outfitColor'), 0.05);
-    this.home.traverse((o) => { if (o.isMesh && o.material && o.material.userData && o.material.userData.isRoof) o.material.color.set(roofC); });
+    this.homeAutoRoof = this.autoRoofOf(avatar); // 지붕 색 '옷 색깔'
+    this.applyHomeLook();
+    // 내 집 안에 있으면 내 집 섬의 지붕도 새 옷 색으로
+    const H = this.homeSpace;
+    if (this.atHome && !this.visiting && H && H.look.c === 'auto' && H.lookAuto !== this.homeAutoRoof) H.setLook(H.look, this.homeAutoRoof);
     const d = this.doors.find((dd) => dd.id === 'home');
     if (d) d.name = `${name}의 집`;
   }
@@ -2879,7 +2912,7 @@ export class Village {
   cookSpot() { return this.atHome && this.homeSpace && this.homeSpace.kitchenSpot ? this.homeSpace.kitchenSpot : this.spots.cook; }
   sceneFor(x, z) { return this.homeSpace && nearHome({ x, z }) ? this.homeSpace.scene : this.scene; }
   // house: 집 주인 id, visiting: 친구 집에 놀러 왔으면 true (꾸미기와 밭 돌보기는 주인만)
-  // plan: { rooms(지은 방 차례), style(방마다 벽지·바닥) }
+  // plan: { rooms(지은 방 차례), style(방마다 벽지·바닥), look(집 모양 { s, c }), auto(지붕 '옷 색깔'에 쓸 주인 옷 색) }
   enterHome(layout, ownerName, house = null, visiting = false, plan = null) {
     if (!this.homeSpace) this.homeSpace = new HomeSpace(this);
     const H = this.homeSpace;
@@ -2891,6 +2924,9 @@ export class Village {
     H.setOwner(ownerName);
     H.endFx();
     H.lotOn = !plan || plan.lot !== false; // 집 넓히기 공사 터 (서버에 집 넓히기가 있을 때)
+    H.forceShell = false;
+    H.look = lookOf(plan && plan.look); // 집 모양과 지붕 색 (setPlan이 이 모양으로 짓는다)
+    H.lookAuto = (plan && plan.auto) || null;
     H.setPlan((plan && plan.rooms) || [], (plan && plan.style) || {});
     H.setLayout(layout || []);
     const door = this.doors.find((d) => d.id === 'home');
