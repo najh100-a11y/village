@@ -23,6 +23,7 @@ import { COVER_HATS } from './avatar.js';
 import { GIFT, GIFT_MSGS } from './economy.js';
 import { fishCanvas } from './fishing.js';
 import { createHomeUI, houseThumb } from './homeui.js';
+import { createHideGame } from './hide.js';
 import { HOUSE_STYLES, HOUSE_IDS, HOUSE_ITEMS, houseItem, isFreeHouse } from './houses-data.js';
 import { REWARD } from './economy.js';
 import { initSound, startMusic, stopMusic, setScene, sfx, cycleSound, soundMode, setRain } from './sound.js';
@@ -44,7 +45,7 @@ let memory = null;
 let qt = null;
 let copy = null;
 let net = null;
-let hub = null, art = null, play3d = null, homeUI = null, guide = null;
+let hub = null, art = null, play3d = null, homeUI = null, guide = null, hide = null;
 const online = new Set();
 let hintShown = false;
 
@@ -74,7 +75,7 @@ async function boot() {
       const p = $('#prompt');
       if (!d) { p.hidden = true; return; }
       $('#promptName').textContent = d.name;
-      $('#promptAct').textContent = d.id.startsWith('bg_') ? '하기' : { board: '보기', fish: '낚시하기', skip: '던지기', ark: '놀기', omok: '두기', cook: '요리하기', art: '그리기', ferris: '타기', viking: '타기', carousel: '타기', bumper: '타기', coaster: '타기', 'home-exit': '나가기', 'home-closet': '옷 갈아입기', 'home-build': '집 넓히기', 'home-cook': '요리하기', suggest: '건의하기' }[d.id] || '들어가기';
+      $('#promptAct').textContent = d.id.startsWith('hs_') && hide ? hide.promptAct(d.id) : d.id.startsWith('bg_') ? '하기' : { board: '보기', fish: '낚시하기', skip: '던지기', ark: '놀기', omok: '두기', cook: '요리하기', art: '그리기', ferris: '타기', viking: '타기', carousel: '타기', bumper: '타기', coaster: '타기', 'home-exit': '나가기', 'home-closet': '옷 갈아입기', 'home-build': '집 넓히기', 'home-cook': '요리하기', suggest: '건의하기' }[d.id] || '들어가기';
       p.dataset.id = d.id;
       p.hidden = false;
     },
@@ -143,7 +144,7 @@ async function boot() {
   }
   $('#loading').hidden = true;
   window.kvInfo = () => ({ ...village.renderer.info.render, programs: village.renderer.info.programs.length });
-  if (DEMO) { window.kvEnter = (id) => village.enter(id); window.kvVillage = village; window.kvGames = () => ({ play3d, homeUI, openShop, modal }); }
+  if (DEMO) { window.kvEnter = (id) => village.enter(id); window.kvVillage = village; window.kvGames = () => ({ play3d, homeUI, openShop, modal, hide }); }
   maker = new Maker();
   const common = {
     rpc, getToken: token,
@@ -164,11 +165,11 @@ async function boot() {
     getNet: () => net,
     getPerson: (id) => state.people.get(id),
     getMe: () => state.me && state.me.id,
-    isBusy: () => (!$('#maker').hidden || $('#hud').hidden ? true : !playOpen() ? 'locked' : false),
+    isBusy: () => (!$('#maker').hidden || $('#hud').hidden || (hide && hide.active) ? true : !playOpen() ? 'locked' : false),
     onLockedInvite: (from, kind) => {
       const p = state.people.get(from);
       const bid = bgIdOf(kind);
-      const what = bid ? BG_INFO[bid].name : { omok: '오목', ark: '방주 짝 맞추기', cook: '요리' }[kind] || '놀이';
+      const what = bid ? BG_INFO[bid].name : { omok: '오목', ark: '방주 짝 맞추기', cook: '요리', hide: '숨바꼭질' }[kind] || '놀이';
       if (p) toast(`${josa(p.name, '이가', '가')} ${josa(what, '을', '를')} 같이 하재요. ${unlockHint()} 놀 수 있어요!`, 3800);
     },
     onAccept: (kind, session) => openGameWith(kind, session),
@@ -189,6 +190,13 @@ async function boot() {
     watchable: () => watchableGames(),
     getMe: () => state.me,
     getPerson: (id) => state.people.get(id),
+  });
+  // 숨바꼭질 섬: 술래 나무에서 시작한다 (놀이 마당처럼 그날 말씀 활동을 해야 열린다)
+  hide = createHideGame({
+    village, hub, rpc, getToken: token, getMe: () => state.me, getPerson: (id) => state.people.get(id), onlineFriends,
+    setActivity, setScene, modal, playOpen, refreshToday, showLocked, onSessionLost: sessionLost, message, setFruits,
+    features: () => state.features || {},
+    beforeStart: () => { if (play3d && play3d.active) play3d.stop(); hideHint(); $('#sayPanel').hidden = true; },
   });
   village.decorateRemote = (r, act, hint) => play3d.decorateRemote(r, act, hint);
   homeUI = createHomeUI({
@@ -475,6 +483,7 @@ async function join() {
 
 function showLogin() {
   if (play3d) play3d.stop();
+  if (hide) hide.quit(true);
   if (homeUI) homeUI.reset();
   $('#btnView').hidden = true;
   stopNet();
@@ -1634,6 +1643,7 @@ function showNews() {
   news.push(['boardisle4', '새 소식! 보드게임 섬에서 방을 만들면 친구 넷까지 함께 놀 수 있어요(만칼라는 둘). 빈자리에는 컴퓨터 친구를 앉히고, 윷놀이는 2:2 편을 먹고 할 수도 있어요.']);
   if (state.features.home) news.push(['swing', "새 소식! 내 집 마당 그네를 탈 수 있어요. 그네에 앉아 '힘껏 구르기'를 누를수록 높이 올라가요. 놀러 온 친구에게도 그네 타는 모습이 보여요."]);
   if (state.features.home) news.push(['slide', '새 소식! 내 집 마당 미끄럼틀도 탈 수 있어요. 미끄럼틀을 누르면 사다리를 올라가서 쭉 미끄러져 내려와요. 같은 집에 있는 친구에게도 타는 모습이 보여요.']);
+  if (state.features.hide) news.push(['hide', "새 소식! 마을 섬 북쪽, 내 집 뒤로 다리를 건너면 숨바꼭질 섬이 있어요. 가운데 술래 나무를 누르면 컴퓨터 친구나 마을 친구와 숨바꼭질을 해요. 찾은 친구는 술래와 같이 찾고, 이기면 열매 1개(하루 3개까지)를 받아요."]);
   if (state.features.houses) news.push(['houses', "새 소식! 우리 집 모양을 고를 수 있어요. 내 집 '집 꾸미기'에서 '🏡 집 모양'을 누르면 나무 오두막, 빨간 벽돌집은 바로 고르고, 한옥, 통나무집, 버섯집, 작은 성은 열매 15개로 사요. 사기 전에 미리 볼 수 있고, 지붕 색은 열매 없이 바꿔요."]);
   if (state.features.expand) news.push(['expand', "새 소식! 내 집을 넓힐 수 있어요. 내 집 '집 넓히기 공사 터' 팻말을 누르면 열매로 거실, 주방, 방 2, 방 3을 지어요. 열매 상점 '집 안' 칸에 새 가구 19가지가 왔고, 방마다 벽지와 바닥도 고를 수 있어요. 주방 조리대에서는 요리 놀이도 해요."]);
   if (state.features.volley) news.push(['volley', '새 소식! 열매 상점 불꽃 칸에 \'10연발 불꽃\'(열매 7개)이 새로 왔어요. 불꽃 열 발이 차례로 솟아 저마다 다른 모양으로 터지고, 마지막엔 커다란 금빛 버들 불꽃이 쏟아져요.']);
@@ -2364,6 +2374,7 @@ function houseText(r) {
 // 친구 찾아가기: 친구가 어느 집 안에 있으면 그 집으로, 아니면 마을에서 친구 옆으로
 async function findFriend(id) {
   const r = village.remotes.get(id);
+  if (r && village.hsHidden(r)) { toast(`${josa((state.people.get(id) || {}).name || '친구', '은', '는')} 숨바꼭질을 하며 숨어 있어요. 쉿!`, 2600); return; }
   if (state.features.visit && state.features.home && r && r.house) { goVisit(r.house); return; }
   modal.close(); if (play3d.active) play3d.stop(); if (village.atHome) await homeUI.exit(); village.walkToFriend(id);
 }
@@ -2387,7 +2398,7 @@ function openFriends() {
         state.features.gift ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: async () => { if (!shopData) await loadShop(); openGift(p.id); } }, '🎁 선물') : null,
         games.has(p.id) ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => { modal.close(); play3d.omokWatch(p.id); } }, '👀 구경하기') : null,
         visitOk ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => goVisit(p.id) }, '🏠 집에 놀러 가기') : null,
-        h('button', { class: 'btn btn-plain btn-small', type: 'button', onclick: () => findFriend(p.id) }, '찾아가기')));
+        act === 'hsh' ? null : h('button', { class: 'btn btn-plain btn-small', type: 'button', onclick: () => findFriend(p.id) }, '찾아가기')));
   });
   openSheet(`지금 마을에 있는 친구 ${list.length}명`, h('div', { class: 'talk friends' },
     mailOk() ? h('div', { class: 'row' }, h('button', { class: 'btn btn-go btn-small', type: 'button', onclick: () => openMail() },
@@ -2736,6 +2747,7 @@ async function openGameWith(kind, session) {
   if (village.atHome) await homeUI.exit();
   hideHint();
   $('#sayPanel').hidden = true;
+  if (kind === 'hide') { if (play3d.active) play3d.stop(); hide.join(session); return; } // 숨바꼭질 방에 들어가 방장이 시작하기를 기다린다
   const bid = bgIdOf(kind);
   if (bid) play3d.boardJoin(bid, session); // 친구 방에 들어가 방장이 시작하기를 기다린다
   else if (kind === 'omok') play3d.omok({ session });
@@ -2745,6 +2757,10 @@ async function openGameWith(kind, session) {
 
 function onEnter(id) {
   if (homeUI && homeUI.onDoor(id)) return;
+  // 숨바꼭질 섬: 술래 나무와 숨을 곳 16군데 (놀이 중에는 다른 곳에 들어가지 않는다)
+  if (id === 'hs_tree') { if (!state.features.hide) { toast('숨바꼭질은 곧 열려요! 조금만 기다려 줘요.', 2600); return; } hide.open(); return; }
+  if (id.startsWith('hs_')) { hide.onSpot(Number(id.slice(3))); return; }
+  if (hide && hide.active) { toast("숨바꼭질 중이에요! 그만하려면 아래 '그만하기'를 눌러요.", 2600); return; }
   if (id === 'home') return homeUI.enter();
   if (id === 'suggest') return openSuggest();
   if (id === 'memory') return openHouse(() => memory.open(), 'memory');

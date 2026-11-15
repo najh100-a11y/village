@@ -5,7 +5,7 @@
 import * as THREE from './three.module.min.js';
 import { toon, toonGradient } from './avatar.js';
 import { mergeStatic, mergeColored, mergeGeos } from './merge.js';
-import { PIER, pierPoint, onPier, onJetty, PARK_ISLE, POOL_ISLE, BOARD_ISLE } from './isles.js';
+import { PIER, pierPoint, onPier, onJetty, PARK_ISLE, POOL_ISLE, BOARD_ISLE, HIDE_ISLE } from './isles.js';
 
 export const SEA_Y = -1.15; // 바다 물 높이 (마을 둘레 바다 면)
 const BOAT_Y = SEA_Y - 0.13; // 배 바닥 높이 (물에 0.13만큼 잠긴다)
@@ -26,9 +26,9 @@ export const SEA_SPOTS = [spot(PIER.len + 8, 3, 0.25), spot(PIER.len + 11, 9, 0.
 export const BOAT_FACE = HEAD0;
 
 // ---------- 바닷길 ----------
-// 배가 못 가는 곳: 섬 넷의 모래밭(놀이동산 섬은 롤러코스터 기둥까지)과 나루터. 모래밭에서 SEA_FAR보다 멀리는 나가지 않는다
+// 배가 못 가는 곳: 섬 다섯의 모래밭(놀이동산 섬은 롤러코스터 기둥까지)과 나루터. 모래밭에서 SEA_FAR보다 멀리는 나가지 않는다
 const SHORES = [{ x: 0, z: 0, r: 39.5 }, { x: PARK_ISLE.x, z: PARK_ISLE.z, r: PARK_ISLE.r + 5.1 }, { x: POOL_ISLE.x, z: POOL_ISLE.z, r: POOL_ISLE.r + 4.5 },
-  { x: BOARD_ISLE.x, z: BOARD_ISLE.z, r: BOARD_ISLE.r + 4.5 }];
+  { x: BOARD_ISLE.x, z: BOARD_ISLE.z, r: BOARD_ISLE.r + 4.5 }, { x: HIDE_ISLE.x, z: HIDE_ISLE.z, r: HIDE_ISLE.r + 4.5 }];
 export const SEA_FAR = 24;
 // 가장 가까운 모래밭 끝까지 거리 (땅 위면 0보다 작다)
 export function shoreGap(x, z) {
@@ -50,7 +50,7 @@ function clearLine(a, b, m = 1.0) {
   for (let i = 1; i <= n; i++) { const k = i / n; if (!canSail(a.x + (b.x - a.x) * k, a.z + (b.z - a.z) * k, m)) return false; }
   return true;
 }
-// 섬 넷 바깥을 한 바퀴 도는 바닷길 고리 (가운데에서 바깥으로 그은 줄마다, 마지막 땅에서 조금 더 나간 곳)
+// 섬 다섯 바깥을 한 바퀴 도는 바닷길 고리 (가운데에서 바깥으로 그은 줄마다, 마지막 땅에서 조금 더 나간 곳)
 const RING = (() => {
   const C = { x: 15, z: 22 }, N = 96, out = [];
   const land = (x, z) => shoreGap(x, z) < 0 || onPier(x, z, 0.75) || onJetty(x, z, 0.75);
@@ -121,7 +121,7 @@ export const SEA_RING = RING;
 export const SCHOOLS = [
   { x: 40, z: 36, r: 4, T: 260, ph: 0.4 }, // 나루터 앞바다
   { x: -50, z: 8, r: 5, T: 300, ph: 2.1 }, // 마을 섬 서쪽
-  { x: 8, z: -50, r: 5, T: 280, ph: 4.0 }, // 마을 섬 북쪽
+  { x: -36, z: -46, r: 5, T: 280, ph: 4.0 }, // 마을 섬 북서쪽 (북쪽에는 숨바꼭질 섬이 생겼다)
   { x: -34, z: 44, r: 4, T: 240, ph: 1.2 }, // 놀이동산 섬 서쪽
   { x: 84, z: -6, r: 4, T: 320, ph: 5.3 }, // 수영장 섬 동쪽
 ];

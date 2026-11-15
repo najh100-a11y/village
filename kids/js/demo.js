@@ -339,7 +339,7 @@ export class DemoBackend {
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true, breeds: true, skip2: true, volley: true, expand: true, houses: true }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true, breeds: true, skip2: true, volley: true, expand: true, houses: true, hide: true }; }
   // 쪽지함: 친구별 마지막 쪽지와 안 읽은 수 (최근 30일)
   kids_dm_box({ p_token }) {
     const me = this.session(p_token, 'child');
@@ -492,6 +492,24 @@ export class DemoBackend {
     const mine = {};
     for (const t of (this.db.treasures || []).filter((x) => x.child === me)) mine[t.item] = (mine[t.item] || 0) + 1;
     return { mine, today: (this.db.treasures || []).filter((x) => x.child === me && x.at >= startOfToday()).length };
+  }
+  // ---------- 숨바꼭질: 이기면 열매 1개, 하루 3개까지 (서버 kids_hs_win과 같다) ----------
+  kids_hs_win({ p_token, p_role }) {
+    const me = this.session(p_token, 'child');
+    if (!['seek', 'hide'].includes(p_role)) fail('BAD_KIND');
+    this.gate(me);
+    this.db.hsWins = this.db.hsWins || [];
+    const mine = this.db.hsWins.filter((x) => x.child === me);
+    const last = mine.map((x) => x.at).sort().pop();
+    if (last && Date.now() - new Date(last).getTime() < 25000) fail('TOO_FAST');
+    const t0 = startOfToday(), todays = mine.filter((x) => x.at >= t0);
+    if (todays.length >= 100) fail('HS_DAY');
+    const n = todays.filter((x) => x.got).length;
+    const got = n < 3;
+    const c = this.child(me);
+    if (got) c.fruits += 1;
+    this.db.hsWins.push({ child: me, role: p_role, got, at: nowIso() });
+    return { got, today: n + (got ? 1 : 0), max: 3, fruits: c.fruits };
   }
   // ---------- 물수제비 (서버 kids_skip_throw와 같다) ----------
   skipTop(me) {

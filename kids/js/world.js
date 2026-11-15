@@ -21,7 +21,8 @@ import { Villagers } from './villagers.js';
 import { Sea } from './sea.js';
 import { Beach, makeShovel, digPoseAt, remoteDigPose, DIG_SPOTS } from './beach.js';
 import { buildBoardIsle, BG_TABLES, BG_GAPS } from './boardisle.js';
-import { BOARD_ISLE } from './isles.js';
+import { buildHideIsle, HS_SPOTS } from './hideisle.js';
+import { BOARD_ISLE, HIDE_ISLE } from './isles.js';
 // 내 집(따로 된 장면) 근처 좌표인지: 마을 친구와 동물은 늘 마을 좌표라서 좌표로 가른다
 const nearHome = (p) => Math.abs(p.x - HOME_O.x) < 200 && Math.abs(p.z - HOME_O.z) < 200;
 
@@ -406,6 +407,14 @@ export class Village {
       mergeStatic(sg);
       this.scene.add(sg);
       this.addObstacleCircle(-27.0, -1.6, 0.15);
+    }
+    this.hideIsle = buildHideIsle(this, { signMesh }); // 숨바꼭질 섬 (북쪽 다리 건너, 내 집 뒤)
+    {
+      const sg = this.postSign('숨바꼭질 섬', 1.7);
+      sg.position.set(-2.5, 0, -27.0);
+      mergeStatic(sg);
+      this.scene.add(sg);
+      this.addObstacleCircle(-2.5, -27.0, 0.15);
     }
     this.critters = new Critters(this);
     this.critters.onSound = (kind, soft) => this.on.onCritterSound && this.on.onCritterSound(kind, soft);
@@ -2274,6 +2283,16 @@ export class Village {
     if (r.actName) this.applyAct(r, { x: p.x, z: p.z });
   }
   remoteCelebrate(id) { const r = this.remotes.get(id); if (r) r.av.celebrate(); }
+  // 숨바꼭질: 숨어 있는 사람은 화면에서 보이지 않는다 (몸, 이름표, 말풍선, 애완동물).
+  // 같이 하는 친구는 놀이 소식(setHsHidden)으로, 같이 하지 않는 친구는 그 아이가 알린 하는 일('hsh')로 안다
+  setHsHidden(id, on) { const r = this.remotes.get(id); if (r) r.hsHid = !!on; }
+  hsHidden(r) { return !!(r && (r.hsHid || r.actName === 'hsh')); }
+  // 내가 숨었을 때: 내 몸과 애완동물을 감춘다 (내 화면에서도 숨은 곳이 보이도록)
+  setMeHidden(on) {
+    this.hsMe = !!on;
+    if (this.player) this.player.root.visible = !on;
+    if (on && this.player && this.player.bubble) { this.player.bubble.el.remove(); this.player.bubble = null; }
+  }
   remoteJump(id) {
     const r = this.remotes.get(id);
     if (!r || r.pin) return;
@@ -2299,6 +2318,7 @@ export class Village {
   say(id, text) {
     const holder = id === 'me' ? this.player : this.remotes.get(id);
     if (!holder) return;
+    if (id === 'me' ? this.hsMe : this.hsHidden(holder)) return; // 숨바꼭질로 숨어 있으면 말풍선을 띄우지 않는다
     const av = id === 'me' ? this.player : holder.av;
     if (holder.bubble) holder.bubble.el.remove();
     const el = document.createElement('div');
@@ -2517,6 +2537,13 @@ export class Village {
           resetLimbs(r.av);
           if (moving && what === 'hug' && f && f.care && f.care.what === 'hug') f.endCare();
         } else (r.care.what === 'hug' ? hugPose : feedPose(r.care))(r.av);
+      }
+      const hid = this.hsHidden(r);
+      if (r.av.root.visible === hid) r.av.root.visible = !hid;
+      if (hid) {
+        r.tag.style.display = 'none';
+        if (r.bubble) { r.bubble.el.remove(); r.bubble = null; }
+        continue;
       }
       this.placeLabel(r.tag, pos, 2.45);
       if (r.bubble) this.tickBubble(r, pos, 3.05, dt);
@@ -3074,15 +3101,24 @@ export class Village {
   updateFollowers(dt) {
     if (!this.followers) return;
     for (const [owner, list] of this.followers) {
+      let hid = false;
       if (owner === 'me') {
         if (!this.player) continue;
         // 놀이 중이면(놀이기구, 낚시 등) 그 자리에서 기다린다. 벤치에 앉거나 열매를 먹을 때는 곁에 있는다
-        for (const f of list) f.update(dt, this.player.root, this.mode !== 'play');
+        hid = !!this.hsMe;
+        for (const f of list) f.update(dt, this.player.root, this.mode !== 'play' && !hid);
       } else {
         const r = this.remotes.get(owner);
         if (!r) continue;
+        hid = this.hsHidden(r);
         for (const f of list) f.update(dt, r.av.root, !!(r.pin && r.pin.kind !== 'bench'));
       }
+      // 숨바꼭질로 숨은 주인의 애완동물은 같이 숨는다 (곁에서 기다리면 숨은 곳이 들킨다)
+      for (const f of list) {
+        if (f.root.visible === hid) f.root.visible = !hid;
+        if (hid && f.tag) f.tag.style.display = 'none';
+      }
+      if (hid) continue;
       if (list.length > 1) this.spreadPetTags(list);
     }
   }
@@ -3220,7 +3256,13 @@ export class Village {
         for (let j = 1; j <= m; j++) add(x0 + ((x1 - x0) * j) / (m + 1), z0 + ((z1 - z0) * j) / (m + 1));
       }
     }
-    for (const [x, z] of [[0, 29.6], [0, 37], [0, 43.8], [29.6, -4], [37, -4], [44.4, -4], [-29.6, -4], [-37, -4], [-44.4, -4]]) add(x, z);
+    for (const [x, z] of [[0, 29.6], [0, 37], [0, 43.8], [29.6, -4], [37, -4], [44.4, -4], [-29.6, -4], [-37, -4], [-44.4, -4], [0, -29.6], [0, -37], [0, -44.2]]) add(x, z);
+    // 숨바꼭질 섬: 나무 둘레, 둘레 길, 숨을 곳 앞
+    for (const [r, n] of [[4.9, 10], [10.2, 20]]) for (let k = 0; k < n; k++) {
+      const a = (k / n) * Math.PI * 2;
+      add(HIDE_ISLE.x + Math.cos(a) * r, HIDE_ISLE.z + Math.sin(a) * r);
+    }
+    for (const sp of HS_SPOTS) add(sp.door2.x, sp.door2.z);
     // 보드게임 섬: 가운데 마당 둘레와 탁자 바깥 둘레
     for (const [r, n] of [[3.6, 8], [10.4, 14]]) for (let k = 0; k < n; k++) {
       const a = (k / n) * Math.PI * 2;
@@ -3532,6 +3574,8 @@ export class Village {
 
     if (this.sea) this.sea.update(dt, t); // 배가 먼저 움직여야 배에 탄 친구가 제자리에 붙는다
     if (this.beach) this.beach.update(dt);
+    if (this.hideIsle) this.hideIsle.update(dt, this.time);
+    if (this.tickers) for (const f of this.tickers) f(dt); // 숨바꼭질처럼 장면마다 움직이는 놀이
     this.updateRemotes(dt);
     if (this.atHome && this.homeSpace) {
       const H = this.homeSpace;
@@ -3551,7 +3595,7 @@ export class Village {
     }
     this.placeLabel(this.guideTag, g.root.position, 2.45);
     if (this.myTag) {
-      if (this.player && (this.mode === 'play' || this.mode === 'game') && this.myTag.textContent && !this.fp) this.placeLabel(this.myTag, this.player.root.position, 2.45);
+      if (this.player && (this.mode === 'play' || this.mode === 'game') && this.myTag.textContent && !this.fp && !this.hsMe) this.placeLabel(this.myTag, this.player.root.position, 2.45);
       else this.myTag.style.display = 'none';
     }
 

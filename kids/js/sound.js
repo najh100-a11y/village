@@ -413,6 +413,10 @@ export const sfx = {
   whoosh: play(() => noise({ dur: 0.3, vol: 0.08, freq: 400, freq2: 2400, q: 0.7 })),
   // 칼질: 사각 소리와 도마에 닿는 통 소리
   chop: play(() => { noise({ dur: 0.06, vol: 0.22, freq: rnd(3200, 4200), q: 2, kind: 'bandpass' }); tone({ f: rnd(170, 210), f2: 110, type: 'triangle', dur: 0.08, vol: 0.16, delay: 0.02 }); }),
+  // 부스럭: 잎사귀가 스치는 짧은 소리 몇 번 (숨바꼭질)
+  rustle: play(() => { for (let i = 0; i < 4; i++) noise({ dur: 0.09 + Math.random() * 0.05, vol: 0.07, freq: rnd(2400, 3800), q: 1.4, kind: 'bandpass', delay: i * 0.11 + Math.random() * 0.04 }); }),
+  // 쏙: 숨을 곳에 숨는 소리 (숨바꼭질)
+  tuck: play(() => { noise({ dur: 0.18, vol: 0.08, freq: 1800, freq2: 600, q: 0.9 }); tone({ f: 520, f2: 260, type: 'triangle', dur: 0.14, vol: 0.07, delay: 0.05 }); }),
   // 지글지글
   sizzle: play(() => { noise({ dur: 0.5, vol: 0.09, freq: 5200, q: 0.6, kind: 'highpass' }); noise({ dur: 0.35, vol: 0.05, freq: 2600, freq2: 4200, q: 1.2, delay: 0.12 }); }),
   door: play(() => { tone({ f: 330, f2: 410, type: 'triangle', dur: 0.12, vol: 0.08 }); noise({ dur: 0.1, vol: 0.05, freq: 900, q: 1 }); }),

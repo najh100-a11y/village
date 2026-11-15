@@ -11,8 +11,8 @@ export const EMOTES = { heart: '❤️', clap: '👏', smile: '😊', wave: '�
 // 놀이기구를 타며 외치는 말 (말하기 판에는 나오지 않는다)
 export const SHOUTS = { yay: '야호!', beep: '빵빵!', yum: '냠냠!' };
 const EVENTS = ['mv', 'st', 'say', 'chat', 'dm', 'done', 'av', 'inv', 'invr', 'act', 'fish', 'art', 'dish', 'ob', 'fw', 'ate', 'bug', 'jp', 'gift', 'hm', 'hinv', 'pc', 'share', 'pn'];
-export const GAME_KINDS = ['omok', 'cook', 'ark', 'bg_fruit', 'bg_n77', 'bg_code', 'bg_mancala', 'bg_yut', 'bg_dots'];
-export const ACTS = ['', 'fish', 'omok', 'cook', 'art', 'memory', 'qt', 'copy', 'watch', 'ferris', 'viking', 'carousel', 'bumper', 'bench', 'eat', 'bug', 'home', 'coaster', 'swim', 'sea', 'visit', 'dig', 'skip', 'ark', 'bgame'];
+export const GAME_KINDS = ['omok', 'cook', 'ark', 'bg_fruit', 'bg_n77', 'bg_code', 'bg_mancala', 'bg_yut', 'bg_dots', 'hide'];
+export const ACTS = ['', 'fish', 'omok', 'cook', 'art', 'memory', 'qt', 'copy', 'watch', 'ferris', 'viking', 'carousel', 'bumper', 'bench', 'eat', 'bug', 'home', 'coaster', 'swim', 'sea', 'visit', 'dig', 'skip', 'ark', 'bgame', 'hs', 'hsh'];
 const ID_RE = /^[A-Za-z0-9-]{1,64}$/;
 const GID_RE = /^[a-z0-9]{8,12}$/;
 const WORD_RE = /^[a-z]{2,12}$/;
@@ -366,7 +366,7 @@ class DemoNet {
     const bot = this.bots.find((b) => b.id === id);
     if (!bot) return;
     bot.busy = on;
-    this.h.onMsg('act', bot.id, { a: on ? (String(kind).startsWith('bg_') ? 'bgame' : kind) : '' });
+    this.h.onMsg('act', bot.id, { a: on ? (String(kind).startsWith('bg_') ? 'bgame' : kind === 'hide' ? 'hs' : kind) : '' });
     if (on) this.h.onMsg('st', bot.id, { x: bot.pos[0], z: bot.pos[1] });
   }
   openGame(gid, onMsg, onReady) {
