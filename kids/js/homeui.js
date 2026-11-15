@@ -48,7 +48,7 @@ const growOf = (pl) => ({ t: pl && pl.t, g: (pl && pl.g) || undefined, w: (pl &&
 
 export function createHomeUI(o) {
   // o: { village, rpc, getToken, getMe, features, sfx, setActivity, openShop, openMaker, openSheet, modal, message, onSessionLost, setFruits,
-  //      onlineFriends, sendHouseInvite, sendPiano }
+  //      onlineFriends, sendHouseInvite, sendPiano, nbr: { unseen(), myNotes(), leaveNote(guest) } (이웃 마을 인사) }
   const v = o.village;
   let st = null; // { layout, items }
   let guest = null; // 친구 집에 놀러 왔을 때 { id, name }
@@ -62,11 +62,16 @@ export function createHomeUI(o) {
   // 내 집: 꾸미기, 친구 부르기, 마을로 / 친구 집: 우리 집으로, 마을로
   function drawBar() {
     const btn = (label, fn, cls = 'btn-soft') => h('button', { class: `btn ${cls}`, type: 'button', onclick: fn }, label);
-    if (guest) bar.replaceChildren(btn('🏠 우리 집으로', () => enter()), btn('🏡 마을로', () => exit()));
-    else bar.replaceChildren(btn('🛋️ 집 꾸미기', () => startEdit(), 'btn-go'),
-      o.features().farm && o.openBasket ? btn('🧺 바구니', () => o.openBasket()) : null,
-      o.features().visit ? btn('👋 친구 부르기', () => openInvite()) : null,
-      btn('🏡 마을로', () => exit()));
+    const nb = o.features().nbr && o.nbr ? o.nbr : null;
+    if (guest) bar.replaceChildren(btn('🏠 우리 집으로', () => enter()), nb ? btn('💌 인사 남기기', () => nb.leaveNote(guest)) : null, btn('🏡 마을로', () => exit()));
+    else {
+      const n = nb ? nb.unseen() : 0;
+      bar.replaceChildren(btn('🛋️ 집 꾸미기', () => startEdit(), 'btn-go'),
+        o.features().farm && o.openBasket ? btn('🧺 바구니', () => o.openBasket()) : null,
+        o.features().visit ? btn('👋 친구 부르기', () => openInvite()) : null,
+        nb ? h('button', { class: 'btn btn-soft', type: 'button', onclick: () => nb.myNotes() }, '💌 다녀간 친구', n ? h('span', { class: 'nb-badge' }, n > 9 ? '9+' : String(n)) : null) : null,
+        btn('🏡 마을로', () => exit()));
+    }
   }
   const act = h('div', { class: 'he-act', hidden: true });
   const hint = h('p', { class: 'he-hint' });
@@ -101,7 +106,9 @@ export function createHomeUI(o) {
   }
 
   // ---------- 들어가고 나가기 ----------
-  async function enter() {
+  // back: 나올 때 설 자리 { x, z, rot } (이웃 마을 우리 집 앞에서 들어갔을 때). 없으면 마을 섬 '내 집' 문 앞
+  async function enter(back = null) {
+    if (!back || !Number.isFinite(back.x)) back = null;
     if (busy || (v.atHome && !guest)) return;
     if (!o.features().home) { o.openMaker(false); return; }
     if (v.atHome) await exit(true); // 친구 집에서 우리 집으로
@@ -121,7 +128,7 @@ export function createHomeUI(o) {
     const me = o.getMe();
     guest = null;
     st.rooms = cleanRooms(st.rooms);
-    v.enterHome(st.layout || [], me ? me.village_name : '', me ? me.id : null, false, plan(st, v.homeAutoRoof));
+    v.enterHome(st.layout || [], me ? me.village_name : '', me ? me.id : null, false, plan(st, v.homeAutoRoof), back);
     if (housesOn()) v.setHomeLook(st.look); // 마을의 우리 집도 서버에 있는 모양으로
     tidyLayout();
     o.setActivity('home');
@@ -135,8 +142,11 @@ export function createHomeUI(o) {
     if (!first && o.features().expand && st.rooms.length < BUILD_IDS.length) {
       try { buildTip = !localStorage.getItem('kv.home.build.tip'); localStorage.setItem('kv.home.build.tip', '1'); } catch (e) { /* 그대로 */ }
     }
+    const nb = o.features().nbr && o.nbr ? o.nbr.unseen() : 0;
+    if (o.features().nbr && o.nbr && o.nbr.refresh) o.nbr.refresh(); // 그사이 다녀간 인사가 있으면 '다녀간 친구' 수가 바로 바뀐다
     toast(first ? "내 집에 왔어요! '집 꾸미기'를 누르면 방과 마당과 밭을 꾸밀 수 있어요. 옷장을 누르면 옷을 갈아입어요."
-      : buildTip ? "집을 넓힐 수 있어요! 내 방 왼쪽 '집 넓히기 공사 터' 팻말을 누르면 거실, 주방, 방을 지을 수 있어요." : '내 집에 왔어요!', first || buildTip ? 5600 : 2000);
+      : buildTip ? "집을 넓힐 수 있어요! 내 방 왼쪽 '집 넓히기 공사 터' 팻말을 누르면 거실, 주방, 방을 지을 수 있어요."
+        : nb ? `💌 우리 집에 친구가 다녀갔어요(인사 ${nb}개)! 아래 '다녀간 친구'를 눌러 보세요.` : '내 집에 왔어요!', first || buildTip ? 5600 : nb ? 4200 : 2000);
   }
   // quiet: 다른 집으로 바로 옮겨 갈 때 (소리와 하는 일 알림을 건너뛴다)
   async function exit(quiet = false) {
@@ -157,10 +167,11 @@ export function createHomeUI(o) {
   }
 
   // ---------- 친구 집에 놀러 가기 ----------
-  async function visit(id) {
+  // back: 나올 때 설 자리 (이웃 마을에서 그 집을 눌러 들어갔으면 그 집 앞)
+  async function visit(id, back = null) {
     const me = o.getMe();
     if (!me) return;
-    if (id === me.id) return enter();
+    if (id === me.id) return enter(back);
     if (busy || (guest && guest.id === id)) return;
     if (!o.features().visit) { toast('친구 집에 놀러 가기는 곧 열려요!', 2400); return; }
     busy = true;
@@ -174,13 +185,14 @@ export function createHomeUI(o) {
     busy = false;
     if (v.atHome) await exit(true);
     guest = { id, name: r.name || '친구' };
-    v.enterHome(r.layout || [], guest.name, id, true, plan(r, r.avatar ? v.autoRoofOf(r.avatar) : null));
+    v.enterHome(r.layout || [], guest.name, id, true, plan(r, r.avatar ? v.autoRoofOf(r.avatar) : null), back);
     o.setActivity('visit');
     o.sfx.door();
     document.body.classList.add('at-home');
     drawBar();
     bar.hidden = false;
-    toast(`${guest.name}네 집에 놀러 왔어요! 가구에 앉아 보고, 마당과 밭도 구경해요.`, 3200);
+    const nb = o.features().nbr && o.nbr;
+    toast(`${guest.name}네 집에 놀러 왔어요! 가구에 앉아 보고, 마당과 밭도 구경해요.${nb ? " 나갈 때 '인사 남기기'로 인사 스티커를 남겨 봐요." : ''}`, nb ? 4200 : 3200);
   }
   // 친구가 집을 새로 꾸몄을 때 다시 불러온다
   async function refreshGuest() {
@@ -1099,6 +1111,7 @@ export function createHomeUI(o) {
     get editing() { return editing; },
     get guest() { return guest; },
     get looking() { return !!looking; },
+    redrawBar() { if (!bar.hidden) drawBar(); },
     onDoor(id) {
       if (id === 'home-exit') { exit(); return true; }
       if (id === 'home-build') { openBuild(false); return true; }

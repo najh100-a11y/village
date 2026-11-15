@@ -33,6 +33,7 @@ import { drawFaceIcon, normalizeAvatar, defaultAvatar } from './face.js';
 import { BG_IDS, BG_INFO, bgIdOf, bgKind } from './boardgames.js';
 import { VILLAGERS, TALK } from './villagers.js';
 import { createGuide } from './guide.js';
+import { createNbrUI } from './nbrui.js';
 
 const $ = (s) => document.querySelector(s);
 const state = { token: store.get('token'), me: null, people: new Map(), today: null, features: {}, dms: new Map(), unread: 0 };
@@ -45,7 +46,7 @@ let memory = null;
 let qt = null;
 let copy = null;
 let net = null;
-let hub = null, art = null, play3d = null, homeUI = null, guide = null, hide = null;
+let hub = null, art = null, play3d = null, homeUI = null, guide = null, hide = null, nbr = null;
 const online = new Set();
 let hintShown = false;
 
@@ -75,7 +76,7 @@ async function boot() {
       const p = $('#prompt');
       if (!d) { p.hidden = true; return; }
       $('#promptName').textContent = d.name;
-      $('#promptAct').textContent = d.id.startsWith('hs_') && hide ? hide.promptAct(d.id) : d.id.startsWith('bg_') ? '하기' : { board: '보기', fish: '낚시하기', skip: '던지기', ark: '놀기', omok: '두기', cook: '요리하기', art: '그리기', ferris: '타기', viking: '타기', carousel: '타기', bumper: '타기', coaster: '타기', 'home-exit': '나가기', 'home-closet': '옷 갈아입기', 'home-build': '집 넓히기', 'home-cook': '요리하기', suggest: '건의하기' }[d.id] || '들어가기';
+      $('#promptAct').textContent = d.id.startsWith('hs_') && hide ? hide.promptAct(d.id) : d.id.startsWith('bg_') ? '하기' : (d.id.startsWith('nb_') || d.id.startsWith('nbm_')) && nbr ? nbr.promptAct(d.id) : { board: '보기', fish: '낚시하기', skip: '던지기', ark: '놀기', omok: '두기', cook: '요리하기', art: '그리기', ferris: '타기', viking: '타기', carousel: '타기', bumper: '타기', coaster: '타기', 'home-exit': '나가기', 'home-closet': '옷 갈아입기', 'home-build': '집 넓히기', 'home-cook': '요리하기', suggest: '건의하기' }[d.id] || '들어가기';
       p.dataset.id = d.id;
       p.hidden = false;
     },
@@ -209,11 +210,17 @@ async function boot() {
     getFruits: () => (state.me && Number.isFinite(state.me.fruits) ? state.me.fruits : null),
     openCook: () => openGame('cook'),
     onShopData: (r) => { shopData = r; },
+    nbr: { unseen: () => (nbr ? nbr.unseen() : 0), myNotes: () => nbr && nbr.myNotes(), leaveNote: (g) => nbr && nbr.leaveNote(g), refresh: () => nbr && nbr.load(true) },
+  });
+  // 이웃 마을: 아이들 집이 모두 모인 섬 (주인이 없어도 놀러 가고, 다녀간 인사를 남긴다)
+  nbr = createNbrUI({
+    village, rpc, getToken: token, getMe: () => state.me, features: () => state.features || {}, homeUI: () => homeUI,
+    modal, openSheet, message, onSessionLost: sessionLost, sfx, onlineIds: () => [...online],
   });
   // 마을 지도: 어디에 무엇이 있고 무엇을 할 수 있는지 (누르면 그곳으로 걸어간다)
   guide = createGuide({
     village, openSheet, toast,
-    ctx: () => ({ features: state.features || {}, today: state.today || {}, verse: memory ? memory.current() : null, open: playOpen(), hint: unlockHint(), opens: opensNow(), people: state.people }),
+    ctx: () => ({ features: state.features || {}, today: state.today || {}, verse: memory ? memory.current() : null, open: playOpen(), hint: unlockHint(), opens: opensNow(), people: state.people, me: state.me }),
     close: () => modal.close(),
     isGuest: () => !!(homeUI && homeUI.guest),
     before: async () => { modal.close(); if (village.atHome) await homeUI.exit(); },
@@ -731,6 +738,10 @@ async function enterVillage(greet) {
     state.features = f || {}; showNews(); checkFeedbackReply(); checkGifts(); loadMail(true);
     // 마을의 '○○의 집'을 고른 집 모양으로
     if (state.features.houses) rpc('kids_home_look', { p_token: token() }).then((r) => { if (state.me === me && r) village.setHomeLook(r.look); }).catch(() => {});
+    // 이웃 마을 집 짓기, 우리 집에 다녀간 인사가 있으면 알려 준다
+    if (state.features.nbr && nbr) nbr.load(true).then(() => {
+      if (state.me === me && nbr.unseen()) setTimeout(() => { if (state.me === me && nbr.unseen() && !village.atHome) toast(`💌 우리 집에 친구가 다녀갔어요(인사 ${nbr.unseen()}개)! 내 집에 들어가서 '다녀간 친구'를 눌러 보세요.`, 4600); }, 7000);
+    });
   }).catch(() => { state.features = {}; });
   village.setPaused(false);
   updateHud();
@@ -1648,6 +1659,7 @@ function showNews() {
   if (state.features.home) news.push(['swing', "새 소식! 내 집 마당 그네를 탈 수 있어요. 그네에 앉아 '힘껏 구르기'를 누를수록 높이 올라가요. 놀러 온 친구에게도 그네 타는 모습이 보여요."]);
   if (state.features.home) news.push(['slide', '새 소식! 내 집 마당 미끄럼틀도 탈 수 있어요. 미끄럼틀을 누르면 사다리를 올라가서 쭉 미끄러져 내려와요. 같은 집에 있는 친구에게도 타는 모습이 보여요.']);
   if (state.features.hide) news.push(['hide', "새 소식! 마을 섬 북쪽, 내 집 뒤로 다리를 건너면 숨바꼭질 섬이 있어요. 가운데 술래 나무를 누르면 컴퓨터 친구나 마을 친구와 숨바꼭질을 해요. 찾은 친구는 술래와 같이 찾고, 이기면 열매 1개(하루 3개까지)를 받아요."]);
+  if (state.features.nbr) news.push(['nbr', "새 소식! 마을 섬 남서쪽에 '이웃 마을' 섬이 생겼어요. 묵상의 숲 앞 길 끝 다리를 건너면 마을 친구들 집이 모두 모여 있어요. 친구가 마을에 없어도 그 집에 놀러 갈 수 있고, 집 앞 우체통에 인사 스티커를 남길 수 있어요."]);
   if (state.features.hide) news.push(['hide2', "새 소식! 숨바꼭질 섬이 마을 섬만큼 넓어졌어요. 헛간, 뒤집힌 배, 나무 구멍, 옥수수밭처럼 숨을 곳이 47군데나 돼요. 친구가 방을 열면 초대가 없어도 술래 나무를 눌러 바로 들어갈 수 있어요(8명까지)."]);
   if (state.features.houses) news.push(['houses', "새 소식! 우리 집 모양을 고를 수 있어요. 내 집 '집 꾸미기'에서 '🏡 집 모양'을 누르면 나무 오두막, 빨간 벽돌집은 바로 고르고, 한옥, 통나무집, 버섯집, 작은 성은 열매 15개로 사요. 사기 전에 미리 볼 수 있고, 지붕 색은 열매 없이 바꿔요."]);
   if (state.features.expand) news.push(['expand', "새 소식! 내 집을 넓힐 수 있어요. 내 집 '집 넓히기 공사 터' 팻말을 누르면 열매로 거실, 주방, 방 2, 방 3을 지어요. 열매 상점 '집 안' 칸에 새 가구 19가지가 왔고, 방마다 벽지와 바닥도 고를 수 있어요. 주방 조리대에서는 요리 놀이도 해요."]);
@@ -2766,6 +2778,7 @@ function onEnter(id) {
   if (id === 'hs_tree') { if (!state.features.hide) { toast('숨바꼭질은 곧 열려요! 조금만 기다려 줘요.', 2600); return; } hide.open(); return; }
   if (id.startsWith('hs_')) { hide.onSpot(Number(id.slice(3))); return; }
   if (hide && hide.active) { toast("숨바꼭질 중이에요! 그만하려면 아래 '그만하기'를 눌러요.", 2600); return; }
+  if (nbr && nbr.onDoor(id)) return; // 이웃 마을: 안내판, 집, 우체통
   if (id === 'home') return homeUI.enter();
   if (id === 'suggest') return openSuggest();
   if (id === 'memory') return openHouse(() => memory.open(), 'memory');

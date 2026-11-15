@@ -1,6 +1,6 @@
 // 진숲 어린이 마을 — 섬과 다리
-// 큰 마을 섬 남쪽에 놀이동산 섬, 동쪽에 수영장 섬, 서쪽에 보드게임 섬, 북쪽에 숨바꼭질 섬이 있고 나무 다리로 이어진다.
-// 걸을 수 있는 곳은 섬 다섯과 다리 넷을 합친 곳이다.
+// 큰 마을 섬 남쪽에 놀이동산 섬, 동쪽에 수영장 섬, 서쪽에 보드게임 섬, 북쪽에 숨바꼭질 섬, 남서쪽에 이웃 마을 섬이 있고 나무 다리로 이어진다.
+// 걸을 수 있는 곳은 섬 여섯과 다리 다섯을 합친 곳이다. 이웃 마을 다리만 비스듬하다(마을 섬 가운데에서 138도 쪽으로 곧게 뻗는다).
 import * as THREE from './three.module.min.js';
 import { toon, toonGradient } from './avatar.js';
 import { mergeStatic } from './merge.js';
@@ -10,16 +10,42 @@ export const PARK_ISLE = { x: 0, z: 62.5, r: 20.5, walk: 18.9, seed: 3 }; // 범
 export const POOL_ISLE = { x: 56, z: -4, r: 13.5, walk: 12.0, seed: 7 };
 export const BOARD_ISLE = { x: -56, z: -4, r: 14, walk: 12.5, seed: 11 }; // 보드게임 섬 (수영장 섬과 마주 보는 서쪽)
 export const HIDE_ISLE = { x: 0, z: -72.5, r: 30, walk: 28.5, seed: 13 }; // 숨바꼭질 섬 (마을 섬 북쪽, 내 집 뒤로 다리를 건넌다. 마을 섬만큼 넓다)
+// 이웃 마을 섬: 마을 섬 가운데에서 138도(동쪽 0도, 남쪽 90도) 쪽으로 69 떨어진 곳 (보드게임 섬과 놀이동산 섬 사이)
+const NB_A = (138 * Math.PI) / 180;
+export const NBR_ISLE = { x: Math.cos(NB_A) * 69, z: Math.sin(NB_A) * 69, r: 25, walk: 23.5, seed: 17, deg: 138 };
 // 다리 (걷는 곳은 x0~x1, z0~z1 네모)
 export const BRIDGES = [
   { id: 'park', x0: -1.1, x1: 1.1, z0: 29.0, z1: 44.2, deck: [32.2, 42.8], along: 'z' },
   { id: 'pool', x0: 29.0, x1: 44.6, z0: -5.1, z1: -2.9, deck: [33.4, 43.3], along: 'x' },
   { id: 'board', x0: -44.6, x1: -29.0, z0: -5.1, z1: -2.9, deck: [-43.3, -33.4], along: 'x' },
   { id: 'hide', x0: -1.1, x1: 1.1, z0: -44.6, z1: -29.0, deck: [-43.3, -32.2], along: 'z' },
+  // 비스듬한 다리: (sx, sz)에서 (ux, uz) 쪽으로 len만큼, 반너비 hw. deck은 (sx, sz)에서 잰 거리
+  { id: 'nbr', along: 'u', sx: Math.cos(NB_A) * 29.0, sz: Math.sin(NB_A) * 29.0, ux: Math.cos(NB_A), uz: Math.sin(NB_A), len: 17.1, hw: 1.1, deck: [2.9, 15.8] },
 ];
-// 지도 전체를 볼 때 바라보는 가운데와 반 너비 (섬 다섯과 둘레 얕은 물까지)
-export const WORLD_CENTER = { x: 0, z: -12.5 };
-export const WORLD_HALF = { w: 72, h: 101 };
+// 다리 위 자리 (a: 다리를 따라 간 거리, c: 옆으로 벗어난 거리). 곧은 다리도 같은 꼴로 바꿔 쓴다
+function bridgeFrame(b) {
+  if (b.along === 'u') return b;
+  if (!b.frame) {
+    b.frame = b.along === 'z'
+      ? { sx: (b.x0 + b.x1) / 2, sz: b.z0, ux: 0, uz: 1, len: b.z1 - b.z0, hw: (b.x1 - b.x0) / 2 }
+      : { sx: b.x0, sz: (b.z0 + b.z1) / 2, ux: 1, uz: 0, len: b.x1 - b.x0, hw: (b.z1 - b.z0) / 2 };
+  }
+  return b.frame;
+}
+export function onBridge(b, x, z, m = 0) {
+  const f = bridgeFrame(b), dx = x - f.sx, dz = z - f.sz;
+  const a = dx * f.ux + dz * f.uz, c = -dx * f.uz + dz * f.ux;
+  return a >= -m && a <= f.len + m && Math.abs(c) <= f.hw + m;
+}
+// 다리 위에서 (x, z)에 가장 가까운 자리
+export function bridgeClamp(b, x, z) {
+  const f = bridgeFrame(b), dx = x - f.sx, dz = z - f.sz;
+  const a = Math.max(0, Math.min(f.len, dx * f.ux + dz * f.uz)), c = Math.max(-f.hw, Math.min(f.hw, -dx * f.uz + dz * f.ux));
+  return { x: f.sx + f.ux * a - f.uz * c, z: f.sz + f.uz * a + f.ux * c };
+}
+// 지도 전체를 볼 때 바라보는 가운데와 반 너비 (섬 여섯과 둘레 얕은 물까지)
+export const WORLD_CENTER = { x: -3, z: -12.5 };
+export const WORLD_HALF = { w: 85, h: 101 };
 
 // 바다 낚시 나루터: 마을 섬 남동쪽(45도) 바닷가에서 바다로 곧게 뻗은 나무 다리.
 // (x, z)는 섬 안쪽 시작점, (ux, uz)는 바다 쪽 방향. 길이 len, 걷는 반너비 hw. 끝 end만큼은 hw2로 넓은 마당(배 타는 곳)이다.
@@ -38,21 +64,23 @@ export function onPier(x, z, m = 0) {
 export const JETTY = { x0: 65.4, x1: 75.6, z: -4.8, hw: 0.8 };
 export function onJetty(x, z, m = 0) { return x >= JETTY.x0 - m && x <= JETTY.x1 + m && Math.abs(z - JETTY.z) <= JETTY.hw + m; }
 
-// 작은 섬은 모두 마을 섬과 다리 하나로 이어진다 (놀이동산 섬은 남쪽, 수영장 섬은 동쪽, 보드게임 섬은 서쪽, 숨바꼭질 섬은 북쪽)
+// 작은 섬은 모두 마을 섬과 다리 하나로 이어진다 (놀이동산 섬은 남쪽, 수영장 섬은 동쪽, 보드게임 섬은 서쪽, 숨바꼭질 섬은 북쪽, 이웃 마을 섬은 남서쪽)
 // 서로 다른 곳으로 갈 때는 다리 끝을 거쳐 간다. isle: 작은 섬 쪽 다리 끝, main: 마을 섬 쪽 다리 끝
 const LEGS = {
   park: { isle: { x: 0, z: 43.8 }, main: { x: 0, z: 29.6 } },
   pool: { isle: { x: 44.4, z: -4 }, main: { x: 29.6, z: -4 } },
   board: { isle: { x: -44.4, z: -4 }, main: { x: -29.6, z: -4 } },
   hide: { isle: { x: 0, z: -44.4 }, main: { x: 0, z: -29.6 } },
+  nbr: { isle: { x: Math.cos(NB_A) * 45.8, z: Math.sin(NB_A) * 45.8 }, main: { x: Math.cos(NB_A) * 29.6, z: Math.sin(NB_A) * 29.6 } },
 };
 export function regionOf(x, z) {
   if (Math.hypot(x - PARK_ISLE.x, z - PARK_ISLE.z) <= PARK_ISLE.walk + 0.3) return 'park';
   if (Math.hypot(x - POOL_ISLE.x, z - POOL_ISLE.z) <= POOL_ISLE.walk + 0.3 || onJetty(x, z, 0.3)) return 'pool';
   if (Math.hypot(x - BOARD_ISLE.x, z - BOARD_ISLE.z) <= BOARD_ISLE.walk + 0.3) return 'board';
   if (Math.hypot(x - HIDE_ISLE.x, z - HIDE_ISLE.z) <= HIDE_ISLE.walk + 0.3) return 'hide';
+  if (Math.hypot(x - NBR_ISLE.x, z - NBR_ISLE.z) <= NBR_ISLE.walk + 0.3) return 'nbr';
   if (Math.hypot(x, z) <= MAIN_WALK + 0.3) return 'main';
-  for (const b of BRIDGES) if (x >= b.x0 - 0.3 && x <= b.x1 + 0.3 && z >= b.z0 - 0.3 && z <= b.z1 + 0.3) return 'b-' + b.id;
+  for (const b of BRIDGES) if (onBridge(b, x, z, 0.3)) return 'b-' + b.id;
   return 'main';
 }
 // (fx, fz)에서 (tx, tz)로 갈 때 거쳐 갈 다리 끝들 (같은 곳이면 빈 목록)
@@ -71,9 +99,9 @@ export function route(fx, fz, tx, tz) {
 // p(x, z)를 걸을 수 있는 가장 가까운 곳으로 옮긴다
 export function clampWalk(p) {
   const circles = [{ x: 0, z: 0, r: MAIN_WALK }, { x: PARK_ISLE.x, z: PARK_ISLE.z, r: PARK_ISLE.walk }, { x: POOL_ISLE.x, z: POOL_ISLE.z, r: POOL_ISLE.walk },
-    { x: BOARD_ISLE.x, z: BOARD_ISLE.z, r: BOARD_ISLE.walk }, { x: HIDE_ISLE.x, z: HIDE_ISLE.z, r: HIDE_ISLE.walk }];
+    { x: BOARD_ISLE.x, z: BOARD_ISLE.z, r: BOARD_ISLE.walk }, { x: HIDE_ISLE.x, z: HIDE_ISLE.z, r: HIDE_ISLE.walk }, { x: NBR_ISLE.x, z: NBR_ISLE.z, r: NBR_ISLE.walk }];
   for (const c of circles) if (Math.hypot(p.x - c.x, p.z - c.z) <= c.r) return p;
-  for (const b of BRIDGES) if (p.x >= b.x0 && p.x <= b.x1 && p.z >= b.z0 && p.z <= b.z1) return p;
+  for (const b of BRIDGES) if (onBridge(b, p.x, p.z)) return p;
   if (onPier(p.x, p.z) || onJetty(p.x, p.z)) return p;
   let bx = p.x, bz = p.z, bd = Infinity;
   for (const c of circles) {
@@ -83,9 +111,9 @@ export function clampWalk(p) {
     if (e < bd) { bd = e; bx = qx; bz = qz; }
   }
   for (const b of BRIDGES) {
-    const qx = Math.max(b.x0, Math.min(b.x1, p.x)), qz = Math.max(b.z0, Math.min(b.z1, p.z));
-    const e = Math.hypot(p.x - qx, p.z - qz);
-    if (e < bd) { bd = e; bx = qx; bz = qz; }
+    const q = bridgeClamp(b, p.x, p.z);
+    const e = Math.hypot(p.x - q.x, p.z - q.z);
+    if (e < bd) { bd = e; bx = q.x; bz = q.z; }
   }
   const { u, w } = pierLocal(p.x, p.z);
   for (const [u0, u1, hw] of PIER_RECTS) {
@@ -169,8 +197,18 @@ export function makeIsle(scene, isle, { ground = '#8DCC5F', draw, layer = 1 } = 
   return { land, foam, tex };
 }
 
-// 나무 다리 (난간과 기둥)
+// 나무 다리 (난간과 기둥). 비스듬한 다리는 곧은 다리(z 방향)로 지어서 돌려 놓는다
 export function makeBridge(scene, b) {
+  if (b.along === 'u') {
+    const g = makeBridge(new THREE.Group(), { along: 'z', x0: -b.hw, x1: b.hw, deck: b.deck });
+    g.removeFromParent();
+    const root = new THREE.Group();
+    root.add(g);
+    root.position.set(b.sx, 0, b.sz);
+    root.rotation.y = Math.atan2(b.ux, b.uz);
+    scene.add(root);
+    return root;
+  }
   const g = new THREE.Group();
   const wood = toon('#B07F4E'), dark = toon('#7A5233'), light = toon('#C99862');
   const [d0, d1] = b.deck;

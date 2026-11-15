@@ -21,7 +21,7 @@ const PET_RE = /^pet_[a-z]{2,10}$/;
 // 받은 메시지를 믿을 수 있는 모양으로만 걸러 낸다
 export function clean(type, p) {
   if (!p || typeof p !== 'object') return null;
-  const num = (v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 140; // 섬 다섯을 다 담는 넓이 (숨바꼭질 섬 북쪽 끝이 -101쯤)
+  const num = (v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 140; // 섬 여섯을 다 담는 넓이 (숨바꼭질 섬 북쪽 끝이 -101쯤, 이웃 마을 섬 서쪽 끝이 -75쯤)
   // r: 1이면 달리는 중, u: 1이면 우산을 폈다
   if (type === 'mv') return num(p.x) && num(p.z) && num(p.tx) && num(p.tz) ? { x: p.x, z: p.z, tx: p.tx, tz: p.tz, ...(p.r === 1 ? { r: 1 } : {}), ...(p.u === 1 ? { u: 1 } : {}) } : null;
   if (type === 'st') return num(p.x) && num(p.z) ? { x: p.x, z: p.z, ...(p.u === 1 ? { u: 1 } : {}) } : null;

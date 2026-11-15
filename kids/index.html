@@ -1036,7 +1036,7 @@ button.online[data-unread]:not([data-unread=""])::after { content: ' 💌' attr(
 .dish-done p { margin: 0; }
 /* 내 집 */
 #labels.at-home > :not(.home-ok) { display: none !important; }
-.home-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(22px + env(safe-area-inset-bottom)); z-index: 12; display: flex; gap: 10px; }
+.home-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(22px + env(safe-area-inset-bottom)); z-index: 12; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; width: max-content; max-width: calc(100vw - 24px); }
 .home-bar[hidden], .home-edit[hidden], .he-act[hidden] { display: none; }
 body.in-game .home-bar { display: none; }
 body.home-building .home-bar, body.home-building .pad, body.home-building .jump-btn, body.home-building .run-btn, body.home-building .umb-btn, body.home-building .pet-bar, body.home-building #hud .hud-btns, body.home-building #prompt, body.home-building #sayPanel, body.home-building .chat-log { display: none !important; }
@@ -1069,6 +1069,18 @@ body.hs-lock .pad, body.hs-lock .jump-btn, body.hs-lock .run-btn, body.hs-lock .
 .hs-rooms:empty { display: none; }
 .hs-rooms .fl-row { grid-template-columns: 52px minmax(0, 1fr) auto; text-align: left; background: #FFFBEA; box-shadow: 0 0 0 2px var(--sun), 0 3px 0 var(--line); }
 .hs-rooms .fl-face { grid-row: auto; }
+/* 이웃 마을: 인사 스티커, 다녀간 친구, 안내판 */
+.nb-stickers { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 10px 0 4px; }
+.nb-sticker { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border: 0; border-radius: 16px; background: #FFFBEA; box-shadow: 0 0 0 2px var(--line), 0 3px 0 var(--line); font: inherit; font-size: 15px; color: var(--ink); text-align: left; cursor: pointer; }
+.nb-sticker:active { transform: translateY(2px); box-shadow: 0 0 0 2px var(--line), 0 1px 0 var(--line); }
+.nb-sticker:disabled { opacity: .5; }
+.nb-emo { font-size: 24px; line-height: 1; }
+.nb-badge { display: inline-block; min-width: 20px; margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: #EF6461; color: #fff; font-size: 12px; line-height: 18px; text-align: center; }
+.nb-notes .nb-new { background: #FFF6E0; box-shadow: 0 0 0 2px #F6D55C, 0 3px 0 var(--line); }
+.nb-new-t { margin-left: 6px; padding: 0 6px; border-radius: 999px; background: #EF6461; color: #fff; font-size: 11px; vertical-align: 2px; }
+.nb-dir .fl-row, .nb-notes .fl-row { text-align: left; }
+.nb-dir .fl-acts { justify-content: flex-start; }
+@media (max-width: 380px) { .nb-stickers { grid-template-columns: 1fr; } }
 .hs-lead { font-family: var(--display); font-size: 19px; }
 .hs-how { text-align: left; margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 15px; line-height: 1.5; }
 .hs-nums { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }

@@ -10,6 +10,7 @@ import { SELL_BUNDLE, SELL_DAY_DEFAULT, GIFT, GIFT_MSGS, SALES, salePrice } from
 import { TREASURES } from './beach-data.js';
 import { PET_ITEMS, PET_IDS } from './pets-data.js';
 import { HOUSE_ITEMS, HOUSE_STYLES, ROOF_COLORS, isFreeHouse, houseItem, HOUSE_IDS } from './houses-data.js';
+import { randomAvatar } from './face.js';
 // 보물 무게 (서버 kids_treasure_kinds와 같다)
 const TREASURE_WEIGHT = { shell: 24, conch: 18, seaglass: 14, starfish: 10, crab: 8, coin: 6, pearl: 3, bottle: 3, fossil: 2, chest: 1, can: 7, sandal: 5 };
 const BUG_KINDS = ['cabbage_white', 'swallowtail', 'honeybee', 'ladybug', 'grasshopper', 'red_dragonfly', 'mantis', 'cicada', 'stag_beetle', 'rhino_beetle', 'firefly'];
@@ -31,6 +32,15 @@ const growOf = (e) => { const o = {}; for (const k of ['t', 'g', 'w', 'n']) if (
 const PET_NAME_OK = /^[가-힣ㄱ-ㅎㅏ-ㅣA-Za-z0-9 ]{1,8}$/;
 // 낚시터(pond 연못, sea 바다)에서 무게대로 물고기 하나 뽑기 (서버 kids_fish_hook, kids_sea_hook과 같다)
 // 체험판 예시 친구 '바다'의 꾸민 집 (친구 집 놀러 가기를 시험해 볼 수 있게)
+// 체험판 이웃 마을의 예시 이웃 (체험판에만 있다. 실제 마을에서는 서버에 있는 아이들 집이 선다): id, 마을 이름, 집 모양, 지붕 색
+const DEMO_NBR = [['n1', '별이', 'hanok', 'auto'], ['n2', '솔이', 'brick', 'blue'], ['n3', '도담', 'mushroom', 'auto'], ['n4', '하람', 'log', 'green'],
+  ['n5', '나래', 'castle', 'auto'], ['n6', '보리', 'cabin', 'orange'], ['n7', '라온', 'brick', 'auto'], ['n8', '다온', 'hanok', 'purple'],
+  ['n9', '이든', 'cabin', 'auto'], ['n10', '가온', 'mushroom', 'pink'], ['n11', '아라', 'log', 'auto'], ['n12', '시온', 'castle', 'red']].map(([id, name, s, c], i) => {
+  let k = 97 + i * 131;
+  const rand = () => (k = (k * 16807) % 2147483647) / 2147483647;
+  return { id, village_name: name, avatar: randomAvatar(rand), look: { s, c } };
+});
+const NOTE_IDS = ['hi', 'pretty', 'fun', 'miss', 'play', 'thanks', 'bless', 'star'];
 function sampleHome() {
   const h = 3600000, now = Date.now();
   const layout = [
@@ -339,7 +349,7 @@ export class DemoBackend {
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true, breeds: true, skip2: true, volley: true, expand: true, houses: true, hide: true }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true, breeds: true, skip2: true, volley: true, expand: true, houses: true, hide: true, nbr: true }; }
   // 쪽지함: 친구별 마지막 쪽지와 안 읽은 수 (최근 30일)
   kids_dm_box({ p_token }) {
     const me = this.session(p_token, 'child');
@@ -966,9 +976,62 @@ export class DemoBackend {
     x.eats.push({ child: me, at: nowIso() });
     return { id: x.id, crop: x.crop, n: x.n, eaten: x.eats.length, eaters: this.shareEaters(x).slice(0, 10) };
   }
+  // 이웃 마을 집 목록 (서버 kids_neighbors와 같다. 체험판에는 예시 이웃 열둘이 더 있다)
+  kids_neighbors({ p_token }) {
+    const me = this.session(p_token, 'child');
+    this.seedNotes();
+    const kids = this.db.children.filter((c) => c.village_name && c.avatar)
+      .map((c) => ({ id: c.id, name: c.village_name, avatar: c.avatar, look: { ...(this.homePlan(c.id).look || {}) }, t: !!c.teacher }));
+    const extra = DEMO_NBR.map((n) => ({ id: n.id, name: n.village_name, avatar: n.avatar, look: { ...n.look }, t: false }));
+    return { houses: [...kids, ...extra], unseen: (this.db.notes || []).filter((x) => x.host === me && !x.seen).length };
+  }
+  // 체험판에 처음 들어오면 예시 이웃이 하늘이와 바다 집에 남긴 인사 (한 번만)
+  seedNotes() {
+    if (this.db.notesSeeded) return;
+    this.db.notesSeeded = true;
+    this.db.notes = this.db.notes || [];
+    const now = Date.now(), m = 60000;
+    for (const [host, from, s, ago] of [['c2', 'n1', 'hi', 130 * m], ['c2', 'n3', 'pretty', 26 * 60 * m], ['c2', 'n8', 'bless', 5 * m], ['c3', 'n5', 'play', 40 * m]]) {
+      this.db.notes.push({ id: (this.db.noteSeq = (this.db.noteSeq || 0) + 1), host, from, s, at: now - ago, seen: false });
+    }
+  }
+  nbrPerson(id) {
+    const c = this.db.children.find((x) => x.id === id && x.village_name && x.avatar);
+    if (c) return { name: c.village_name, avatar: c.avatar };
+    const n = DEMO_NBR.find((x) => x.id === id);
+    return n ? { name: n.village_name, avatar: n.avatar } : null;
+  }
+  // 다녀간 인사 남기기 (서버 kids_home_note와 같다: 같은 집에 10분에 한 번, 하루 30번, 집마다 새 인사 60개)
+  kids_home_note({ p_token, p_host, p_sticker }) {
+    const me = this.session(p_token, 'child');
+    if (!NOTE_IDS.includes(p_sticker)) fail('BAD_KIND');
+    if (p_host === me) fail('NOTE_SELF');
+    if (!this.nbrPerson(p_host)) fail('NOT_FOUND');
+    this.db.notes = this.db.notes || [];
+    const now = Date.now();
+    if (this.db.notes.some((x) => x.from === me && x.host === p_host && now - x.at < 600000)) fail('NOTE_AGAIN');
+    const t0 = new Date(startOfToday()).getTime();
+    if (this.db.notes.filter((x) => x.from === me && x.at >= t0).length >= 30) fail('NOTE_DAY');
+    this.db.notes.push({ id: (this.db.noteSeq = (this.db.noteSeq || 0) + 1), host: p_host, from: me, s: p_sticker, at: now, seen: false });
+    const mine = this.db.notes.filter((x) => x.host === p_host).sort((a, b) => b.at - a.at || b.id - a.id);
+    if (mine.length > 60) { const drop = new Set(mine.slice(60).map((x) => x.id)); this.db.notes = this.db.notes.filter((x) => !drop.has(x.id)); }
+    return { ok: true };
+  }
+  // 우리 집에 다녀간 인사 (서버 kids_home_notes와 같다)
+  kids_home_notes({ p_token, p_mark = false }) {
+    const me = this.session(p_token, 'child');
+    this.seedNotes();
+    const mine = (this.db.notes || []).filter((x) => x.host === me).sort((a, b) => b.at - a.at || b.id - a.id);
+    const notes = mine.slice(0, 40).map((x) => { const p = this.nbrPerson(x.from) || { name: '친구', avatar: null }; return { id: x.id, from: x.from, name: p.name, avatar: p.avatar, s: x.s, at: x.at, seen: x.seen }; });
+    const unseen = mine.filter((x) => !x.seen).length;
+    if (p_mark) for (const x of mine) x.seen = true;
+    return { notes, unseen };
+  }
   // 친구 집 구경 (구경만 한다)
   kids_home_visit({ p_token, p_child }) {
     this.session(p_token, 'child');
+    const n = DEMO_NBR.find((x) => x.id === p_child);
+    if (n) return { name: n.village_name, avatar: n.avatar, layout: sampleHome().layout, now: Date.now(), rooms: [], style: {}, look: { ...n.look } };
     const c = this.db.children.find((x) => x.id === p_child && x.village_name && x.avatar);
     if (!c) fail('NOT_FOUND');
     const pl = this.homePlan(p_child);

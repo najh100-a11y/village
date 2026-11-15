@@ -22,7 +22,8 @@ import { Sea } from './sea.js';
 import { Beach, makeShovel, digPoseAt, remoteDigPose, DIG_SPOTS } from './beach.js';
 import { buildBoardIsle, BG_TABLES, BG_GAPS } from './boardisle.js';
 import { buildHideIsle, HS_SPOTS } from './hideisle.js';
-import { BOARD_ISLE, HIDE_ISLE } from './isles.js';
+import { buildNbrIsle, nbRoadPoints } from './nbrisle.js';
+import { BOARD_ISLE, HIDE_ISLE, NBR_ISLE } from './isles.js';
 // 내 집(따로 된 장면) 근처 좌표인지: 마을 친구와 동물은 늘 마을 좌표라서 좌표로 가른다
 const nearHome = (p) => Math.abs(p.x - HOME_O.x) < 200 && Math.abs(p.z - HOME_O.z) < 200;
 
@@ -249,10 +250,11 @@ export const PATHS = [
   [[0, 11], [5, 12.9], [9.4, 14.4]], // 놀이 마당으로
   [[9, 1.0], [14, -4.5], [22, -5.5], [34, -4.0]], // 동쪽 끝은 수영장 섬 다리
   [[-9, 1.2], [-14, -4.5], [-22, -5.5], [-34, -4.0]], // 서쪽 끝은 보드게임 섬 다리 (나중에 낸 길)
+  [[-13.6, 4.2], [-16.35, 14.72], [-24.9, 22.4]], // 묵상의 숲 앞에서 남서쪽 이웃 마을 섬 다리로 (나중에 낸 길, 마지막 토막은 다리와 한 줄)
 ];
 // 나중에 낸 길: 나무·덤불·돌·꽃은 이 길이 없던 때와 같은 자리에 두고, 이 길 위에 있던 것만 뺀다 (마을 숲 모습이 바뀌지 않게)
-const NEW_PATHS = [PATHS[PATHS.length - 1]];
-const OLD_PATHS = PATHS.slice(0, -1);
+const NEW_PATHS = PATHS.slice(-2);
+const OLD_PATHS = PATHS.slice(0, -2);
 export const PLAZA = { x: 0, z: -2.5, r: 5.4 };
 export const YARD = { x: 11.2, z: 16.4, r: 3.4 }; // 놀이 마당
 
@@ -415,6 +417,18 @@ export class Village {
       mergeStatic(sg);
       this.scene.add(sg);
       this.addObstacleCircle(-2.5, -27.0, 0.15);
+    }
+    this.nbrIsle = buildNbrIsle(this, { signMesh }); // 이웃 마을 섬 (남서쪽 비스듬한 다리 건너, 아이들 집이 모두 모여 있다)
+    {
+      // 갈림길 표지판: 다리 앞 길 오른쪽(마을 섬 가운데에서 보아), 광장 쪽을 본다
+      const a = (NBR_ISLE.deg * Math.PI) / 180, ux = Math.cos(a), uz = Math.sin(a);
+      const x = ux * 27.5 - uz * 2.2, z = uz * 27.5 + ux * 2.2;
+      const sg = this.postSign('이웃 마을', 1.7);
+      sg.position.set(x, 0, z);
+      sg.rotation.y = Math.atan2(-ux, -uz);
+      mergeStatic(sg);
+      this.scene.add(sg);
+      this.addObstacleCircle(x, z, 0.15);
     }
     this.critters = new Critters(this);
     this.critters.onSound = (kind, soft) => this.on.onCritterSound && this.on.onCritterSound(kind, soft);
@@ -2338,11 +2352,12 @@ export class Village {
     this.myTag.textContent = name || '';
     this.myTag.classList.toggle('kv-teacher', !!teacher);
   }
-  // 내 집 안에 있을 때 친구들에게는 마을 '내 집' 문 앞에 있는 것으로 보인다
+  // 내 집 안에 있을 때 친구들에게는 마을 '내 집' 문 앞(이웃 마을에서 들어갔으면 그 집 앞)에 있는 것으로 보인다
+  homeSpot() { return this.homeBack || this.homeDoor; }
   // u: 우산을 폈으면 1 (움직임 소식에 같이 실어 친구 화면에서도 우산이 보인다)
   playerPos() {
     const u = this.umbrellaOn ? 1 : 0;
-    if (this.atHome && this.homeDoor) return { x: this.homeDoor.x, z: this.homeDoor.z, u };
+    if (this.atHome && this.homeSpot()) return { x: this.homeSpot().x, z: this.homeSpot().z, u };
     return this.player ? { x: this.player.root.position.x, z: this.player.root.position.z, u } : null;
   }
   setUmbrella(on) { this.umbrellaOn = !!on; }
@@ -2362,7 +2377,7 @@ export class Village {
   setRunning(on) { this.running = !!on; }
   reportStop() {
     if (!this.on.onLocalStop || !this.player) return;
-    const p = this.atHome && this.homeDoor ? this.homeDoor : this.player.root.position;
+    const p = this.atHome && this.homeSpot() ? this.homeSpot() : this.player.root.position;
     this.on.onLocalStop({ x: +p.x.toFixed(2), z: +p.z.toFixed(2) });
     this.net = { moving: false, sent: this.time };
     if (this.atHome) this.sendHouse();
@@ -2940,7 +2955,8 @@ export class Village {
   sceneFor(x, z) { return this.homeSpace && nearHome({ x, z }) ? this.homeSpace.scene : this.scene; }
   // house: 집 주인 id, visiting: 친구 집에 놀러 왔으면 true (꾸미기와 밭 돌보기는 주인만)
   // plan: { rooms(지은 방 차례), style(방마다 벽지·바닥), look(집 모양 { s, c }), auto(지붕 '옷 색깔'에 쓸 주인 옷 색) }
-  enterHome(layout, ownerName, house = null, visiting = false, plan = null) {
+  // back: 나올 때 설 자리 { x, z, rot } (이웃 마을 집 앞). 없으면 마을 섬 '내 집' 문 앞
+  enterHome(layout, ownerName, house = null, visiting = false, plan = null, back = null) {
     if (!this.homeSpace) this.homeSpace = new HomeSpace(this);
     const H = this.homeSpace;
     if (this.mode === 'game') this.exitGame();
@@ -2958,6 +2974,7 @@ export class Village {
     H.setLayout(layout || []);
     const door = this.doors.find((d) => d.id === 'home');
     this.homeDoor = door ? door.pos.clone() : new THREE.Vector3(0, 0, -17.8);
+    this.homeBack = back && Number.isFinite(back.x) && Number.isFinite(back.z) ? { x: back.x, z: back.z, rot: back.rot || 0 } : null;
     this.atHome = true;
     this.reportStop(); // 마을 친구들에게는 '내 집' 문 앞에 있는 것으로 (친구 목록에서 바로 놀러 가도)
     this.moveInto(H.scene);
@@ -2990,8 +3007,11 @@ export class Village {
     this.syncAllHouses();
     if (was && this.on.onHouseMove) this.on.onHouseMove({ h: '' });
     this.moveInto(this.scene);
-    const d = this.homeDoor || new THREE.Vector3(0, 0, -17.8);
-    if (this.player) { this.player.root.position.set(d.x, 0, d.z + 0.4); this.player.root.rotation.y = 0; }
+    const d = this.homeDoor || new THREE.Vector3(0, 0, -17.8), b = this.homeBack;
+    if (this.player) {
+      if (b) { this.player.root.position.set(b.x, 0, b.z); this.player.root.rotation.y = b.rot; } else { this.player.root.position.set(d.x, 0, d.z + 0.4); this.player.root.rotation.y = 0; }
+    }
+    this.homeBack = null;
     this.afterSwitch();
     this.reportStop();
   }
@@ -3257,6 +3277,9 @@ export class Village {
       }
     }
     for (const [x, z] of [[0, 29.6], [0, 37], [0, 43.8], [29.6, -4], [37, -4], [44.4, -4], [-29.6, -4], [-37, -4], [-44.4, -4], [0, -29.6], [0, -37], [0, -44.2]]) add(x, z);
+    // 이웃 마을: 비스듬한 다리 위 세 점, 분수 마당 둘레, 둥근 골목, 집 앞과 우체통 앞
+    { const a = (NBR_ISLE.deg * Math.PI) / 180; for (const r of [29.6, 37.5, 45.8]) add(Math.cos(a) * r, Math.sin(a) * r); }
+    for (const [x, z] of nbRoadPoints()) add(x, z);
     // 숨바꼭질 섬: 나무 둘레, 둘레 길 둘, 숨을 곳 앞
     for (const [r, n] of [[4.9, 10], [13.5, 22], [21.5, 30]]) for (let k = 0; k < n; k++) {
       const a = (k / n) * Math.PI * 2;
@@ -3375,7 +3398,7 @@ export class Village {
         }
       }
     }
-    clampWalk(p); // 섬 넷과 다리 위에서만 걷는다
+    clampWalk(p); // 섬과 다리 위에서만 걷는다
   }
 
   // ---------- 시간 ----------
