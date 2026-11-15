@@ -195,6 +195,7 @@ async function boot() {
   hide = createHideGame({
     village, hub, rpc, getToken: token, getMe: () => state.me, getPerson: (id) => state.people.get(id), onlineFriends,
     setActivity, setScene, modal, playOpen, refreshToday, showLocked, onSessionLost: sessionLost, message, setFruits,
+    send: (ev, p) => { if (net) net.send(ev, p); },
     features: () => state.features || {},
     beforeStart: () => { if (play3d && play3d.active) play3d.stop(); hideHint(); $('#sayPanel').hidden = true; },
   });
@@ -825,11 +826,12 @@ async function startNet() {
       showCount();
       village.removeRemote(id);
       hub.onLeave(id);
+      if (hide) hide.peerLeft(id);
     },
     onMsg: async (type, id, raw) => {
       const p = clean(type, raw);
       if (!p) return;
-      if ((type === 'inv' || type === 'invr' || type === 'hinv') && p.to !== (state.me && state.me.id)) return;
+      if ((type === 'inv' || type === 'invr' || type === 'hinv' || type === 'hj' || type === 'hjr') && p.to !== (state.me && state.me.id)) return;
       const person = await ensurePerson(id);
       if (!person || net !== n) return;
       if (!online.has(id)) { online.add(id); showCount(); village.addRemote(id, person.avatar, person.name, person.teacher); village.setPets(id, personPets(person)); }
@@ -850,6 +852,8 @@ async function startNet() {
         toast(`${josa(person.name, '이가', '가')} ${DONE_TEXT[p.k]}!`, 3200);
       } else if (type === 'inv' || type === 'invr') {
         hub.onMsg(type, id, p);
+      } else if (type === 'hroom' || type === 'hj' || type === 'hjr') {
+        if (hide) hide.onNet(type, id, p);
       } else if (type === 'act') {
         village.setRemoteActivity(id, ACT_ICON[p.a] || '', p.a || '', p.s);
       } else if (type === 'fish') {
@@ -1644,6 +1648,7 @@ function showNews() {
   if (state.features.home) news.push(['swing', "새 소식! 내 집 마당 그네를 탈 수 있어요. 그네에 앉아 '힘껏 구르기'를 누를수록 높이 올라가요. 놀러 온 친구에게도 그네 타는 모습이 보여요."]);
   if (state.features.home) news.push(['slide', '새 소식! 내 집 마당 미끄럼틀도 탈 수 있어요. 미끄럼틀을 누르면 사다리를 올라가서 쭉 미끄러져 내려와요. 같은 집에 있는 친구에게도 타는 모습이 보여요.']);
   if (state.features.hide) news.push(['hide', "새 소식! 마을 섬 북쪽, 내 집 뒤로 다리를 건너면 숨바꼭질 섬이 있어요. 가운데 술래 나무를 누르면 컴퓨터 친구나 마을 친구와 숨바꼭질을 해요. 찾은 친구는 술래와 같이 찾고, 이기면 열매 1개(하루 3개까지)를 받아요."]);
+  if (state.features.hide) news.push(['hide2', "새 소식! 숨바꼭질 섬이 마을 섬만큼 넓어졌어요. 헛간, 뒤집힌 배, 나무 구멍, 옥수수밭처럼 숨을 곳이 47군데나 돼요. 친구가 방을 열면 초대가 없어도 술래 나무를 눌러 바로 들어갈 수 있어요(8명까지)."]);
   if (state.features.houses) news.push(['houses', "새 소식! 우리 집 모양을 고를 수 있어요. 내 집 '집 꾸미기'에서 '🏡 집 모양'을 누르면 나무 오두막, 빨간 벽돌집은 바로 고르고, 한옥, 통나무집, 버섯집, 작은 성은 열매 15개로 사요. 사기 전에 미리 볼 수 있고, 지붕 색은 열매 없이 바꿔요."]);
   if (state.features.expand) news.push(['expand', "새 소식! 내 집을 넓힐 수 있어요. 내 집 '집 넓히기 공사 터' 팻말을 누르면 열매로 거실, 주방, 방 2, 방 3을 지어요. 열매 상점 '집 안' 칸에 새 가구 19가지가 왔고, 방마다 벽지와 바닥도 고를 수 있어요. 주방 조리대에서는 요리 놀이도 해요."]);
   if (state.features.volley) news.push(['volley', '새 소식! 열매 상점 불꽃 칸에 \'10연발 불꽃\'(열매 7개)이 새로 왔어요. 불꽃 열 발이 차례로 솟아 저마다 다른 모양으로 터지고, 마지막엔 커다란 금빛 버들 불꽃이 쏟아져요.']);
@@ -2757,7 +2762,7 @@ async function openGameWith(kind, session) {
 
 function onEnter(id) {
   if (homeUI && homeUI.onDoor(id)) return;
-  // 숨바꼭질 섬: 술래 나무와 숨을 곳 16군데 (놀이 중에는 다른 곳에 들어가지 않는다)
+  // 숨바꼭질 섬: 술래 나무와 숨을 곳 47군데 (놀이 중에는 다른 곳에 들어가지 않는다)
   if (id === 'hs_tree') { if (!state.features.hide) { toast('숨바꼭질은 곧 열려요! 조금만 기다려 줘요.', 2600); return; } hide.open(); return; }
   if (id.startsWith('hs_')) { hide.onSpot(Number(id.slice(3))); return; }
   if (hide && hide.active) { toast("숨바꼭질 중이에요! 그만하려면 아래 '그만하기'를 눌러요.", 2600); return; }

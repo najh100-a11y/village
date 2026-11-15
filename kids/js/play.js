@@ -140,6 +140,11 @@ export function createPlayHub({ getNet, getPerson, getMe, onAccept, onInviteShow
     if (session) session.close();
     return makeRoom({ gid: newGid(), kind, host: true, extra });
   }
+  // 초대 없이 열린 방에 들어간다 (방장이 들어와도 된다고 대답한 뒤)
+  function joinRoom(gid, kind, hostId) {
+    if (session) session.close();
+    return makeRoom({ gid, kind, host: false, hostId });
+  }
 
   function makeSession({ gid, peer, kind, host, extra }) {
     const net = getNet();
@@ -257,7 +262,7 @@ export function createPlayHub({ getNet, getPerson, getMe, onAccept, onInviteShow
     else if (session && session.peer === id) session.emit('left');
   }
 
-  return { invite, openRoom, onMsg, onLeave, get session() { return session; } };
+  return { invite, openRoom, joinRoom, onMsg, onLeave, get session() { return session; } };
 }
 
 // 친구 고르기 목록 (지금 마을에 있는 친구만)

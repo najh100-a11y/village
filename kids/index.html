@@ -1065,6 +1065,10 @@ body.hs-lock .pad, body.hs-lock .jump-btn, body.hs-lock .run-btn, body.hs-lock .
 .hs-card .row { margin-top: 4px; }
 .hs-wait { color: var(--ink-soft); font-size: 14px !important; width: 100%; }
 .hs-menu h3 { margin: 6px 0 0; font-family: var(--display); font-weight: 400; font-size: 18px; }
+.hs-rooms { display: grid; gap: 8px; }
+.hs-rooms:empty { display: none; }
+.hs-rooms .fl-row { grid-template-columns: 52px minmax(0, 1fr) auto; text-align: left; background: #FFFBEA; box-shadow: 0 0 0 2px var(--sun), 0 3px 0 var(--line); }
+.hs-rooms .fl-face { grid-row: auto; }
 .hs-lead { font-family: var(--display); font-size: 19px; }
 .hs-how { text-align: left; margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 15px; line-height: 1.5; }
 .hs-nums { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }

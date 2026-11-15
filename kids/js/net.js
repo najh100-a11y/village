@@ -10,7 +10,7 @@ export const PHRASES = {
 export const EMOTES = { heart: '❤️', clap: '👏', smile: '😊', wave: '👋', pray: '🙏', star: '⭐' };
 // 놀이기구를 타며 외치는 말 (말하기 판에는 나오지 않는다)
 export const SHOUTS = { yay: '야호!', beep: '빵빵!', yum: '냠냠!' };
-const EVENTS = ['mv', 'st', 'say', 'chat', 'dm', 'done', 'av', 'inv', 'invr', 'act', 'fish', 'art', 'dish', 'ob', 'fw', 'ate', 'bug', 'jp', 'gift', 'hm', 'hinv', 'pc', 'share', 'pn'];
+const EVENTS = ['mv', 'st', 'say', 'chat', 'dm', 'done', 'av', 'inv', 'invr', 'act', 'fish', 'art', 'dish', 'ob', 'fw', 'ate', 'bug', 'jp', 'gift', 'hm', 'hinv', 'pc', 'share', 'pn', 'hroom', 'hj', 'hjr'];
 export const GAME_KINDS = ['omok', 'cook', 'ark', 'bg_fruit', 'bg_n77', 'bg_code', 'bg_mancala', 'bg_yut', 'bg_dots', 'hide'];
 export const ACTS = ['', 'fish', 'omok', 'cook', 'art', 'memory', 'qt', 'copy', 'watch', 'ferris', 'viking', 'carousel', 'bumper', 'bench', 'eat', 'bug', 'home', 'coaster', 'swim', 'sea', 'visit', 'dig', 'skip', 'ark', 'bgame', 'hs', 'hsh'];
 const ID_RE = /^[A-Za-z0-9-]{1,64}$/;
@@ -21,7 +21,7 @@ const PET_RE = /^pet_[a-z]{2,10}$/;
 // 받은 메시지를 믿을 수 있는 모양으로만 걸러 낸다
 export function clean(type, p) {
   if (!p || typeof p !== 'object') return null;
-  const num = (v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 100; // 섬 넷을 다 담는 넓이
+  const num = (v) => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) < 140; // 섬 다섯을 다 담는 넓이 (숨바꼭질 섬 북쪽 끝이 -101쯤)
   // r: 1이면 달리는 중, u: 1이면 우산을 폈다
   if (type === 'mv') return num(p.x) && num(p.z) && num(p.tx) && num(p.tz) ? { x: p.x, z: p.z, tx: p.tx, tz: p.tz, ...(p.r === 1 ? { r: 1 } : {}), ...(p.u === 1 ? { u: 1 } : {}) } : null;
   if (type === 'st') return num(p.x) && num(p.z) ? { x: p.x, z: p.z, ...(p.u === 1 ? { u: 1 } : {}) } : null;
@@ -32,6 +32,13 @@ export function clean(type, p) {
   if (type === 'inv') return typeof p.to === 'string' && ID_RE.test(p.to) && GID_RE.test(p.g) && GAME_KINDS.includes(p.k)
     && (p.x == null || WORD_RE.test(p.x)) ? { to: p.to, g: p.g, k: p.k, x: p.x || null } : null;
   if (type === 'invr') return typeof p.to === 'string' && ID_RE.test(p.to) && GID_RE.test(p.g) && typeof p.ok === 'boolean'
+    ? { to: p.to, g: p.g, ok: p.ok, b: p.b === 1 || p.b === 2 ? p.b : 0 } : null;
+  // 숨바꼭질 열린 방 알림: g 방 번호, n 지금 사람 수, m 최대 사람 수, s 0 모이는 중 · 1 하는 중 · 2 닫힘
+  if (type === 'hroom') return GID_RE.test(p.g) && Number.isInteger(p.n) && p.n >= 0 && p.n <= 8 && Number.isInteger(p.m) && p.m >= 2 && p.m <= 8 && [0, 1, 2].includes(p.s)
+    ? { g: p.g, n: p.n, m: p.m, s: p.s } : null;
+  // 열린 방에 들어가도 되는지 묻기(hj)와 방장의 대답(hjr: b 1 꽉 참, 2 닫힌 방)
+  if (type === 'hj') return typeof p.to === 'string' && ID_RE.test(p.to) && GID_RE.test(p.g) ? { to: p.to, g: p.g } : null;
+  if (type === 'hjr') return typeof p.to === 'string' && ID_RE.test(p.to) && GID_RE.test(p.g) && typeof p.ok === 'boolean'
     ? { to: p.to, g: p.g, ok: p.ok, b: p.b === 1 || p.b === 2 ? p.b : 0 } : null;
   // s: 앉은 자리 번호 (놀이기구 의자, 벤치)
   if (type === 'act') return ACTS.includes(p.a) ? { a: p.a, s: Number.isInteger(p.s) && p.s >= 0 && p.s < 64 ? p.s : -1 } : null;
@@ -114,7 +121,15 @@ export class Outbox {
     return Math.min(MAX_RATE, REALTIME_BUDGET / (n * n));
   }
   push(ev, payload) {
-    if (ev === 'inv' || ev === 'invr' || ev === 'dm' || ev === 'gift' || ev === 'hinv') { if (this.peerCount() > 0) this.post(ev, payload); return; } // 초대·대답·둘이 대화·선물·집에 부르기는 바로
+    if (ev === 'inv' || ev === 'invr' || ev === 'dm' || ev === 'gift' || ev === 'hinv' || ev === 'hj' || ev === 'hjr') { if (this.peerCount() > 0) this.post(ev, payload); return; } // 초대·대답·둘이 대화·선물·집에 부르기·방 들어가기는 바로
+    if (ev === 'hroom') { // 열린 방 알림은 가장 새 것 하나만 (새로 들어온 친구에게도 다시 알린다)
+      this.lastRoom = payload.s === 2 ? null : payload;
+      this.queue = this.queue.filter((m) => m[0] !== 'hroom');
+      this.queue.push([ev, payload]);
+      while (this.queue.length > 4) this.queue.shift();
+      this.flush();
+      return;
+    }
     if (ev === 'hm') {
       // 집 안 움직임은 가장 새 것 하나만. 들어오고 나가는 것(a, 빈 h)과 새로 꾸민 것(u)은 잃지 않게 차례에 넣는다
       if (payload.h !== '') this.lastHouse = { h: payload.h, x: payload.x, z: payload.z };
@@ -149,6 +164,7 @@ export class Outbox {
     if (!this.move) this.move = ['st', null];
     if (this.lastAct && this.lastAct.a && !this.queue.some((m) => m[0] === 'act')) this.queue.push(['act', this.lastAct]);
     if (this.lastHouse && !this.queue.some((m) => m[0] === 'hm')) this.queue.push(['hm', { ...this.lastHouse, a: 1 }]); // 어느 집에 있는지도
+    if (this.lastRoom && !this.queue.some((m) => m[0] === 'hroom')) this.queue.push(['hroom', this.lastRoom]); // 열어 둔 숨바꼭질 방도
     this.flush();
   }
   freshMove() {
@@ -179,7 +195,7 @@ export class Outbox {
       this.post(m[0], m[1]);
     }
   }
-  stop() { clearInterval(this.timer); this.move = null; this.hmove = null; this.pn = null; this.lastHouse = null; this.queue.length = 0; }
+  stop() { clearInterval(this.timer); this.move = null; this.hmove = null; this.pn = null; this.lastHouse = null; this.lastRoom = null; this.queue.length = 0; }
 }
 
 class SupabaseNet {

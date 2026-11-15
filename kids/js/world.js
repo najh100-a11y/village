@@ -3257,8 +3257,8 @@ export class Village {
       }
     }
     for (const [x, z] of [[0, 29.6], [0, 37], [0, 43.8], [29.6, -4], [37, -4], [44.4, -4], [-29.6, -4], [-37, -4], [-44.4, -4], [0, -29.6], [0, -37], [0, -44.2]]) add(x, z);
-    // 숨바꼭질 섬: 나무 둘레, 둘레 길, 숨을 곳 앞
-    for (const [r, n] of [[4.9, 10], [10.2, 20]]) for (let k = 0; k < n; k++) {
+    // 숨바꼭질 섬: 나무 둘레, 둘레 길 둘, 숨을 곳 앞
+    for (const [r, n] of [[4.9, 10], [13.5, 22], [21.5, 30]]) for (let k = 0; k < n; k++) {
       const a = (k / n) * Math.PI * 2;
       add(HIDE_ISLE.x + Math.cos(a) * r, HIDE_ISLE.z + Math.sin(a) * r);
     }

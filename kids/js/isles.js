@@ -9,7 +9,7 @@ export const MAIN_WALK = 30.2; // 마을 섬에서 걸을 수 있는 반지름
 export const PARK_ISLE = { x: 0, z: 62.5, r: 20.5, walk: 18.9, seed: 3 }; // 범퍼카 장이 넓어서 섬도 넉넉하게
 export const POOL_ISLE = { x: 56, z: -4, r: 13.5, walk: 12.0, seed: 7 };
 export const BOARD_ISLE = { x: -56, z: -4, r: 14, walk: 12.5, seed: 11 }; // 보드게임 섬 (수영장 섬과 마주 보는 서쪽)
-export const HIDE_ISLE = { x: 0, z: -59.5, r: 17, walk: 15.6, seed: 13 }; // 숨바꼭질 섬 (마을 섬 북쪽, 내 집 뒤로 다리를 건넌다)
+export const HIDE_ISLE = { x: 0, z: -72.5, r: 30, walk: 28.5, seed: 13 }; // 숨바꼭질 섬 (마을 섬 북쪽, 내 집 뒤로 다리를 건넌다. 마을 섬만큼 넓다)
 // 다리 (걷는 곳은 x0~x1, z0~z1 네모)
 export const BRIDGES = [
   { id: 'park', x0: -1.1, x1: 1.1, z0: 29.0, z1: 44.2, deck: [32.2, 42.8], along: 'z' },
@@ -18,8 +18,8 @@ export const BRIDGES = [
   { id: 'hide', x0: -1.1, x1: 1.1, z0: -44.6, z1: -29.0, deck: [-43.3, -32.2], along: 'z' },
 ];
 // 지도 전체를 볼 때 바라보는 가운데와 반 너비 (섬 다섯과 둘레 얕은 물까지)
-export const WORLD_CENTER = { x: 0, z: 2 };
-export const WORLD_HALF = { w: 72, h: 86 };
+export const WORLD_CENTER = { x: 0, z: -12.5 };
+export const WORLD_HALF = { w: 72, h: 101 };
 
 // 바다 낚시 나루터: 마을 섬 남동쪽(45도) 바닷가에서 바다로 곧게 뻗은 나무 다리.
 // (x, z)는 섬 안쪽 시작점, (ux, uz)는 바다 쪽 방향. 길이 len, 걷는 반너비 hw. 끝 end만큼은 hw2로 넓은 마당(배 타는 곳)이다.

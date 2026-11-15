@@ -57,9 +57,9 @@ const RING = (() => {
   for (let i = 0; i < N; i++) {
     const a = (i / N) * Math.PI * 2, dx = Math.cos(a), dz = Math.sin(a);
     let last = 0;
-    for (let r = 0; r < 110; r += 0.5) if (land(C.x + dx * r, C.z + dz * r)) last = r;
+    for (let r = 0; r < 160; r += 0.5) if (land(C.x + dx * r, C.z + dz * r)) last = r;
     let r = last;
-    while (r < 140 && (shoreGap(C.x + dx * r, C.z + dz * r) < 4.5 || onPier(C.x + dx * r, C.z + dz * r, 2.5) || onJetty(C.x + dx * r, C.z + dz * r, 2.5))) r += 0.5;
+    while (r < 190 && (shoreGap(C.x + dx * r, C.z + dz * r) < 4.5 || onPier(C.x + dx * r, C.z + dz * r, 2.5) || onJetty(C.x + dx * r, C.z + dz * r, 2.5))) r += 0.5;
     out.push({ x: C.x + dx * r, z: C.z + dz * r, dx, dz });
   }
   // 이웃한 점 사이 길이 땅을 스치면 두 점을 조금씩 바깥으로 민다
@@ -120,7 +120,7 @@ export const SEA_RING = RING;
 // (잡히는 물고기 종류와 확률은 서버가 정하고 어디서나 같다).
 export const SCHOOLS = [
   { x: 40, z: 36, r: 4, T: 260, ph: 0.4 }, // 나루터 앞바다
-  { x: -50, z: 8, r: 5, T: 300, ph: 2.1 }, // 마을 섬 서쪽
+  { x: -46, z: 26, r: 5, T: 300, ph: 2.1 }, // 마을 섬 서남쪽 (예전 자리 -50, 8은 보드게임 섬 모래밭 위가 되어 옮겼다)
   { x: -36, z: -46, r: 5, T: 280, ph: 4.0 }, // 마을 섬 북서쪽 (북쪽에는 숨바꼭질 섬이 생겼다)
   { x: -34, z: 44, r: 4, T: 240, ph: 1.2 }, // 놀이동산 섬 서쪽
   { x: 84, z: -6, r: 4, T: 320, ph: 5.3 }, // 수영장 섬 동쪽
