@@ -3700,7 +3700,7 @@ export class Village {
 
     // 가리는 물체 흐리게
     // 카메라와 내 주민 사이에 있는 나무·집을 흐리게 (카메라를 어느 쪽으로 돌려도)
-    const pp = (this.mode === 'play' || this.mode === 'game') && this.player ? this.player.root.position : null;
+    const pp = this.fadeFocus || ((this.mode === 'play' || this.mode === 'game') && this.player ? this.player.root.position : null); // fadeFocus: 내 집 꾸미기에서 보는 방
     let cdx = 0, cdz = 1, cdist = 20;
     if (pp) {
       cdx = this.camPos.x - pp.x; cdz = this.camPos.z - pp.z;

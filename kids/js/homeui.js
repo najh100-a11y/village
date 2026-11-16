@@ -6,7 +6,7 @@ import { salePrice } from './economy.js';
 import {
   HOME_ITEMS, HOME_IDS, ZONE_NAMES, GARDEN, YARD_RECTS, isSeed, footprint, canPlace,
   growStage, growHours, canWater, GROW, CROPS, HARVEST, needHours, leftText, setServerNow, serverNow,
-  SPACES, BUILD_IDS, SLOT_W, ROOM, spaces, spaceById, isIndoor, YARD_PARTS, WALLS, FLOORS, styleOf, fitsZone, cellZone, cleanRooms,
+  SPACES, BUILD_IDS, PLAN, spaces, spaceById, isIndoor, YARD_PARTS, WALLS, FLOORS, styleOf, fitsZone, nudgeSpot, cellZone, cleanRooms,
 } from './homeitems.js';
 import { h, toast, josa, confetti } from './ui.js';
 import { openPiano } from './piano.js';
@@ -100,9 +100,13 @@ export function createHomeUI(o) {
     if (!H || guest) return [];
     const off = H.layout.filter((e) => !fitsZone(e));
     if (!off.length) return [];
-    for (const e of off) H.take(e.id);
+    const bagged = [];
+    for (const e of off) {
+      const to = nudgeSpot(H.layout.filter((x) => fitsZone(x) || x.id === e.id), e); // 같은 방 가까운 빈자리로
+      if (to) H.put(to); else { H.take(e.id); bagged.push(e); }
+    }
     scheduleSave(true);
-    return off;
+    return bagged;
   }
 
   // ---------- 들어가고 나가기 ----------
@@ -250,7 +254,7 @@ export function createHomeUI(o) {
     dirty = false;
     const layout = v.homeSpace.layout.map(({ id, k, x, z, r }) => ({ id, k, x, z, r: r || 0 }));
     try {
-      const r = await o.rpc('kids_home_save', { p_token: o.getToken(), p_layout: layout });
+      const r = await o.rpc('kids_home_save', { p_token: o.getToken(), p_layout: layout, p_plan: 2 }); // p_plan: 복도 있는 집
       st.items = r.items || st.items;
       st.layout = layout;
       setServerNow(r.now);
@@ -286,12 +290,17 @@ export function createHomeUI(o) {
     let x, z, far;
     if (YARD_PARTS[t]) { x = (YARD_PARTS[t].x0 + YARD_PARTS[t].x1) / 2; z = 2.6; far = 1; }
     else if (t === 'garden') { x = (GARDEN.x0 + GARDEN.x1) / 2; z = -6.2; far = 0.5; }
-    else { const sp = spaceById(t) || spaceById('room'); x = (sp.x0 + sp.x1) / 2; z = -5.4; far = 0.5; }
+    else { const sp = spaceById(t) || spaceById('room'); x = (sp.x0 + sp.x1) / 2; z = (sp.z0 + sp.z1) / 2 + 1.6; far = 0.5; }
     return { look: new THREE.Vector3(HOME_O.x + x, 0, HOME_O.z + z), pos: new THREE.Vector3(HOME_O.x + x, 31 * far, HOME_O.z + z + 17.9 * far) };
+  }
+  // 방 칸을 볼 때는 그 방과 카메라 사이 벽(뒷줄 방 앞의 벽)을 흐리게
+  function editFocus(t) {
+    const sp = SPACES[t] && spaceById(t);
+    v.fadeFocus = sp ? new THREE.Vector3(HOME_O.x + (sp.x0 + sp.x1) / 2, 0, HOME_O.z + (sp.z0 + sp.z1) / 2) : null;
   }
   function setTab(t) {
     tab = t;
-    if (editCtrl) Object.assign(editCtrl.cam, tabCam(t));
+    if (editCtrl) { Object.assign(editCtrl.cam, tabCam(t)); editFocus(t); }
   }
   function startEdit(first = null) {
     if (!v.atHome || editing || guest) return;
@@ -308,6 +317,7 @@ export function createHomeUI(o) {
       stop: () => { if (editing) stopEdit(true); },
     };
     v.enterGame(editCtrl);
+    editFocus(tab);
     if (innerWidth < innerHeight) v.view.game.zoom = 1.45; // 세로 화면은 조금 멀리서
     document.body.classList.add('home-editing');
     bar.hidden = true;
@@ -321,6 +331,7 @@ export function createHomeUI(o) {
     if (!editing) return;
     editing = false;
     editCtrl = null;
+    v.fadeFocus = null;
     cancelMode();
     if (!fromGame) v.exitGame();
     document.body.classList.remove('home-editing');
@@ -328,10 +339,10 @@ export function createHomeUI(o) {
     bar.hidden = !v.atHome;
     flush();
   }
-  // 칸 목록: 지은 방(내 방부터 지은 차례), 앞마당, 옆마당(집 넓히기가 있을 때), 밭
+  // 칸 목록: 지은 방(내 방, 거실, 주방, 방 2, 방 3 차례), 앞마당, 옆마당(집 넓히기가 있을 때), 밭
   function tabList() {
     const H = v.homeSpace;
-    return ['room', ...(H ? H.rooms : []), 'yard', ...(expandOn() ? ['yard2'] : []), 'garden'];
+    return ['room', ...BUILD_IDS.filter((id) => H && H.rooms.includes(id)), 'yard', ...(expandOn() ? ['yard2'] : []), 'garden'];
   }
   function tabLabel(t) {
     if (SPACES[t]) return !v.homeSpace || !v.homeSpace.rooms.length ? '🛏️ 방' : `${SPACES[t].icon} ${SPACES[t].name}`;
@@ -783,9 +794,9 @@ export function createHomeUI(o) {
     });
     o.openSheet('집 넓히기 공사', h('div', { class: 'talk shop build' },
       fruits != null ? h('p', { class: 'shop-fruit' }, `내 열매 🍎 ${fruits}개`) : null,
-      h('p', {}, left.length ? '거실, 주방, 방을 하나씩 지어서 집을 넓혀요. 새로 지은 방은 지은 차례대로 내 방 왼쪽에 붙어요.' : '집을 다 넓혔어요! 방마다 꾸미기를 즐겨 봐요.'),
+      h('p', {}, left.length ? '거실, 주방, 방을 하나씩 지어서 집을 넓혀요. 처음 방을 지으면 복도와 현관이 함께 생겨요.' : '집을 다 넓혔어요! 방마다 꾸미기를 즐겨 봐요.'),
       h('div', { class: 'shop-list' }, rows),
-      h('p', { class: 'note' }, '방과 방 사이에는 문이 나고, 새 방마다 마당으로 나가는 앞문이 있어요. 공사비는 열매로 내고, 한 번 지은 방은 그대로 남아요.')), 'talk-sheet');
+      h('p', { class: 'note' }, '방마다 자리가 정해져 있어요. 거실은 내 방 옆, 주방은 복도 건너편, 방 2와 방 3은 뒤쪽이에요. 방마다 복도로 나가는 문이 있어요. 공사비는 열매로 내고, 한 번 지은 방은 그대로 남아요.')), 'talk-sheet');
   }
   function askBuild(id, fromEdit) {
     const sp = SPACES[id], price = buildPrice(id);
@@ -816,9 +827,9 @@ export function createHomeUI(o) {
     st.rooms = cleanRooms(r.rooms);
     if (editing) stopEdit();
     if (v.sitting) v.standUp();
-    const H = v.homeSpace, idx = st.rooms.indexOf(id);
-    const rect = { x0: ROOM.x0 - SLOT_W * (idx + 1), x1: ROOM.x0 - SLOT_W * idx };
-    const cx = (rect.x0 + rect.x1) / 2;
+    const H = v.homeSpace;
+    const rect = { ...PLAN[id] };
+    const cx = (rect.x0 + rect.x1) / 2, cz = (rect.z0 + rect.z1) / 2;
     let applied = false, off = [];
     const apply = () => {
       if (applied) return;
@@ -829,13 +840,14 @@ export function createHomeUI(o) {
     };
     const far = innerWidth < innerHeight ? 1.9 : 1; // 세로 화면은 멀리서 방 전체가 들어오게
     const ctrl = {
-      cam: { look: new THREE.Vector3(HOME_O.x + cx, 0.6, HOME_O.z - 6.8), pos: new THREE.Vector3(HOME_O.x + cx, 0.6 + 9.9 * far, HOME_O.z - 6.8 + 13.3 * far) },
+      cam: { look: new THREE.Vector3(HOME_O.x + cx, 0.6, HOME_O.z + cz + 0.2), pos: new THREE.Vector3(HOME_O.x + cx, 0.6 + 9.9 * far, HOME_O.z + cz + 0.2 + 13.3 * far) },
       camSpeed: 2.4,
       onTap: () => {},
       update: () => {},
-      stop: () => { H.endFx(); apply(); building = false; document.body.classList.remove('home-building'); }, // 공사 장면 중에 다른 놀이로 바뀌어도 방은 지어 둔다
+      stop: () => { H.endFx(); apply(); building = false; v.fadeFocus = null; document.body.classList.remove('home-building'); }, // 공사 장면 중에 다른 놀이로 바뀌어도 방은 지어 둔다
     };
     v.enterGame(ctrl);
+    v.fadeFocus = new THREE.Vector3(HOME_O.x + cx, 0, HOME_O.z + cz); // 뒷줄 방이면 앞방 벽을 흐리게
     document.body.classList.add('home-building');
     o.sfx.pop();
     H.buildFx(rect, {
@@ -843,6 +855,7 @@ export function createHomeUI(o) {
       onMid: () => { apply(); o.sfx.success(); confetti(); v.celebrate(); },
       onEnd: () => {
         building = false;
+        v.fadeFocus = null;
         document.body.classList.remove('home-building');
         if (v.game === ctrl) v.exitGame();
         const sp = SPACES[id];
@@ -914,7 +927,8 @@ export function createHomeUI(o) {
   // 집 전체가 앞에서 보이는 자리: 집 너비가 화면에 다 들어오고, 아래쪽 고르기 판에 가리지 않는 위쪽 빈 곳 가운데에 집이 오게
   function lookCam() {
     const H = v.homeSpace, cam = v.camera;
-    const x0 = ROOM.x0 - SLOT_W * H.rooms.length, x1 = ROOM.x1;
+    const rs = H.rects || spaces();
+    const x0 = Math.min(...rs.map((r) => r.x0)), x1 = Math.max(...rs.map((r) => r.x1));
     const halfV = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)), halfH = halfV * cam.aspect;
     const p = lookPanel.hidden ? 0.4 : Math.min(0.62, lookPanel.getBoundingClientRect().height / innerHeight); // 판이 가리는 몫
     const el = 0.4, yaw = 0.1;

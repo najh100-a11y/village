@@ -62,7 +62,11 @@ export const ZONE_NAMES = { room: '방', yard: '마당', garden: '밭', kitchen:
 export const GROUP_NAMES = { bed: '🛏️ 방', living: '🛋️ 거실', kitchen: '🍳 주방' };
 export const isSeed = (id) => String(id).startsWith('s_');
 
-// ---------- 집 넓히기: 내 방 왼쪽(서쪽)으로 지은 차례대로 한 칸(가로 8, 세로 6)씩 붙는다 ----------
+// ---------- 집 넓히기: 복도 있는 집 (방은 모두 가로 8, 세로 6) ----------
+// 앞줄(z -10~-4)은 동쪽부터 내 방, 거실, 복도, 주방이고, 뒷줄(z -16~-10)은 방 2(거실 뒤), 복도, 방 3(주방 뒤)이다.
+// 복도(너비 2)는 처음 방을 지을 때 앞줄 길이만큼 생기고, 뒷줄 방을 지으면 뒤까지 이어진다. 현관은 복도 앞이다.
+// 방마다 복도 쪽 벽에 문이 있고, 거실과 내 방 사이에도 문이 있다. 내 방은 예전처럼 동쪽 옆문으로 마당에 나간다.
+// (2026-11-16 전에는 지은 차례대로 내 방 왼쪽에 한 줄로 붙었다. 서버에서 그때 놓은 가구를 방과 함께 새 자리로 옮겼다)
 // price는 열매 (선생님 할인을 받는다). 서버 kids__build_price와 같다
 export const SPACES = {
   room: { name: '내 방', icon: '🛏️' },
@@ -75,6 +79,16 @@ export const BUILD_IDS = ['living', 'kitchen', 'room2', 'room3'];
 export const INDOOR = ['room', ...BUILD_IDS];
 export const isIndoor = (z) => INDOOR.includes(z);
 export const SLOT_W = 8;
+export const PLAN = {
+  room: { x0: -10, x1: -2, z0: -10, z1: -4 },
+  living: { x0: -18, x1: -10, z0: -10, z1: -4 },
+  kitchen: { x0: -28, x1: -20, z0: -10, z1: -4 },
+  room2: { x0: -18, x1: -10, z0: -16, z1: -10 },
+  room3: { x0: -28, x1: -20, z0: -16, z1: -10 },
+};
+export const HALL = { x0: -20, x1: -18, z0: -16, mid: -10, z1: -4, door: -19 }; // 복도 (door: 현관 가운데 x)
+export const HALL_STYLE = { w: 'cream', f: 'light' };
+const BACK_ROOMS = ['room2', 'room3'];
 // 벽지와 바닥 (서버 kids_home_style과 같은 이름)
 export const WALLS = {
   cream: { name: '크림', c: '#F6E3C2' }, mint: { name: '민트', c: '#CDEBD9' }, sky: { name: '하늘', c: '#CFE6F7' },
@@ -98,12 +112,11 @@ export function styleOf(style, id) {
 }
 
 // 내 집 땅 (집 안 좌표, 1칸 = 1). 방 안, 마당, 밭
-export const ROOM = { x0: -10, x1: -2, z0: -10, z1: -4 };
+export const ROOM = PLAN.room;
 export const GARDEN = { x0: 2, x1: 8, z0: -10, z1: -7 };
-// 마당: 대문 쪽 넓은 마당(왼쪽으로 집 넓히기 터 앞까지)과 밭 둘레
-export const YARD_RECTS = [{ x0: -43, x1: 11, z0: -3, z1: 9 }, { x0: -1, x1: 11, z0: -10, z1: -3 }];
-export const ISLAND = { x0: -44.5, x1: 12.5, z0: -11.5, z1: 10.5 };
-export const LOT_X0 = ROOM.x0 - SLOT_W * BUILD_IDS.length; // 공사 터 왼쪽 끝 (-42)
+// 마당: 대문 쪽 넓은 마당, 밭 둘레, 집 서쪽 옆마당 (집 넓히기 터와 복도에는 물건을 놓지 않는다)
+export const YARD_RECTS = [{ x0: -43, x1: 11, z0: -3, z1: 9 }, { x0: -1, x1: 11, z0: -10, z1: -3 }, { x0: -43, x1: -29, z0: -12, z1: -3 }];
+export const ISLAND = { x0: -44.5, x1: 12.5, z0: -17.5, z1: 10.5 };
 // 앞마당(원래 마당)과 옆마당(새로 넓어진 마당): 꾸미기 판에서 따로 본다
 export const YARD_PARTS = { yard: { x0: -12, x1: 11 }, yard2: { x0: -43, x1: -12 } };
 
@@ -113,16 +126,40 @@ export function cleanRooms(list) {
   for (const id of Array.isArray(list) ? list : []) if (BUILD_IDS.includes(id) && !out.includes(id)) out.push(id);
   return out;
 }
-// 방들의 자리: 내 방(-10~-2) 다음부터 왼쪽으로 8칸씩
+// 방들의 자리: 내 방과 지은 방 (지은 차례). 자리는 방마다 정해져 있다 (PLAN)
 export function spaceList(rooms) {
-  const out = [{ id: 'room', ...ROOM }];
-  cleanRooms(rooms).forEach((id, i) => out.push({ id, x0: ROOM.x0 - SLOT_W * (i + 1), x1: ROOM.x0 - SLOT_W * i, z0: ROOM.z0, z1: ROOM.z1 }));
+  return [{ id: 'room', ...ROOM }, ...cleanRooms(rooms).map((id) => ({ id, ...PLAN[id] }))];
+}
+// 복도: 방을 하나라도 지었으면 앞줄 길이만큼, 뒷줄 방이 있으면 뒤까지
+export function hallRect(rooms) {
+  const r = cleanRooms(rooms);
+  if (!r.length) return null;
+  return { id: 'hall', x0: HALL.x0, x1: HALL.x1, z0: r.some((id) => BACK_ROOMS.includes(id)) ? HALL.z0 : HALL.mid, z1: HALL.z1 };
+}
+// 문: a와 b 사이. wall 'x'는 세로 벽(x = w), 'z'는 가로 벽(z = w), c는 문 가운데. pa는 a 쪽, pb는 b 쪽에 서는 곳
+export function doorList(rooms) {
+  const R = cleanRooms(rooms), has = (id) => R.includes(id);
+  const out = [{ a: 'room', b: 'yard', wall: 'x', w: ROOM.x1, c: -6.5, pa: { x: -2.7, z: -6.5 }, pb: { x: -1.0, z: -6.5 } }];
+  if (has('living')) out.push({ a: 'living', b: 'room', wall: 'x', w: ROOM.x0, c: -6.5, pa: { x: ROOM.x0 - 0.75, z: -6.5 }, pb: { x: ROOM.x0 + 0.75, z: -6.5 } });
+  if (R.length) out.push({ a: 'hall', b: 'yard', wall: 'z', w: HALL.z1, c: HALL.door, pa: { x: HALL.door, z: HALL.z1 - 0.75 }, pb: { x: HALL.door, z: HALL.z1 + 0.75 } });
+  for (const id of R) {
+    const s = PLAN[id], east = s.x0 >= HALL.x1, w = east ? HALL.x1 : HALL.x0, c = (s.z0 + s.z1) / 2;
+    out.push({ a: id, b: 'hall', wall: 'x', w, c, pa: { x: w + (east ? 0.75 : -0.75), z: c }, pb: { x: (HALL.x0 + HALL.x1) / 2, z: c } });
+  }
   return out;
 }
-// 방문 자리: 방과 방 사이 문(z -6.5), 새 방의 앞문(앞벽 가운데)
-export const frontDoorX = (s) => s.x1 - SLOT_W / 2;
 // 주방 조리대(요리 놀이 자리): 주방 왼쪽 끝에서 3칸, 뒤 벽에서 2.4칸. 요리 놀이의 숲속 부엌과 같은 모양이다
-export const cookAt = (s) => ({ x: s.x0 + 3, z: -7.6 });
+export const cookAt = (s) => ({ x: s.x0 + 3, z: s.z0 + 2.4 });
+// 집 넓히기 이전(지은 차례대로 한 줄)의 자리에 있던 물건을 새 자리로 (서버 이전과 같은 계산. 체험판이 쓴다)
+export function migrateLayout(layout, rooms) {
+  const R = cleanRooms(rooms);
+  return (layout || []).map((e) => {
+    const i = R.findIndex((id, k) => e.x >= ROOM.x0 - SLOT_W * (k + 1) && e.x < ROOM.x0 - SLOT_W * k && e.z >= ROOM.z0 && e.z < ROOM.z1);
+    if (i < 0) return e;
+    const s = PLAN[R[i]];
+    return { ...e, x: e.x - (ROOM.x0 - SLOT_W * (i + 1)) + s.x0, z: e.z - ROOM.z0 + s.z0 };
+  });
+}
 
 // 비워 두는 칸: 옷장, 방문 안팎, 마당 가운데 길, 주방 조리대 둘레
 const BASE_RES = new Set();
@@ -136,16 +173,18 @@ const BASE_RES = new Set();
 function reservedFor(rooms) {
   const R = new Set(BASE_RES);
   const res = (x, z) => R.add(`${x},${z}`);
+  for (const d of doorList(rooms)) {
+    if (d.a === 'room' && d.b === 'yard') continue; // 내 방 옆문은 BASE_RES
+    const k = Math.floor(d.c - 0.5);
+    if (d.wall === 'x') { for (const z of [k, k + 1]) { res(d.w - 1, z); res(d.w, z); } } // 문 양쪽 두 칸씩
+    else for (const x of [k, k + 1]) { res(x, d.w); res(x, d.w + 1); } // 현관 앞 두 줄
+  }
   for (const s of spaceList(rooms).slice(1)) {
-    // 오른쪽(동쪽) 방과 잇는 문: 문 양쪽 두 칸씩
-    for (const z of [-7, -6]) { res(s.x1 - 1, z); res(s.x1, z); }
-    const c = frontDoorX(s);
-    res(c - 1, -5); res(c, -5);
     if (s.id === 'kitchen') {
-      const { x } = cookAt(s), x0 = x - 3;
-      for (let i = 1; i <= 4; i++) for (const z of [-9, -8]) res(x0 + i, z); // 조리대와 그 뒤에 서는 곳 (맨 뒤 벽 앞 한 줄은 그릇장 같은 것을 둘 수 있다)
-      res(x0 + 5, -8); res(x0 + 4, -7); res(x0 + 5, -7); // 화덕
-      res(x0 + 2, -7); res(x0 + 3, -7); // 조리대 앞
+      const { x } = cookAt(s), x0 = x - 3, zb = s.z0 + 2; // zb: 뒤 벽에서 셋째 줄 (앞줄 주방이면 -8)
+      for (let i = 1; i <= 4; i++) for (const zz of [zb - 1, zb]) res(x0 + i, zz); // 조리대와 그 뒤에 서는 곳 (맨 뒤 벽 앞 한 줄은 그릇장 같은 것을 둘 수 있다)
+      res(x0 + 5, zb); res(x0 + 4, zb + 1); res(x0 + 5, zb + 1); // 화덕
+      res(x0 + 2, zb + 1); res(x0 + 3, zb + 1); // 조리대 앞
     }
   }
   return R;
@@ -213,6 +252,27 @@ export function canPlace(layout, e, ignoreId = null) {
 export function fitsZone(e) {
   const it = HOME_ITEMS[e.k];
   return !!it && cellsOf(e).every(([x, z]) => zoneFits(it.zone, cellZone(x, z)));
+}
+// 제자리에 맞지 않게 된 방 안 물건(새로 난 문 자리 같은 곳)을 같은 방 가까운 빈자리로. 없으면 null (가방으로)
+export function nudgeSpot(layout, e) {
+  const it = HOME_ITEMS[e.k];
+  if (!it || isSeed(e.k) || it.zone === 'yard' || it.zone === 'garden') return null;
+  const c = centerOf(e);
+  const sp = SPACE_LIST.find((s) => c.x > s.x0 && c.x < s.x1 && c.z > s.z0 && c.z < s.z1);
+  if (!sp) return null;
+  let best = null;
+  for (let d = 1; d <= 5 && !best; d++) {
+    for (let dx = -d; dx <= d; dx++) for (let dz = -d; dz <= d; dz++) {
+      if (Math.max(Math.abs(dx), Math.abs(dz)) !== d) continue;
+      for (let k = 0; k < 4; k++) {
+        const cand = { ...e, x: e.x + dx, z: e.z + dz, r: ((e.r || 0) + k) % 4 };
+        if (cellZone(cand.x, cand.z) !== sp.id || !canPlace(layout, cand, e.id)) continue;
+        const cost = dx * dx + dz * dz + k * 0.5; // 같은 방향을 조금 더 좋아한다
+        if (!best || cost < best.cost) best = { cost, cand };
+      }
+    }
+  }
+  return best ? best.cand : null;
 }
 // 물건 가운데 (집 안 좌표)
 export function centerOf(e) {

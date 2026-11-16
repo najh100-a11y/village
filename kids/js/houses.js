@@ -280,61 +280,99 @@ export function buildCottage(style, roofC) {
   return g;
 }
 
-// ---------- 내 집 섬의 껍데기: 지붕과 앞벽 (방마다) ----------
-// list: [{ id, x0, x1 }] (내 방부터 서쪽으로), 방 앞벽 z = front, 뒤벽 z = back, 벽 높이 wh. doorX(s): 앞문 자리(없으면 null)
-export function buildShell(style, roofC, list, { front = -3.8, back = -10.2, wh = 2.4, doorX = () => null } = {}) {
+// ---------- 내 집 섬의 껍데기: 지붕과 앞벽 (방과 복도마다) ----------
+// rects: [{ id, x0, x1, z0, z1 }] 방과 복도 (복도는 앞줄과 뒷줄 토막으로 나눠서 준다). 마당 쪽(+z)이 앞이다.
+// 앞을 보는 벽(앞에 다른 방이 없는 쪽)과 지붕만 만든다. 옆벽과 뒤벽은 집 안 벽이 바깥 면까지 그린다.
+// doors: 문 목록 (마당으로 난 앞문, 곧 현관 자리는 비운다). wh: 벽 높이
+export function buildShell(style, roofC, rects, { wh = 2.4, doors = [] } = {}) {
   const g = new THREE.Group();
   const S = HOUSE_STYLES[style] ? style : 'cabin';
-  const west = list[list.length - 1], east = list[0];
-  const fz = front + 0.05; // 앞벽 바깥 면
-  const dep = front - back;
-  list.forEach((s) => {
-    const xa = s.x0 - (s === west ? 0.2 : 0), xb = s.x1 + (s === east ? 0.2 : 0), w = xb - xa, cx = (xa + xb) / 2;
-    // 앞벽 (앞문 자리는 비운다)
-    const c = doorX(s);
-    const segs = c == null ? [[xa, xb]] : [[xa, c - 0.7], [c + 0.7, xb]];
-    for (const [a, b] of segs) box(g, b - a, wh, 0.1, wallSkin(S, b - a, wh), (a + b) / 2, wh / 2, fz);
-    if (c != null) {
-      box(g, 1.4, wh - 1.9, 0.1, wallSkin(S, 1.4, wh - 1.9), c, 1.9 + (wh - 1.9) / 2, fz);
-      const trim = S === 'castle' ? '#9C948A' : S === 'hanok' ? '#8B5E3C' : '#8B5E3C';
-      for (const x of [c - 0.75, c + 0.75]) box(g, 0.12, 1.98, 0.16, trim, x, 0.99, fz + 0.02);
-      box(g, 1.62, 0.14, 0.16, trim, c, 1.97, fz + 0.02);
-    }
-    // 창문 둘 (앞문과 겹치지 않게)
-    const wins = c == null ? [xa + w * 0.28, xa + w * 0.72] : [c - 2.3, c + 2.3];
-    for (const x of wins) if (x > xa + 0.6 && x < xb - 0.6) windowAt(g, S, x, 1.45, fz + 0.06);
-    if (S === 'hanok') {
-      for (let x = xa + 0.1; x <= xb - 0.05; x += w / 4) box(g, 0.18, wh, 0.2, '#8B5E3C', x, wh / 2, fz + 0.04);
-      box(g, w + 0.1, 0.18, 0.2, '#8B5E3C', cx, wh - 0.09, fz + 0.05);
-    }
-    // 지붕
-    if (S === 'mushroom') mushroomCap(g, roofC, w / 2 + 0.55, dep / 2 + 0.75, 1.9, wh - 0.05, cx, (front + back) / 2);
-    else if (S === 'castle') {
-      box(g, w + 0.05, 0.2, dep + 0.3, '#B7AFA3', cx, wh + 0.1, (front + back) / 2);
-      merlons(g, '#C9C2B6', xa, fz, xb, fz, wh + 0.2);
-      merlons(g, '#C9C2B6', xa, back - 0.05, xb, back - 0.05, wh + 0.2);
-    } else if (S !== 'hanok') {
-      gableRoof(g, roofMat(S, roofC, Math.round(w), 3), w + 0.5, 1.7, dep + 0.8, wh, (front + back) / 2, cx);
-      for (const z of [fz - 0.02, back - 0.05]) g.add(mesh(triGeo(w, 1.45, 0.1), wallSkin(S, w, 1.45), cx, wh, z));
-    }
+  const at = (x, z) => rects.find((r) => x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1) || null;
+  const zc = (r) => (r.z0 + r.z1) / 2, xc = (r) => (r.x0 + r.x1) / 2;
+  // 그 변 바깥에 다른 방이 없으면 true (가운데에서 본다)
+  const open = (r) => ({
+    w: !at(r.x0 - 0.5, zc(r)), e: !at(r.x1 + 0.5, zc(r)),
+    n: !at(xc(r), r.z0 - 0.5), s: !at(xc(r), r.z1 + 0.5),
   });
-  const xa = west.x0 - 0.2, xb = east.x1 + 0.2;
-  if (S === 'hanok') hanokRoof(g, roofC, (xb - xa) / 2 + 0.7, dep / 2 + 0.8, 1.7, wh, (xa + xb) / 2, (front + back) / 2);
-  if (S === 'castle') {
-    merlons(g, '#C9C2B6', xa, back, xa, fz, wh + 0.2);
-    merlons(g, '#C9C2B6', xb, back, xb, fz, wh + 0.2);
-    const st = wallSkin('castle', 3, 4);
-    for (const x of [xa - 0.1, xb + 0.1]) tower(g, x, back + 0.1, 0.75, wh + 1.5, roofC, st); // 뒤 귀퉁이 탑 (앞마당 길을 막지 않게)
+  const trim = S === 'castle' ? '#9C948A' : '#8B5E3C';
+  for (const r of rects) {
+    const o = open(r);
+    const xa = r.x0 - (o.w ? 0.2 : 0), xb = r.x1 + (o.e ? 0.2 : 0), w = xb - xa, cx = (xa + xb) / 2;
+    const hall = r.id === 'hall';
+    // 앞벽: 앞에 방이 없는 칸들만 (현관 자리는 비운다)
+    if (o.s) {
+      const fz = r.z1 + 0.25;
+      const d = doors.find((dd) => dd.wall === 'z' && dd.w === r.z1 && dd.c > r.x0 && dd.c < r.x1);
+      const c = d ? d.c : null;
+      const segs = (c == null ? [[xa, xb]] : [[xa, c - 0.7], [c + 0.7, xb]]).filter(([a, b]) => b - a > 0.04);
+      for (const [a, b] of segs) box(g, b - a, wh, 0.1, wallSkin(S, b - a, wh), (a + b) / 2, wh / 2, fz);
+      if (c != null) {
+        box(g, 1.4, wh - 1.9, 0.1, wallSkin(S, 1.4, wh - 1.9), c, 1.9 + (wh - 1.9) / 2, fz);
+        for (const x of [c - 0.75, c + 0.75]) box(g, 0.12, 1.98, 0.16, trim, x, 0.99, fz + 0.02);
+        box(g, 1.62, 0.14, 0.16, trim, c, 1.97, fz + 0.02);
+      }
+      // 창문 둘 (복도는 좁아서 없다)
+      if (!hall) for (const x of [xa + w * 0.28, xa + w * 0.72]) if (x > xa + 0.6 && x < xb - 0.6) windowAt(g, S, x, 1.45, fz + 0.06);
+      if (S === 'hanok') {
+        const n = hall ? 1 : 4;
+        for (let k = 0; k <= n; k++) box(g, 0.18, wh, 0.2, '#8B5E3C', xa + 0.1 + (w - 0.2) * k / n, wh / 2, fz + 0.04);
+        box(g, w + 0.1, 0.18, 0.2, '#8B5E3C', cx, wh - 0.09, fz + 0.05);
+      }
+    }
+    // 지붕: 다른 방과 맞닿은 쪽은 처마를 내밀지 않는다 (앞뒤로 붙은 방은 지붕이 이어진다)
+    const za = r.z0 - (o.n ? 0.2 : 0), zb = r.z1 + (o.s ? 0.2 : 0), dep = zb - za, cz = (za + zb) / 2;
+    if (S === 'mushroom') mushroomCap(g, roofC, w / 2 + 0.55, dep / 2 + 0.55, hall ? 1.2 : 1.9, wh - 0.05, cx, cz);
+    else if (S === 'castle') {
+      box(g, w + 0.05, 0.2, dep + 0.05, '#B7AFA3', cx, wh + 0.1, cz);
+      if (o.s) merlons(g, '#C9C2B6', xa, zb, xb, zb, wh + 0.2);
+      if (o.n) merlons(g, '#C9C2B6', xa, za, xb, za, wh + 0.2);
+      if (o.w) merlons(g, '#C9C2B6', xa, za, xa, zb, wh + 0.2);
+      if (o.e) merlons(g, '#C9C2B6', xb, za, xb, zb, wh + 0.2);
+    } else if (S !== 'hanok') {
+      const rise = hall ? 1.0 : 1.7, ea = o.n ? 0.4 : 0, eb = o.s ? 0.4 : 0;
+      gableRoof(g, roofMat(S, roofC, Math.round(w), 3), w + 0.5, rise, (r.z1 - r.z0) + ea + eb, wh, (r.z0 - ea + r.z1 + eb) / 2, cx);
+      const tri = rise * 0.85;
+      if (o.s) g.add(mesh(triGeo(w, tri, 0.1), wallSkin(S, w, tri), cx, wh, r.z1 + 0.23));
+      if (o.n) g.add(mesh(triGeo(w, tri, 0.1), wallSkin(S, w, tri), cx, wh, r.z0 - 0.25));
+    }
   }
+  // 한옥: 줄마다 이어진 방들을 한 지붕으로
+  if (S === 'hanok') {
+    const rows = new Map();
+    for (const r of rects) { const k = `${r.z0}|${r.z1}`; if (!rows.has(k)) rows.set(k, []); rows.get(k).push(r); }
+    for (const row of rows.values()) {
+      row.sort((a, b) => a.x0 - b.x0);
+      const spans = [];
+      for (const r of row) { const l = spans[spans.length - 1]; if (l && Math.abs(l.x1 - r.x0) < 0.01) l.x1 = r.x1; else spans.push({ x0: r.x0, x1: r.x1, z0: r.z0, z1: r.z1 }); }
+      for (const sp of spans) {
+        const xa = sp.x0 - 0.2, xb = sp.x1 + 0.2;
+        hanokRoof(g, roofC, (xb - xa) / 2 + 0.7, (sp.z1 - sp.z0 + 0.4) / 2 + 0.8, 1.7, wh, (xa + xb) / 2, (sp.z0 + sp.z1) / 2);
+      }
+    }
+  }
+  // 성: 집에서 가장 서쪽과 동쪽 방의 뒤 귀퉁이에 탑
+  if (S === 'castle') {
+    const st = wallSkin('castle', 3, 4);
+    const wr = rects.reduce((a, b) => (b.x0 < a.x0 || (b.x0 === a.x0 && b.z0 < a.z0) ? b : a));
+    const er = rects.reduce((a, b) => (b.x1 > a.x1 || (b.x1 === a.x1 && b.z0 < a.z0) ? b : a));
+    tower(g, wr.x0 - 0.3, wr.z0 - 0.1, 0.75, wh + 1.5, roofC, st);
+    tower(g, er.x1 + 0.3, er.z0 - 0.1, 0.75, wh + 1.5, roofC, st);
+  }
+  const room = rects.find((r) => r.id === 'room') || rects[0];
   if (S === 'cabin' || S === 'brick') { // 내 방 지붕 위 굴뚝
     const ch = S === 'brick' ? patMat('brick', '#B25F42', '#EBDCCB', 1, 2) : '#9C8F86';
-    box(g, 0.55, 1.6, 0.55, ch, east.x1 - 2.2, wh + 1.0, back + 1.6);
-    box(g, 0.68, 0.12, 0.68, '#6B6F7A', east.x1 - 2.2, wh + 1.82, back + 1.6);
+    box(g, 0.55, 1.6, 0.55, ch, room.x1 - 2.2, wh + 1.0, room.z0 + 1.4);
+    box(g, 0.68, 0.12, 0.68, '#6B6F7A', room.x1 - 2.2, wh + 1.82, room.z0 + 1.4);
   }
-  if (S === 'log') { // 집 끝 모서리 통나무
-    for (const x of [xa, xb]) for (const z of [fz, back]) for (let i = 0; i < 7; i++) {
-      const lg = cyl(g, 0.12, 0.12, 0.4, '#A8744A', x, 0.2 + i * 0.34, z, 8);
-      if (i % 2) lg.rotation.x = Math.PI / 2; else lg.rotation.z = Math.PI / 2;
+  if (S === 'log') { // 바깥으로 튀어나온 모서리마다 통나무
+    for (const r of rects) for (const [x, z, sx, sz] of [[r.x0, r.z0, -1, -1], [r.x1, r.z0, 1, -1], [r.x0, r.z1, -1, 1], [r.x1, r.z1, 1, 1]]) {
+      const n = [[1, 1], [1, -1], [-1, 1], [-1, -1]].filter(([a, b]) => at(x + a * 0.1, z + b * 0.1)).length;
+      if (n !== 1) continue;
+      const lx = x + sx * 0.15, lz = z + sz * (sz > 0 ? 0.25 : 0.15);
+      for (let i = 0; i < 7; i++) {
+        const lg = cyl(g, 0.12, 0.12, 0.4, '#A8744A', lx, 0.2 + i * 0.34, lz, 8);
+        if (i % 2) lg.rotation.x = Math.PI / 2; else lg.rotation.z = Math.PI / 2;
+      }
     }
   }
   return g;

@@ -4,7 +4,7 @@ import PLAN from './plan-data.js';
 import { FISH, FRIDGE as FRIDGE_IDS } from './play-data.js';
 import { toJpeg } from './images.js';
 import { cleanChat } from './chatfilter.js';
-import { HOME_ITEMS, HOME_IDS, isSeed, CROPS, HARVEST, SPACES, BUILD_IDS, WALLS, FLOORS, INDOOR, cleanRooms } from './homeitems.js';
+import { HOME_ITEMS, HOME_IDS, isSeed, CROPS, HARVEST, SPACES, BUILD_IDS, WALLS, FLOORS, INDOOR, cleanRooms, migrateLayout } from './homeitems.js';
 import { WARDROBE, WARDROBE_IDS, wearItem } from './wardrobe.js';
 import { SELL_BUNDLE, SELL_DAY_DEFAULT, GIFT, GIFT_MSGS, SALES, salePrice } from './economy.js';
 import { TREASURES } from './beach-data.js';
@@ -850,7 +850,13 @@ export class DemoBackend {
   // 집 모양: 지은 방(지은 차례)과 방마다 벽지·바닥 (서버 kids_homes.rooms, style)
   homePlan(id) {
     this.db.homePlans = this.db.homePlans || {};
-    const p = this.db.homePlans[id] || (this.db.homePlans[id] = { rooms: [], style: {} });
+    const p = this.db.homePlans[id] || (this.db.homePlans[id] = { rooms: [], style: {}, plan2: true });
+    // 복도 있는 집으로 바뀌기 전에 지은 방의 가구를 새 방 자리로 (한 번만. 서버의 2026-11-16 이전과 같다)
+    if (!p.plan2) {
+      p.plan2 = true;
+      if (p.rooms.length && this.db.homes && this.db.homes[id]) this.db.homes[id] = migrateLayout(this.db.homes[id], p.rooms);
+      this.save && this.save();
+    }
     return p;
   }
   // 산 집 모양 (서버 kids__houses와 같다)
@@ -1037,13 +1043,14 @@ export class DemoBackend {
     const pl = this.homePlan(p_child);
     return { name: c.village_name, avatar: c.avatar, layout: JSON.parse(JSON.stringify((this.db.homes || {})[p_child] || [])), now: Date.now(), rooms: pl.rooms.slice(), style: JSON.parse(JSON.stringify(pl.style)), look: { ...(pl.look || {}) } };
   }
-  kids_home_save({ p_token, p_layout, p_harvest }) {
+  kids_home_save({ p_token, p_layout, p_harvest, p_plan = 1 }) {
     const me = this.session(p_token, 'child');
+    if (!(p_plan >= 2)) fail('OLD_APP');
     if (!Array.isArray(p_layout) || p_layout.length > 150 || JSON.stringify(p_layout).length > 40000) fail('BAD_HOME');
     const ids = new Set();
     for (const e of p_layout) {
       if (!e || typeof e !== 'object' || typeof e.id !== 'string' || e.id.length > 24 || !HOME_ITEMS[e.k]
-        || typeof e.x !== 'number' || typeof e.z !== 'number' || e.x < -44 || e.x > 12 || Math.abs(e.z) > 12
+        || typeof e.x !== 'number' || typeof e.z !== 'number' || e.x < -44 || e.x > 12 || e.z < -17 || e.z > 12
         || (e.r != null && ![0, 1, 2, 3].includes(e.r)) || ids.has(e.id)) fail('BAD_HOME');
       ids.add(e.id);
     }
