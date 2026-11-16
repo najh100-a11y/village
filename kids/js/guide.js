@@ -77,7 +77,7 @@ export function createGuide(o) {
     add({ id: 'memory', isle: 'main', cat: 'word', icon: '📖', name: '암송의 집', short: '이번 주 말씀 외우기', x: -11, z: -13.4, lbl: 's',
       now: cur ? `이번 주 말씀: ${cur.ref}${cur.passed ? ' (도장 받았어요)' : cur.practiced_today ? ' (오늘 연습했어요)' : ''}` : '',
       lines: ['이번 주 말씀을 읽어 보기, 빈칸 채우기, 순서대로 놓기로 외워요.', '말씀 도장판에서 연습한 말씀과 선생님 도장을 봐요.'],
-      reward: `연습하면 구절마다 하루 ${REWARD.memory}개, 선생님 앞에서 외워 도장을 받으면 ${REWARD.stamp}개`,
+      reward: `연습하면 구절마다 하루 ${REWARD.memory}개${REWARD.verses ? `(하루 ${REWARD.verses}구절까지)` : ''}, 선생님 앞에서 외워 도장을 받으면 ${REWARD.stamp}개`,
       go: { t: 'door', id: 'memory' } });
     add({ id: 'qt', isle: 'main', cat: 'word', icon: '🌿', name: '묵상의 숲', short: '날마다 하는 묵상', x: -17.8, z: 1.1, lbl: 's',
       now: t.qt ? `오늘 묵상: ${t.qt.title}${t.qt.done ? ' (마쳤어요)' : ''}` : '',

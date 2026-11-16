@@ -6,7 +6,7 @@ import { HOME_ITEMS, HARVEST, SPACES, BUILD_IDS } from './homeitems.js';
 import { HOUSE_ITEMS } from './houses-data.js';
 import { WARDROBE } from './wardrobe.js';
 import { PET_ITEMS, PET_IDS } from './pets-data.js';
-import { SALES, SELL_DAY_CHOICES, salePrice, GIFT_MSGS, BUG_NAMES } from './economy.js';
+import { SALES, SELL_DAY_CHOICES, salePrice, GIFT_MSGS, BUG_NAMES, REWARD_CHOICES } from './economy.js';
 import { FISH } from './play-data.js';
 import { treasureById } from './beach-data.js';
 
@@ -295,7 +295,7 @@ function stampRow(c, v, pop = false) {
   drawFaceIcon(cv, normalizeAvatar(c.avatar));
   const row = h('div', { class: 'stamp-kid' + (m.passed ? ' done' : '') });
   const act = async (on, btn) => {
-    if (!on && !confirm(`${c.name}의 ${v.ref} 도장을 지울까요? 받은 열매 10개도 다시 빠져요.`)) return;
+    if (!on && !confirm(`${c.name}의 ${v.ref} 도장을 지울까요? 도장으로 받은 열매도 다시 빠져요.`)) return;
     btn.disabled = true;
     let r;
     try { r = await call('kids_t_set_pass', { p_child_id: c.id, p_verse_id: v.id, p_passed: on }); } catch (e) { btn.disabled = false; return; }
@@ -303,7 +303,8 @@ function stampRow(c, v, pop = false) {
     if (!mm) { mm = { verse_id: v.id, practice_count: 0, best_score: 0, passed: false }; c.memory.push(mm); }
     mm.passed = on;
     if (Number.isFinite(r.fruits)) c.fruits = r.fruits;
-    toast(on ? `${c.name}에게 도장을 찍었어요! 열매 10개를 받았어요. (지금 열매 ${c.fruits}개)` : `${c.name}의 도장을 지웠어요.`);
+    const got = Number.isInteger(r.stamp) ? r.stamp : stampN();
+    toast(on ? `${c.name}에게 도장을 찍었어요! 열매 ${got}개를 받았어요. (지금 열매 ${c.fruits}개)` : `${c.name}의 도장을 지웠어요. 열매 ${got}개를 뺐어요. (지금 열매 ${c.fruits}개)`);
     row.replaceWith(stampRow(c, v, on));
     renderKids();
     const n = data.children.filter((x) => (stampOf(x, v.id) || {}).passed).length;
@@ -364,6 +365,8 @@ function renderFeedback() {
 
 // ---------- 마을 설정과 대화 ----------
 let villageConf = null;
+// 선생님 도장 하나에 주는 열매 (서버가 알려 준 숫자. 이 기능 전 서버는 10개)
+const stampN = () => (villageConf && villageConf.rewards && Number.isInteger(villageConf.rewards.stamp) ? villageConf.rewards.stamp : 10);
 const timeOf = (iso) => new Date(iso).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 async function reloadVillage() {
   try { villageConf = await call('kids_t_village', {}); } catch (e) { return; }
@@ -374,6 +377,7 @@ function renderVillage() {
   const list = $('#chatList');
   const v = villageConf;
   if (!v) { box.replaceChildren(h('p', { class: 'note' }, '마을 설정을 불러오지 못했어요.')); list.replaceChildren(); return; }
+  renderRewards(v);
   $('#chatCount').textContent = v.chat.length ? `(${v.chat.length})` : '';
   const sw = (checked, label, onChange) => {
     const input = h('input', { type: 'checkbox', checked, 'aria-label': label });
@@ -459,17 +463,49 @@ function renderVillage() {
     } }, m.muted ? '막기 풀기' : '글 대화 막기'))));
 }
 
+// 고르기 상자: 고르면 서버에 바로 저장하고 마을 설정을 다시 그린다
+function pickSel(values, cur, label, fmt, onPick) {
+  const sel = h('select', { 'aria-label': label }, values.map((x) => h('option', { value: String(x), selected: x === cur }, fmt(x))));
+  sel.addEventListener('change', async () => {
+    sel.disabled = true;
+    try { villageConf = await onPick(Number(sel.value)); toast(`${label}: ${fmt(Number(sel.value))}`); } catch (e) { sel.disabled = false; sel.value = String(cur); return; }
+    renderVillage();
+  });
+  return sel;
+}
+// 말씀 활동 열매: 묵상, 암송 연습(구절마다, 하루 구절 수), 필사, 공책 사진, 선생님 도장 (서버 kids_t_set_rewards)
+function renderRewards(v) {
+  const box = $('#rewardBox');
+  const note = $('#stampFruits');
+  if (note) note.textContent = String(stampN());
+  if (!box) return;
+  const r = v && v.rewards;
+  if (!r) { box.hidden = true; return; }
+  box.hidden = false;
+  const set = (key) => (x) => call('kids_t_set_rewards', { [key]: x });
+  const opts = (list, cur) => (list.includes(cur) ? list : [...list, cur].sort((a, b) => a - b));
+  const row = (title, text, ...sels) => h('div', { class: 'village-row' },
+    h('div', {}, h('h3', { style: 'margin:0' }, title), h('p', { class: 'note' }, text)),
+    h('div', { class: 'reward-sels' }, ...sels));
+  const daily = r.qt + r.memory * r.memory_verses;
+  box.replaceChildren(
+    h('div', {}, h('h3', { style: 'margin:0 0 4px' }, '말씀 활동 열매'),
+      h('p', { class: 'note' }, `아이들이 말씀 활동을 마치면 받는 열매예요. 바꾸면 그다음부터 받는 열매만 바뀌고, 이미 받은 열매는 그대로예요. 아이들 화면의 안내 글은 마을에 다시 들어오면 새 숫자로 보여요. 지금 숫자로는 날마다 묵상하고 암송을 ${r.memory_verses}구절 연습하면 하루 ${daily}개를 받고, 필사 공책 사진까지 올리면 한 주에 ${r.photo}개를 더 받아요. 놀이로 받는 열매(팔기 하루 ${v.sell_day}개까지, 숨바꼭질 하루 3개까지)보다 적어지지 않게 정해 주세요.`)),
+    row('묵상', '하루에 처음 마칠 때 한 번 받아요.',
+      pickSel(opts(REWARD_CHOICES.qt, r.qt), r.qt, '묵상 열매', (x) => `${x}개`, set('p_qt'))),
+    row('암송 연습', '외우기 연습을 끝까지 마치면 구절마다 하루 한 번 받아요. 하루에 열매를 받는 구절 수도 정해요.',
+      pickSel(opts(REWARD_CHOICES.memory, r.memory), r.memory, '암송 연습 열매', (x) => `구절마다 ${x}개`, set('p_memory')),
+      pickSel(opts(REWARD_CHOICES.verses, r.memory_verses), r.memory_verses, '하루에 열매를 받는 구절 수', (x) => `하루 ${x}구절까지`, set('p_memory_verses'))),
+    row('필사', '한 주에 처음 마치면 받아요. 공책에 손으로 써서 사진을 올리면 그 주 필사 열매가 모두 오른쪽 숫자가 되도록 모자란 만큼 더 받아요.',
+      pickSel(opts(REWARD_CHOICES.copy, r.copy).filter((x) => x <= r.photo), r.copy, '필사 열매', (x) => `마치면 ${x}개`, set('p_copy')),
+      pickSel(opts(REWARD_CHOICES.photo, r.photo).filter((x) => x >= r.copy), r.photo, '공책 사진 열매', (x) => `사진이면 모두 ${x}개`, set('p_photo'))),
+    row('선생님 도장', "'말씀 도장'에서 도장을 찍으면 받아요. 도장을 지우면 그때 받은 열매만큼 다시 빠져요.",
+      pickSel(opts(REWARD_CHOICES.stamp, r.stamp), r.stamp, '선생님 도장 열매', (x) => `${x}개`, set('p_stamp'))));
+}
+
 // 열매 상점 할인과 하루에 팔아서 받는 열매
 function shopRows(v) {
-  const pick = (values, cur, label, fmt, onPick) => {
-    const sel = h('select', { 'aria-label': label }, values.map((x) => h('option', { value: String(x), selected: x === cur }, fmt(x))));
-    sel.addEventListener('change', async () => {
-      sel.disabled = true;
-      try { villageConf = await onPick(Number(sel.value)); toast(`${label}: ${fmt(Number(sel.value))}`); } catch (e) { sel.disabled = false; sel.value = String(cur); return; }
-      renderVillage();
-    });
-    return sel;
-  };
+  const pick = pickSel;
   const ex = v.sale ? `예를 들어 강아지 30개는 ${salePrice(30, v.sale)}개, 침대 8개는 ${salePrice(8, v.sale)}개가 되고, 반짝 불꽃은 그대로 1개예요.` : '';
   return [
     h('div', { class: 'village-row' },
@@ -571,7 +607,7 @@ function openKid(id) {
   const body = h('div', { class: 'dlg-body' },
     h('section', {},
       h('h4', {}, '말씀 도장'),
-      h('p', { class: 'note', style: 'margin-bottom:10px' }, '아이가 선생님 앞에서 외우면 도장을 켜 주세요. 도장을 받으면 열매 10개가 더해지고, 끄면 다시 빠집니다.'),
+      h('p', { class: 'note', style: 'margin-bottom:10px' }, `아이가 선생님 앞에서 외우면 도장을 켜 주세요. 도장을 받으면 열매 ${stampN()}개가 더해지고, 끄면 그때 받은 열매가 다시 빠집니다.`),
       verses.length ? h('div', { class: 'stamp-list' }, verses.map((v) => {
         const m = memBy[v.id] || { practice_count: 0, best_score: 0, passed: false };
         const sw = h('input', { type: 'checkbox', checked: m.passed, 'aria-label': `${v.ref} 도장` });
@@ -579,7 +615,8 @@ function openKid(id) {
           sw.disabled = true;
           try {
             const r = await call('kids_t_set_pass', { p_child_id: c.id, p_verse_id: v.id, p_passed: sw.checked });
-            toast(sw.checked ? `${v.ref} 도장을 찍었어요. (열매 ${r.fruits}개)` : '도장을 지웠어요.');
+            const got = Number.isInteger(r.stamp) ? r.stamp : stampN();
+            toast(sw.checked ? `${v.ref} 도장을 찍었어요. 열매 ${got}개를 받았어요. (지금 열매 ${r.fruits}개)` : `도장을 지웠어요. 열매 ${got}개를 뺐어요. (지금 열매 ${r.fruits}개)`);
             await refresh();
           } catch (e) { sw.checked = !sw.checked; }
           sw.disabled = false;

@@ -344,12 +344,20 @@ export class DemoBackend {
     const v = this.db.village || (this.db.village = { chat_open: true, free_until: '' });
     if (!SALES.includes(v.sale)) v.sale = 0;
     if (!Number.isInteger(v.sell_day)) v.sell_day = SELL_DAY_DEFAULT;
+    if (!v.rewards || typeof v.rewards !== 'object') v.rewards = {};
     return v;
+  }
+  // 말씀 활동 열매 (서버 kids__rewards와 같다: 정해 둔 값이 없으면 처음 값, 사진 열매는 필사 열매보다 작지 않게)
+  rewards() {
+    const r = this.villageConf().rewards;
+    const n = (x, d, lo, hi) => (Number.isInteger(x) ? Math.max(lo, Math.min(hi, x)) : d);
+    const copy = n(r.copy, 5, 1, 30);
+    return { qt: n(r.qt, 5, 1, 20), memory: n(r.memory, 2, 1, 10), memory_verses: n(r.memory_verses, 3, 1, 20), copy, photo: Math.max(copy, n(r.photo, 15, 1, 50)), stamp: n(r.stamp, 10, 1, 50) };
   }
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true, breeds: true, skip2: true, volley: true, expand: true, houses: true, hide: true, nbr: true }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true, breeds: true, skip2: true, volley: true, expand: true, houses: true, hide: true, nbr: true, rewards: this.rewards() }; }
   // 쪽지함: 친구별 마지막 쪽지와 안 읽은 수 (최근 30일)
   kids_dm_box({ p_token }) {
     const me = this.session(p_token, 'child');
@@ -1177,20 +1185,24 @@ export class DemoBackend {
     return this.db.verses.filter((v) => v.is_published).sort((x, y) => x.sort_order - y.sort_order).map((v) => {
       const m = c.memory[v.id] || {};
       return { id: v.id, ref: v.ref, body: v.body, version: v.version, is_current: v.id === cur, practice_count: m.practice_count || 0,
-        best_score: m.best_score || 0, practiced_today: m.last === today(), passed: !!m.passed };
+        best_score: m.best_score || 0, practiced_today: m.last === today(), passed: !!m.passed, stamp_fruits: m.passed ? (m.pass_fruits || 10) : null };
     });
   }
   kids_practice({ p_token, p_verse_id, p_score }) {
     const c = this.child(this.session(p_token, 'child'));
     if (!this.db.verses.some((v) => v.id === p_verse_id && v.is_published)) fail('NOT_FOUND');
     const m = c.memory[p_verse_id] || (c.memory[p_verse_id] = { practice_count: 0, best_score: 0, passed: false, last: null, first: null });
-    const gained = m.last === today() ? 0 : 1;
+    const R = this.rewards();
+    // 구절마다 하루 한 번, 하루에 R.memory_verses구절까지
+    const others = Object.entries(c.memory).filter(([id, x]) => id !== p_verse_id && x.last === today()).length;
+    const capped = m.last !== today() && others >= R.memory_verses;
+    const gained = m.last === today() || capped ? 0 : R.memory;
     m.practice_count += 1;
     m.best_score = Math.max(m.best_score, Math.max(0, Math.min(100, p_score | 0)));
     m.last = today();
     m.first = m.first || nowIso();
     c.fruits += gained;
-    return { gained, fruits: c.fruits };
+    return { gained, fruits: c.fruits, capped, verses: R.memory_verses };
   }
   kids_village({ p_token }) {
     this.session(p_token, 'child');
@@ -1273,7 +1285,7 @@ export class DemoBackend {
     const c = this.child(me);
     let e = this.db.qtEntries.find((x) => x.child === me && x.day === p_day);
     let gained = 0;
-    if (!e) { e = { child: me, day: p_day, hidden: false, at: nowIso() }; this.db.qtEntries.push(e); gained = 2; c.fruits += 2; }
+    if (!e) { e = { child: me, day: p_day, hidden: false, at: nowIso() }; this.db.qtEntries.push(e); gained = this.rewards().qt; c.fruits += gained; }
     Object.assign(e, { answer, prayer, shared: p_shared !== false, updatedAt: nowIso() });
     if (word) e.word = word;
     return { gained, fruits: c.fruits, streak: this.qtStreak(me) };
@@ -1308,11 +1320,12 @@ export class DemoBackend {
     const c = this.child(me);
     let e = this.db.copyEntries.find((x) => x.child === me && x.week === p_week);
     let gained = 0;
-    // 공책 사진: 그 주 필사 열매가 모두 10개가 되게 (처음이면 10개, 따라 쓰기로 3개를 이미 받았으면 7개 더. 한 주에 한 번)
-    if (!e) { e = { child: me, week: p_week, note: '', shared: true, hidden: false, at: nowIso() }; this.db.copyEntries.push(e); gained = 10; }
-    else if (!e.photo_paid) gained = Math.max(0, 10 - (e.paid || 2));
+    // 공책 사진: 그 주 필사 열매가 모두 사진 열매가 되게 (이미 받은 필사 열매는 빼고. 한 주에 한 번)
+    const total = this.rewards().photo;
+    if (!e) { e = { child: me, week: p_week, note: '', shared: true, hidden: false, at: nowIso() }; this.db.copyEntries.push(e); gained = total; }
+    else if (!e.photo_paid) gained = Math.max(0, total - (e.paid || 2));
     c.fruits += gained;
-    if (!e.photo_paid) e.paid = 10;
+    if (!e.photo_paid) e.paid = Math.max(e.paid || 2, total);
     e.photo_paid = true;
     const id = `p${me}${p_week}`;
     imgPut(this.db, id, p_photo);
@@ -1501,7 +1514,7 @@ export class DemoBackend {
     const c = this.child(me);
     let e = this.db.copyEntries.find((x) => x.child === me && x.week === p_week);
     let gained = 0;
-    if (!e) { e = { child: me, week: p_week, hidden: false, at: nowIso(), paid: 3 }; this.db.copyEntries.push(e); gained = 3; c.fruits += 3; }
+    if (!e) { const n = this.rewards().copy; e = { child: me, week: p_week, hidden: false, at: nowIso(), paid: n }; this.db.copyEntries.push(e); gained = n; c.fruits += n; }
     Object.assign(e, { note, shared: p_shared !== false, updatedAt: nowIso() });
     return { gained, fruits: c.fruits };
   }
@@ -1632,9 +1645,10 @@ export class DemoBackend {
     this.session(p_token, 'teacher');
     const c = this.child(p_child_id);
     const m = c.memory[p_verse_id] || (c.memory[p_verse_id] = { practice_count: 0, best_score: 0, passed: false, last: null, first: null });
-    if (p_passed && !m.passed) { m.passed = true; m.first = m.first || nowIso(); c.fruits += 10; }
-    if (!p_passed && m.passed) { m.passed = false; c.fruits = Math.max(0, c.fruits - 10); }
-    return { ok: true, fruits: c.fruits };
+    let n = 0;
+    if (p_passed && !m.passed) { n = this.rewards().stamp; m.passed = true; m.pass_fruits = n; m.first = m.first || nowIso(); c.fruits += n; }
+    else if (!p_passed && m.passed) { n = m.pass_fruits || 10; m.passed = false; m.pass_fruits = null; c.fruits = Math.max(0, c.fruits - n); }
+    return { ok: true, fruits: c.fruits, stamp: n };
   }
   kids_t_create_teacher({ p_token, p_login_id, p_password, p_name }) {
     this.session(p_token, 'teacher');
@@ -1712,7 +1726,7 @@ export class DemoBackend {
     this.session(p_token, 'teacher');
     const v = this.villageConf();
     return {
-      today: today(), chat_open: v.chat_open, free_until: v.free_until, play_free: this.playFree(), sale: v.sale, sell_day: v.sell_day,
+      today: today(), chat_open: v.chat_open, free_until: v.free_until, play_free: this.playFree(), sale: v.sale, sell_day: v.sell_day, rewards: this.rewards(),
       sells: (this.db.sellLog || []).slice().reverse().slice(0, 100).map((l) => {
         const c = this.db.children.find((x) => x.id === l.child) || {};
         return { id: l.id, name: c.name, village_name: c.village_name, kind: l.kind, item: l.item, n: l.n, fruits: l.fruits, fruits_left: c.fruits, at: l.at };
@@ -1764,6 +1778,17 @@ export class DemoBackend {
     const v = this.villageConf();
     if (p_sale != null) { if (!SALES.includes(p_sale)) fail('BAD_SALE'); v.sale = p_sale; }
     if (p_sell_day != null) { if (!Number.isInteger(p_sell_day) || p_sell_day < 0 || p_sell_day > 30) fail('BAD_SALE'); v.sell_day = p_sell_day; }
+    return this.kids_t_village({ p_token });
+  }
+  // 말씀 활동 열매 바꾸기 (서버 kids_t_set_rewards와 같다)
+  kids_t_set_rewards({ p_token, p_qt = null, p_memory = null, p_memory_verses = null, p_copy = null, p_photo = null, p_stamp = null }) {
+    this.session(p_token, 'teacher');
+    const R = this.rewards();
+    const bad = (x, lo, hi) => x != null && (!Number.isInteger(x) || x < lo || x > hi);
+    if (bad(p_qt, 1, 20) || bad(p_memory, 1, 10) || bad(p_memory_verses, 1, 20) || bad(p_copy, 1, 30) || bad(p_photo, 1, 50) || bad(p_stamp, 1, 50)
+      || (p_photo ?? R.photo) < (p_copy ?? R.copy)) fail('BAD_REWARD');
+    const v = this.villageConf();
+    for (const [k, x] of [['qt', p_qt], ['memory', p_memory], ['memory_verses', p_memory_verses], ['copy', p_copy], ['photo', p_photo], ['stamp', p_stamp]]) if (x != null) v.rewards[k] = x;
     return this.kids_t_village({ p_token });
   }
   kids_t_chat_mute({ p_token, p_child, p_mute }) {

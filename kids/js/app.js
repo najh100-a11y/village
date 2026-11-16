@@ -25,7 +25,7 @@ import { fishCanvas } from './fishing.js';
 import { createHomeUI, houseThumb } from './homeui.js';
 import { createHideGame } from './hide.js';
 import { HOUSE_STYLES, HOUSE_IDS, HOUSE_ITEMS, houseItem, isFreeHouse } from './houses-data.js';
-import { REWARD } from './economy.js';
+import { REWARD, setRewards } from './economy.js';
 import { initSound, startMusic, stopMusic, setScene, sfx, cycleSound, soundMode, setRain } from './sound.js';
 import { createWeather, KINDS as WX_KINDS, KIND_IDS as WX_IDS, iconOf as wxIcon, WEATHER_CREDIT } from './weather.js';
 import { h, modal, toast, confetti, josa } from './ui.js';
@@ -542,9 +542,10 @@ function checkStamps(vs) {
   confetti();
   sfx.success();
   village.celebrate();
+  const got = fresh.reduce((a, v) => a + (Number.isInteger(v.stamp_fruits) ? v.stamp_fruits : REWARD.stamp), 0); // 도장마다 그때 받은 열매
   toast(fresh.length === 1
-    ? `선생님이 ${fresh[0].ref} 말씀에 도장을 찍어 주셨어요! 열매 10개를 받았어요.`
-    : `선생님이 말씀 ${fresh.length}개에 도장을 찍어 주셨어요! 열매 ${fresh.length * 10}개를 받았어요.`, 5200);
+    ? `선생님이 ${fresh[0].ref} 말씀에 도장을 찍어 주셨어요! 열매 ${got}개를 받았어요.`
+    : `선생님이 말씀 ${fresh.length}개에 도장을 찍어 주셨어요! 열매 ${got}개를 받았어요.`, 5200);
   refreshFruits();
 }
 
@@ -735,7 +736,9 @@ async function enterVillage(greet) {
   village.viewChanged();
   rpc('kids_chat_open').then(showChatInput).catch(() => showChatInput(false));
   rpc('kids_features').then((f) => {
-    state.features = f || {}; showNews(); checkFeedbackReply(); checkGifts(); loadMail(true);
+    state.features = f || {};
+    setRewards(state.features.rewards); // 말씀 활동 열매 (선생님이 정한 숫자)
+    showNews(); checkFeedbackReply(); checkGifts(); loadMail(true);
     // 마을의 '○○의 집'을 고른 집 모양으로
     if (state.features.houses) rpc('kids_home_look', { p_token: token() }).then((r) => { if (state.me === me && r) village.setHomeLook(r.look); }).catch(() => {});
     // 이웃 마을 집 짓기, 우리 집에 다녀간 인사가 있으면 알려 준다
@@ -1630,7 +1633,7 @@ async function sendPetGift(id, to, msg, back) {
 // 새로 생긴 일을 한 번씩 알려 준다 (기기마다 한 번)
 function showNews() {
   const news = [];
-  if (state.features.photo10) news.push(['photo10', '새 소식! 필사 이야기를 공책에 손으로 써서 사진을 올리면 열매 10개를 받아요.']);
+  if (state.features.photo10) news.push(['photo10', `새 소식! 필사 이야기를 공책에 손으로 써서 사진을 올리면 열매 ${REWARD.photo}개를 받아요.`]);
   if (state.features.pets) news.push(['pets', '새 소식! 열매 상점에 애완동물이 왔어요. 열매 30개로 데려오면 졸졸 따라다녀요.']);
   if (state.features.home) news.push(['home', "새 소식! 이제 내 집을 꾸밀 수 있어요. 열매 상점에서 가구와 씨앗을 사서 '내 집'에 들어가 방과 마당, 밭을 꾸며 봐요."]);
   if (state.features.feedback) news.push(['feedback', '새 소식! 숲지기 솔 옆에 마을 건의함이 생겼어요. 마을에 바라는 것을 적어 주세요.']);
@@ -1659,6 +1662,10 @@ function showNews() {
   if (state.features.home) news.push(['swing', "새 소식! 내 집 마당 그네를 탈 수 있어요. 그네에 앉아 '힘껏 구르기'를 누를수록 높이 올라가요. 놀러 온 친구에게도 그네 타는 모습이 보여요."]);
   if (state.features.home) news.push(['slide', '새 소식! 내 집 마당 미끄럼틀도 탈 수 있어요. 미끄럼틀을 누르면 사다리를 올라가서 쭉 미끄러져 내려와요. 같은 집에 있는 친구에게도 타는 모습이 보여요.']);
   if (state.features.hide) news.push(['hide', "새 소식! 마을 섬 북쪽, 내 집 뒤로 다리를 건너면 숨바꼭질 섬이 있어요. 가운데 술래 나무를 누르면 컴퓨터 친구나 마을 친구와 숨바꼭질을 해요. 찾은 친구는 술래와 같이 찾고, 이기면 열매 1개(하루 3개까지)를 받아요."]);
+  if (state.features.rewards) {
+    const up = REWARD.qt >= 2 && REWARD.memory >= 1 && REWARD.copy >= 3 && REWARD.photo >= 10 && REWARD.stamp >= 10; // 예전(묵상 2, 암송 1, 필사 3, 사진 10, 도장 10)보다 줄어든 것이 없으면
+    news.push(['rewards1116', `새 소식! 말씀 활동 열매가 ${up ? '늘었어요' : '바뀌었어요'}. 묵상은 하루 ${REWARD.qt}개, 암송 연습은 구절마다 ${REWARD.memory}개(하루 ${REWARD.verses}구절까지), 필사는 ${REWARD.copy}개이고 공책 사진을 올리면 그 주 필사 열매가 모두 ${REWARD.photo}개예요. 선생님 도장은 ${REWARD.stamp}개예요.`]);
+  }
   if (state.features.nbr) news.push(['nbr', "새 소식! 마을 섬 남서쪽에 '이웃 마을' 섬이 생겼어요. 묵상의 숲 앞 길 끝 다리를 건너면 마을 친구들 집이 모두 모여 있어요. 친구가 마을에 없어도 그 집에 놀러 갈 수 있고, 집 앞 우체통에 인사 스티커를 남길 수 있어요."]);
   if (state.features.hide) news.push(['hide2', "새 소식! 숨바꼭질 섬이 마을 섬만큼 넓어졌어요. 헛간, 뒤집힌 배, 나무 구멍, 옥수수밭처럼 숨을 곳이 47군데나 돼요. 친구가 방을 열면 초대가 없어도 술래 나무를 눌러 바로 들어갈 수 있어요(8명까지)."]);
   if (state.features.houses) news.push(['houses', "새 소식! 우리 집 모양을 고를 수 있어요. 내 집 '집 꾸미기'에서 '🏡 집 모양'을 누르면 나무 오두막, 빨간 벽돌집은 바로 고르고, 한옥, 통나무집, 버섯집, 작은 성은 열매 15개로 사요. 사기 전에 미리 볼 수 있고, 지붕 색은 열매 없이 바꿔요."]);

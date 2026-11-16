@@ -3,6 +3,7 @@ import { h, icon, modal, toast, confetti } from './ui.js';
 import { sfx } from './sound.js';
 import { message } from './api.js';
 import { guideCard, firstVisit, friendBoard } from './social.js';
+import { REWARD } from './economy.js';
 
 function shuffle(arr, seed = Math.random()) {
   const a = arr.slice();
@@ -93,7 +94,7 @@ export function createMemory({ rpc, getToken, onFruits, onCelebrate, onBoard, on
       verses.length ? h('p', { class: 'stamp-legend' },
         h('span', {}, h('i', { style: 'background:#E3F3D6;border:2px solid #8BD46A;color:#2F7A3A' }, '✓'), '연습한 말씀'),
         h('span', {}, h('i', { style: 'background:#FFE3E1;border:2px solid #EF6461;color:#EF6461' }, '도'), '선생님 앞에서 외워 도장 받은 말씀')) : null,
-      h('p', { class: 'note' }, '외우기 연습을 끝까지 마치면 초록 ✓가 생기고, 하루에 한 구절마다 열매 1개를 받아요. 다 외우면 선생님 앞에서 외워 보세요. 선생님이 빨간 도장을 찍어 주고 열매 10개를 받아요.')));
+      h('p', { class: 'note' }, `외우기 연습을 끝까지 마치면 초록 ✓가 생기고, 하루에 한 구절마다 열매 ${REWARD.memory}개를 받아요${REWARD.verses ? `(하루 ${REWARD.verses}구절까지)` : ''}. 다 외우면 선생님 앞에서 외워 보세요. 선생님이 빨간 도장을 찍어 주고 열매 ${REWARD.stamp}개를 받아요.`)));
     if (cur) {
       rpc('kids_house_memory', { p_token: getToken() }).then((r) => {
         if (!r || !r.verse) return;
@@ -240,10 +241,11 @@ export function createMemory({ rpc, getToken, onFruits, onCelebrate, onBoard, on
       modal.setBody(h('div', { class: 'mem result' },
         h('div', { class: 'stars', 'aria-label': `별 ${stars}개` }, [1, 2, 3].map((i) => icon('star', 'ico star' + (i <= stars ? ' on' : '')))),
         h('p', { class: 'result-big' }, run.mistakes === 0 ? '한 번도 안 틀렸어요!' : `${run.mistakes}번 다시 골랐어요. 잘 해냈어요!`),
-        res && res.gained ? h('p', { class: 'fruit-gain' }, icon('apple'), '열매 1개를 받았어요') :
+        res && res.gained ? h('p', { class: 'fruit-gain' }, icon('apple'), `열매 ${res.gained}개를 받았어요`) :
+          res && res.capped ? h('p', { class: 'fruit-none' }, `오늘은 ${res.verses || REWARD.verses}구절의 열매를 다 받았어요. 연습은 얼마든지 해도 되고, 내일 또 열매를 받을 수 있어요.`) :
           h('p', { class: 'fruit-none' }, '오늘 이 말씀의 열매는 벌써 받았어요. 내일 또 연습하면 받을 수 있어요.'),
         fresh.passed ? h('p', { class: 'note' }, '이 말씀은 벌써 도장을 받았어요. 계속 기억해요!') :
-          h('p', { class: 'note' }, '다 외웠으면 선생님 앞에서 외워 보세요. 도장과 열매 10개를 받아요.'),
+          h('p', { class: 'note' }, `다 외웠으면 선생님 앞에서 외워 보세요. 도장과 열매 ${REWARD.stamp}개를 받아요.`),
         h('div', { class: 'row' },
           h('button', { class: 'btn btn-soft', type: 'button', onclick: () => practice(fresh) }, '한 번 더'),
           h('button', { class: 'btn btn-go', type: 'button', onclick: showHome }, '도장판으로'))));

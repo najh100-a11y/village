@@ -2,6 +2,7 @@
 import { h, toast, josa } from './ui.js';
 import { message } from './api.js';
 import { drawFaceIcon, normalizeAvatar } from './face.js';
+import { REWARD } from './economy.js';
 
 export const REACTIONS = [
   ['clap', '👏', '박수'],
@@ -55,7 +56,7 @@ export function guideCard(kind, { compact = false, extra = null } = {}) {
     h('ol', { class: 'guide-steps' }, steps.map(([t, d]) => h('li', {}, h('b', {}, t), h('span', {}, d)))));
 }
 // 필사 공책 사진 열매 안내 (서버가 준비되었을 때만 보여 준다)
-export const COPY_PHOTO_STEP = ['공책 사진은 열매 10개', '공책에 손으로 다 쓰고 사진을 찍어 올리면 열매 10개를 받아요. 화면에 따라 쓰거나 공책 체크로 마치면 3개예요.'];
+export const copyPhotoStep = () => [`공책 사진은 열매 ${REWARD.photo}개`, `공책에 손으로 다 쓰고 사진을 찍어 올리면 그 주 필사 열매가 모두 ${REWARD.photo}개예요. 화면에 따라 쓰거나 공책 체크로 마치면 ${REWARD.copy}개예요.`];
 
 // 처음 들어온 집이면 가이드를 먼저 보여 준다 (기기마다 한 번)
 export function firstVisit(kind) {

@@ -3,7 +3,7 @@ import { h, icon, modal, toast, confetti, showImage } from './ui.js';
 import { loadImageFile, toJpeg, jpegUrl } from './images.js';
 import { message } from './api.js';
 import { REWARD } from './economy.js';
-import { guideCard, firstVisit, friendBoard, passageBlock, dayLabel, isStory, COPY_PHOTO_STEP } from './social.js';
+import { guideCard, firstVisit, friendBoard, passageBlock, dayLabel, isStory, copyPhotoStep } from './social.js';
 
 const FONT = '"Maplestory", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif';
 
@@ -85,7 +85,7 @@ function tracePad(text) {
 
 export function createCopy({ rpc, getToken, onFruits, onCelebrate, onDone, onSessionLost, features = () => ({}) }) {
   let data = null;
-  // 공책에 손으로 써서 사진을 올리면 열매 10개 (서버에 새 규칙이 들어간 뒤에만 알려 준다)
+  // 공책에 손으로 써서 사진을 올리면 그 주 필사 열매가 모두 REWARD.photo개 (서버에 새 규칙이 들어간 뒤에만 알려 준다)
   const photo10 = () => !!(features() || {}).photo10;
 
   async function load(week) {
@@ -102,7 +102,7 @@ export function createCopy({ rpc, getToken, onFruits, onCelebrate, onDone, onSes
 
   function guideView(back) {
     modal.setTitle('필사 도서관');
-    modal.setBody(h('div', { class: 'mem' }, guideCard('copy', { extra: photo10() ? COPY_PHOTO_STEP : null }),
+    modal.setBody(h('div', { class: 'mem' }, guideCard('copy', { extra: photo10() ? copyPhotoStep() : null }),
       h('div', { class: 'row' }, h('button', { class: 'btn btn-go', type: 'button', onclick: back }, '알겠어요, 써 볼래요'))));
   }
 
@@ -119,7 +119,7 @@ export function createCopy({ rpc, getToken, onFruits, onCelebrate, onDone, onSes
         h('div', { class: 'empty' },
           h('p', { class: 'empty-big' }, data.next_start ? `필사는 ${dayLabel(data.next_start)}부터 시작해요.` : '아직 올라온 이야기가 없어요.'),
           h('p', {}, '그동안 필사하는 방법을 먼저 알아 둘까요?')),
-        guideCard('copy', { compact: true, extra: photo10() ? COPY_PHOTO_STEP : null })));
+        guideCard('copy', { compact: true, extra: photo10() ? copyPhotoStep() : null })));
       return;
     }
     const w = data.week;
@@ -129,7 +129,7 @@ export function createCopy({ rpc, getToken, onFruits, onCelebrate, onDone, onSes
     const reward = photo10() ? h('p', { class: 'reward-note' }, '🍎 ',
       left === REWARD.photo ? h('span', {}, h('b', {}, `공책에 손으로 써서 사진을 올리면 열매 ${REWARD.photo}개!`), ` 화면에 따라 쓰기나 공책 체크로 마치면 ${REWARD.copy}개예요.`)
         : left > 0 ? h('span', {}, h('b', {}, `공책 사진을 올리면 열매 ${left}개를 더 받아요!`), ` (이번 주 필사 열매가 모두 ${REWARD.photo}개가 돼요)`)
-          : h('span', {}, '이번 주 공책 사진 열매 10개를 다 받았어요. 정말 잘했어요!')) : null;
+          : h('span', {}, `이번 주 필사 열매 ${mine.paid || REWARD.photo}개를 다 받았어요. 정말 잘했어요!`)) : null;
     modal.setBody(h('div', { class: 'mem copy' },
       h('div', { class: 'day-nav' },
         h('button', { class: 'btn btn-plain', type: 'button', disabled: !data.prev, onclick: () => load(data.prev) }, icon('back'), '지난주'),
@@ -156,7 +156,7 @@ export function createCopy({ rpc, getToken, onFruits, onCelebrate, onDone, onSes
         h('button', { class: 'mode', type: 'button', onclick: notebook },
           h('b', {}, '공책에 쓰기'), h('span', {}, story ? '내 공책에 연필로 한 문단씩 쓰고, 다 쓴 문단을 눌러 표시해요.' : '내 공책에 연필로 한 절씩 쓰고, 다 쓴 절을 눌러 표시해요.')),
         h('button', { class: 'mode' + (photo10() ? ' best' : ''), type: 'button', onclick: () => photoPick() },
-          h('b', {}, photo10() ? '공책 사진 올리기 · 열매 10개' : '공책 사진 올리기'), h('span', {}, '공책에 손으로 다 쓴 다음, 사진을 찍어 올려요.'))),
+          h('b', {}, photo10() ? `공책 사진 올리기 · 열매 ${REWARD.photo}개` : '공책 사진 올리기'), h('span', {}, '공책에 손으로 다 쓴 다음, 사진을 찍어 올려요.'))),
       h('div', { class: 'row' }, h('button', { class: 'btn btn-plain btn-small', type: 'button', onclick: () => guideView(home) }, '필사는 어떻게 해요?')),
       mine && mine.has_photo ? myPhotoCard() : null,
       mine ? finishForm(true) : null,
@@ -241,7 +241,7 @@ export function createCopy({ rpc, getToken, onFruits, onCelebrate, onDone, onSes
           h('li', {}, h('b', {}, '공책만 나오게'), h('span', {}, '얼굴이나 이름표, 집 주소가 사진에 들어가지 않게 해요.')),
           h('li', {}, h('b', {}, '밝은 곳에서'), h('span', {}, '그림자가 지지 않게, 공책을 반듯하게 놓고 찍어요.')),
           h('li', {}, h('b', {}, '선생님이 먼저 봐요'), h('span', {}, '올린 사진은 선생님이 확인한 뒤에 친구들에게 보여요.')),
-          photo10() ? h('li', {}, h('b', {}, '열매 10개'), h('span', {}, `이번 주 이야기를 공책에 손으로 써서 처음 올리면 열매 ${REWARD.photo}개를 받아요. 따라 쓰기로 ${REWARD.copy}개를 이미 받았으면 ${REWARD.photo - REWARD.copy}개를 더 받아요.`)) : null)),
+          photo10() ? h('li', {}, h('b', {}, `열매 ${REWARD.photo}개`), h('span', {}, `이번 주 이야기를 공책에 손으로 써서 처음 올리면 열매 ${REWARD.photo}개를 받아요. 따라 쓰기로 ${REWARD.copy}개를 이미 받았으면 ${REWARD.photo - REWARD.copy}개를 더 받아요.`)) : null)),
       h('label', { class: 'btn btn-go photo-btn' }, input, '사진 찍기 또는 고르기'),
       err,
       h('div', { class: 'row' }, h('button', { class: 'btn btn-plain', type: 'button', onclick: home }, '돌아가기'))));

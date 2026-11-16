@@ -157,6 +157,8 @@ dialog::backdrop { background: rgba(60, 45, 30, .35); }
 .village-row:first-of-type { border-top: 0; }
 .village-row .switch { flex: none; white-space: nowrap; }
 .village-row select { flex: none; min-height: 44px; border: 2px solid var(--line); border-radius: 12px; background: #fff; padding: 6px 10px; }
+.reward-sels { display: flex; flex-direction: column; gap: 8px; flex: none; }
+@media (max-width: 560px) { .village-row:has(.reward-sels) { flex-direction: column; align-items: stretch; } .reward-sels select { width: 100%; } }
 .switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-family: var(--display); font-size: 15px; }
 .switch input { appearance: none; width: 50px; height: 30px; border-radius: 999px; background: var(--line); position: relative; cursor: pointer; transition: background .2s; margin: 0; }
 .switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; transition: transform .2s; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
@@ -269,7 +271,7 @@ dialog::backdrop { background: rgba(60, 45, 30, .35); }
 
     <section id="tab-stamp">
       <div class="bar"><h2>말씀 도장</h2><button class="btn btn-sm" id="stampRefresh" type="button">새로 보기</button></div>
-      <p class="note" style="margin-bottom:12px">아이가 선생님 앞에서 말씀을 외우면 이름 옆 <b>도장 찍기</b>를 눌러 주세요. 아이에게 열매 10개가 바로 들어가고, 아이 화면 도장판에 빨간 도장이 찍혀요. 아이가 마을에 들어와 있으면 1분 안에 아이 화면에 “선생님이 도장을 찍어 주셨어요!” 알림이 떠요. 잘못 눌렀으면 <b>지우기</b>로 되돌리면 열매도 다시 빠져요.</p>
+      <p class="note" style="margin-bottom:12px">아이가 선생님 앞에서 말씀을 외우면 이름 옆 <b>도장 찍기</b>를 눌러 주세요. 아이에게 열매 <span id="stampFruits">10</span>개가 바로 들어가고, 아이 화면 도장판에 빨간 도장이 찍혀요. 아이가 마을에 들어와 있으면 1분 안에 아이 화면에 “선생님이 도장을 찍어 주셨어요!” 알림이 떠요. 잘못 눌렀으면 <b>지우기</b>로 되돌리면 열매도 다시 빠져요.</p>
       <div class="stamp-verses" id="stampVerses" role="tablist" aria-label="말씀 고르기"></div>
       <div class="stamp-verse" id="stampVerse"></div>
       <div class="stamp-tools"><input id="stampSearch" type="search" placeholder="이름으로 찾기" aria-label="아이 이름으로 찾기"><span id="stampSum"></span></div>
@@ -319,6 +321,7 @@ dialog::backdrop { background: rgba(60, 45, 30, .35); }
     <section id="tab-village" hidden>
       <div class="bar"><h2>마을 설정과 대화</h2><button class="btn btn-sm" id="chatRefresh" type="button">새로 보기</button></div>
       <div class="card signup-card" id="villageBox" style="margin-bottom:16px"></div>
+      <div class="card signup-card" id="rewardBox" style="margin-bottom:16px" hidden></div>
       <p class="note" style="margin-bottom:12px">아이들이 마을에서 직접 쓴 글과 둘이 나눈 대화(‘→ 누구에게’ 표시)예요. 거친 말, 놀리는 말, 전화번호, 인터넷 주소는 보내기 전에 ♡나 ***로 가려지고, 가려진 글에는 ‘가림’ 표시가 붙어요. 기록은 30일 동안 남아요. 아이가 글로 친구를 힘들게 하면 그 아이 옆의 ‘글 대화 막기’를 눌러 주세요. 그 아이는 정해진 말풍선으로만 말할 수 있게 돼요.</p>
       <div class="chat-list" id="chatList"></div>
       <h3 style="margin:22px 0 8px;font-family:var(--display);font-weight:400">그림 댓글</h3>
