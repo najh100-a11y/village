@@ -642,6 +642,13 @@ function setupPad() {
     toast(on ? '☂️ 우산을 폈어요! 다시 누르면 접어요. 무늬는 옷장(꾸미기)의 \'우산\' 칸에서 바꿔요.' : '우산을 접었어요.', on ? 3000 : 1600);
   });
   $('#btnUmb').addEventListener('contextmenu', (e) => e.preventDefault());
+  // 줄넘기 단추: 마을 길 어디서나 그 자리에서 줄넘기를 한다 (기록 세우기)
+  $('#btnRope').addEventListener('click', () => {
+    sfx.pop();
+    const r = play3d.jumpRope();
+    if (r && !r.ok && r.why) toast(r.why, 2200);
+  });
+  $('#btnRope').addEventListener('contextmenu', (e) => e.preventDefault());
   const jump = $('#btnJump');
   jump.addEventListener('pointerdown', (e) => {
     e.preventDefault();
@@ -1666,6 +1673,7 @@ function showNews() {
     const up = REWARD.qt >= 2 && REWARD.memory >= 1 && REWARD.copy >= 3 && REWARD.photo >= 10 && REWARD.stamp >= 10; // 예전(묵상 2, 암송 1, 필사 3, 사진 10, 도장 10)보다 줄어든 것이 없으면
     news.push(['rewards1116', `새 소식! 말씀 활동 열매가 ${up ? '늘었어요' : '바뀌었어요'}. 묵상은 하루 ${REWARD.qt}개, 암송 연습은 구절마다 ${REWARD.memory}개(하루 ${REWARD.verses}구절까지), 필사는 ${REWARD.copy}개이고 공책 사진을 올리면 그 주 필사 열매가 모두 ${REWARD.photo}개예요. 선생님 도장은 ${REWARD.stamp}개예요.`]);
   }
+  news.push(['jrope', "새 소식! 이제 마을 길 어디서나 줄넘기를 할 수 있어요. 오른쪽 아래 '줄넘기' 단추를 누르고, 줄이 발밑에 올 때 뛰어서 기록을 세워 봐요."]);
   if (state.features.nbr) news.push(['nbr', "새 소식! 마을 섬 남서쪽에 '이웃 마을' 섬이 생겼어요. 묵상의 숲 앞 길 끝 다리를 건너면 마을 친구들 집이 모두 모여 있어요. 친구가 마을에 없어도 그 집에 놀러 갈 수 있고, 집 앞 우체통에 인사 스티커를 남길 수 있어요."]);
   if (state.features.hide) news.push(['hide2', "새 소식! 숨바꼭질 섬이 마을 섬만큼 넓어졌어요. 헛간, 뒤집힌 배, 나무 구멍, 옥수수밭처럼 숨을 곳이 47군데나 돼요. 친구가 방을 열면 초대가 없어도 술래 나무를 눌러 바로 들어갈 수 있어요(8명까지)."]);
   if (state.features.houses) news.push(['houses', "새 소식! 우리 집 모양을 고를 수 있어요. 내 집 '집 꾸미기'에서 '🏡 집 모양'을 누르면 나무 오두막, 빨간 벽돌집은 바로 고르고, 한옥, 통나무집, 버섯집, 작은 성은 열매 15개로 사요. 사기 전에 미리 볼 수 있고, 지붕 색은 열매 없이 바꿔요."]);

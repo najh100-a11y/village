@@ -13,6 +13,7 @@ import { renderFishBook } from './fishing.js';
 import { createRides } from './rides.js';
 import { createSkipGame, SKIP_STANDS, SKIP_FACE } from './beach.js';
 import { createArkGame, ARK_SEATS } from './ark.js';
+import { createJumpRope, remoteRope } from './jumprope.js';
 import { SEA_Y, SEA_SPOTS, MOOR, BOARD, BOAT_FACE, HARBOR, seatOf, seaRoute, seaBlock, shoreGap, nearSchool } from './sea.js';
 import { onPier, PIER } from './isles.js';
 import { BG_TABLES, bgTable, stoolsFor } from './boardisle.js';
@@ -641,6 +642,14 @@ export function createPlay3D(ctx) {
   }
   function decorateRemote(r, act, hint) {
     const av = r.av;
+    // 줄넘기하는 친구: 그 자리에서 줄을 돌리며 폴짝폴짝 뛴다
+    if (act !== 'jrope' && av.jrope) { av.jrope.dispose(); av.jrope = null; }
+    if (act === 'jrope') {
+      if (r.pin && r.pin.auto) v.unpinRemote(r.id);
+      if (av.held) { const o = av.held.obj; av.drop(); if (o.userData.isRod) disposeTree(o); }
+      if (!av.jrope) av.jrope = remoteRope(av);
+      return;
+    }
     if (r.pin && !r.pin.auto) return; // 나와 함께 노는 친구는 놀이가 자리를 정한다
     const p = hint || r.target || av.root.position;
     if (act === 'fish') {
@@ -3272,6 +3281,7 @@ export function createPlay3D(ctx) {
   // 놀이동산 놀이기구
   const rides = createRides({ v, ui, begin, stopAll, portrait, shout: (id) => ctx.shout && ctx.shout(id), setActivity });
   const skip = createSkipGame({ v, ui, begin, stopAll, portrait, rpc, getToken, lost, live, onCelebrate, features: () => (ctx.features ? ctx.features() : {}) });
+  const jrope = createJumpRope({ v, ui, begin, stopAll, portrait, rpc, getToken, lost, live, onCelebrate, features: () => (ctx.features ? ctx.features() : {}) });
   const arkGame = createArkGame({ v, ui, begin, stopAll, portrait, live, hub, onlineFriends, friendPicker, waitInvite,
     menuTok: { next: () => ++menuTok, is: (t) => t === menuTok }, myId: () => (ctx.myId ? ctx.myId() : null), seatPose, SEAT_Y, onCelebrate,
     rpc, getToken, lost, features: () => (ctx.features ? ctx.features() : {}) });
@@ -3352,7 +3362,7 @@ export function createPlay3D(ctx) {
     get boardState() { return cur && cur.id === 'bgame' && cur.game.state ? cur.game.state() : null; },
     ride: rides.ride,
     fishing, seaFishing, omokMenu, omok, omokWatch, cookMenu, cook, cookFree, easel, artSaved,
-    skipping: skip.skipping, arkMenu: arkGame.arkMenu, ark: arkGame.ark, arkBoard: arkGame.arkBoard,
+    skipping: skip.skipping, jumpRope: jrope.jumpRope, jrBoard: jrope.board, arkMenu: arkGame.arkMenu, ark: arkGame.ark, arkBoard: arkGame.arkBoard,
     observe(id, st) { if (watchUpdate) watchUpdate(id, st); },
     stop: stopAll, decorateRemote,
     get active() { return cur && cur.id; },

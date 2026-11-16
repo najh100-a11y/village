@@ -357,7 +357,7 @@ export class DemoBackend {
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true, breeds: true, skip2: true, volley: true, expand: true, houses: true, hide: true, nbr: true, rewards: this.rewards() }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true, breeds: true, skip2: true, volley: true, expand: true, houses: true, hide: true, nbr: true, rewards: this.rewards(), jrope: true }; }
   // 쪽지함: 친구별 마지막 쪽지와 안 읽은 수 (최근 30일)
   kids_dm_box({ p_token }) {
     const me = this.session(p_token, 'child');
@@ -578,6 +578,45 @@ export class DemoBackend {
     const bestToday = Math.max(0, ...todays.map((x) => x.n)), best = Math.max(0, ...mine.map((x) => x.n));
     this.db.skips.push({ child: me, n, at: nowIso() });
     return { skips: n, best_today: Math.max(bestToday, n), best: Math.max(best, n), new_best: n > best && n > 0, today_best_new: n > bestToday && n > 0, top: this.skipTop(me) };
+  }
+  // ---------- 줄넘기 기록 (서버 kids_jr_save, kids_jr_board와 같다. 열매는 주지 않는다) ----------
+  // 체험판이 처음이면 예시 친구 바다의 기록을 넣어 둔다 (기록판이 비어 보이지 않게)
+  jrDb() {
+    if (!this.db.jrope) {
+      const at = nowIso(60);
+      this.db.jrope = this.db.children.some((c) => c.id === 'c3') ? { c3: { best: 23, best_at: at, day: today(), day_best: 12, day_at: at, runs: 3, jumps: 41, last_at: at } } : {};
+    }
+    return this.db.jrope;
+  }
+  jrRows(me, isToday) {
+    const d = today();
+    return Object.entries(this.jrDb())
+      .map(([id, j]) => ({ j, c: this.db.children.find((x) => x.id === id) }))
+      .filter(({ j, c }) => c && c.village_name && (isToday ? j.day === d && j.day_best > 0 : j.best > 0))
+      .sort((a, b) => (isToday ? b.j.day_best - a.j.day_best || a.j.day_at.localeCompare(b.j.day_at) : b.j.best - a.j.best || a.j.best_at.localeCompare(b.j.best_at)))
+      .slice(0, 10)
+      .map(({ j, c }) => ({ name: c.village_name, avatar: c.avatar, n: isToday ? j.day_best : j.best, me: c.id === me, teacher: !!c.teacher }));
+  }
+  kids_jr_save({ p_token, p_count, p_ms }) {
+    const me = this.session(p_token, 'child');
+    if (!Number.isInteger(p_count) || p_count < 1 || p_count > 3000 || !Number.isInteger(p_ms) || p_ms < 0 || p_ms > 3600000 || p_count * 500 > p_ms + 1500) fail('BAD_JUMP');
+    this.jrDb();
+    const d = today(), at = nowIso();
+    const j = this.db.jrope[me] || { best: 0, best_at: at, day: d, day_best: 0, day_at: at, runs: 0, jumps: 0, last_at: null };
+    if (j.last_at && Date.now() - Date.parse(j.last_at) < 1000) fail('TOO_FAST');
+    const oldBest = j.best, oldDay = j.day === d ? j.day_best : 0;
+    if (p_count > j.best) { j.best = p_count; j.best_at = at; }
+    if (j.day !== d) { j.day = d; j.day_best = p_count; j.day_at = at; } else if (p_count > j.day_best) { j.day_best = p_count; j.day_at = at; }
+    j.runs += 1; j.jumps += p_count; j.last_at = at;
+    this.db.jrope[me] = j;
+    const top = this.jrRows(me, true)[0];
+    return { count: p_count, best: Math.max(oldBest, p_count), best_today: Math.max(oldDay, p_count), new_best: p_count > oldBest, today_best_new: p_count > oldDay,
+      king: p_count > oldDay && !!top && top.me };
+  }
+  kids_jr_board({ p_token }) {
+    const me = this.session(p_token, 'child');
+    const j = this.jrDb()[me];
+    return { today: this.jrRows(me, true), all: this.jrRows(me, false), best: j ? j.best : 0, best_today: j && j.day === today() ? j.day_best : 0 };
   }
   kids_skip_board({ p_token }) {
     const me = this.session(p_token, 'child');
