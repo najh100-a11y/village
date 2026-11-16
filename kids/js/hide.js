@@ -184,14 +184,32 @@ export function createHideGame(o) {
   // ---------- 다른 사람 모습 (숨고 찾기) ----------
   function showHidden(pid, on, k = -1) {
     if (pid === G.me) return;
+    const hid = on || !!G.blind; // 술래가 눈을 가리고 세는 동안에는 술래 화면에서 아무도 보이지 않는다
     const a = actor(pid);
     if (a) {
-      a.hidden = on;
+      a.hidden = hid;
       if (on && k >= 0) { const sp = HS_SPOTS[k]; actorAt(a, sp.door2.x, sp.door2.z); }
       if (!on) a.av.pose = null;
       return;
     }
-    v.setHsHidden(pid, on);
+    v.setHsHidden(pid, hid);
+  }
+  // 술래 눈가림: 내가 술래로 세는 동안 내 화면에서는 같이 하는 친구가 모두 보이지 않는다
+  // (숨으러 가는 모습, 이름표, 말풍선, 애완동물, 마을 지도 위 자리). 다 세면 숨지 않은 친구만 다시 보인다
+  function blind(on) {
+    G.blind = !!on;
+    for (const p of G.players) {
+      if (p.pid === G.me) continue;
+      const hid = G.blind || G.hidden.has(p.pid);
+      const a = actor(p.pid);
+      if (a) a.hidden = hid;
+      else v.setHsHidden(p.pid, hid);
+    }
+  }
+  // 판에서 나간 친구는 숨은 모습과 자리 고정을 풀어 마을에서 다시 보이게 한다
+  function freeKid(pid) {
+    v.setHsHidden(pid, false);
+    v.unpinRemote(pid);
   }
   function sayAs(pid, text) {
     const a = actor(pid);
@@ -271,7 +289,7 @@ export function createHideGame(o) {
     if (G.waiting && m.t !== 'L' && m.t !== 'G' && m.t !== 'X') return;
     switch (m.t) {
       case 'L': if (G.waiting) { const pl = unpack(m.pl); if (pl) { G.players = pl; G.busy = m.ph === 1; drawWait(); } } break;
-      case 'P': { const pl = unpack(m.pl); if (pl) { G.players = pl; syncActors(); drawHud(); } break; }
+      case 'P': { const pl = unpack(m.pl); if (pl) { for (const p of G.players) if (p.pid !== G.me && !pl.some((q) => q.pid === p.pid)) freeKid(p.pid); G.players = pl; syncActors(); drawHud(); } break; }
       case 'G': startRound(m); break;
       case 'H': if (Number.isInteger(m.k) && HS_SPOTS[m.k] && typeof m.p === 'string') onHid(m.p, m.k, !!m.a); break;
       case 'U': if (typeof m.p === 'string') onUnhid(m.p); break;
@@ -291,7 +309,9 @@ export function createHideGame(o) {
     if (G.waiting) { G.waiting = false; closingSheet = true; o.modal.close(); closingSheet = false; }
     result.hidden = true;
     // 지난 판에 숨어 있던 모습을 모두 되돌린다
+    G.blind = false;
     for (const p of G.players) if (p.pid !== G.me) showHidden(p.pid, false);
+    for (const p of G.players) if (p.pid !== G.me && !pl.some((q) => q.pid === p.pid)) freeKid(p.pid); // 이번 판에 없는 친구
     for (const p of G.players) if (p.kind === 'kid' && p.pid !== G.me) v.unpinRemote(p.pid);
     G.players = pl;
     G.round = Number(m.r) || G.round + 1;
@@ -322,7 +342,7 @@ export function createHideGame(o) {
     if (sk && sk.kind === 'kid' && sk.pid !== G.me) v.pinRemote(sk.pid, { x: HS_TREE.seekX, z: HS_TREE.seekZ, rot: HS_TREE.seekRot, pose: coverEyes });
     o.setActivity('hs');
     o.setScene('game');
-    if (G.seeker === G.me) enterCount();
+    if (G.seeker === G.me) { blind(true); enterCount(); }
     else {
       exitHidden();
       exitCount();
@@ -357,7 +377,7 @@ export function createHideGame(o) {
     G.seekAt = nowMs();
     G.nextRustle = G.seekAt + ms * HS_RULE.rustleAt;
     const sk = P(G.seeker);
-    if (G.seeker === G.me) exitCount();
+    if (G.seeker === G.me) { blind(false); exitCount(); }
     else if (sk && sk.kind === 'kid') v.unpinRemote(sk.pid);
     const a = actor(G.seeker);
     if (a) a.av.pose = null;
@@ -417,6 +437,7 @@ export function createHideGame(o) {
     const why = ['all', 'time', 'giveup', 'left'].includes(m.w) ? m.w : 'time';
     const win = Array.isArray(m.win) ? m.win.filter((p) => P(p)) : [];
     const stayed = [...G.hidden.keys()];
+    if (G.blind) blind(false); // 세는 중에 판이 끝나면 (술래가 나가는 등) 다시 모두 보인다
     exitCount();
     for (const q of stayed) {
       if (q === G.me) { exitHidden(); setTimeout(() => { if (G) sayAs(G.me, '나 여기 있지!'); }, 200); } else {
@@ -621,6 +642,7 @@ export function createHideGame(o) {
     G.hidden.delete(pid);
     G.found = G.found.filter((q) => q !== pid);
     G.players = G.players.filter((p) => p.pid !== pid);
+    freeKid(pid);
     if (G.room) G.room.setMembers(roomMembers());
     emit('P', { pl: pack() });
     sendRoster();
@@ -1098,7 +1120,7 @@ export function createHideGame(o) {
     get rooms() { return openRooms(); },
     get active() { return !!G; },
     get hidden() { return !!(G && G.myHide >= 0); },
-    get state() { return G ? { phase: G.phase, seeker: G.seeker, hidden: [...G.hidden], found: [...G.found], checked: [...G.checked], players: G.players.map((p) => p.pid), queue: (G.queue || []).map((p) => p.pid), waiting: !!G.waiting, me: G.me, myHide: G.myHide, host: G.host, result: G.result && { ...G.result },
+    get state() { return G ? { phase: G.phase, seeker: G.seeker, hidden: [...G.hidden], found: [...G.found], checked: [...G.checked], players: G.players.map((p) => p.pid), queue: (G.queue || []).map((p) => p.pid), waiting: !!G.waiting, me: G.me, myHide: G.myHide, host: G.host, blind: !!G.blind, result: G.result && { ...G.result },
       actors: [...G.actors.values()].map((a) => ({ p: a.pid, m: a.brain.mode, k: a.brain.k, arr: a.arrived, hid: a.hidden, x: +a.av.root.position.x.toFixed(1), z: +a.av.root.position.z.toFixed(1), via: a.via.length, go: !!a.target })) } : null; },
   };
 }

@@ -315,7 +315,7 @@ body.map-view .umb-btn, #hud[hidden] ~ .umb-btn, #sayPanel:not([hidden]) ~ .umb-
 .rope-btn svg { width: 24px; height: 24px; }
 html.touch .rope-btn { right: calc(max(16px, env(safe-area-inset-right)) + 13px); bottom: calc(124px + env(safe-area-inset-bottom)); width: 60px; height: 60px; padding: 0; border-radius: 50%; flex-direction: column; justify-content: center; gap: 0; font-size: 12px; }
 html.touch .rope-btn svg { width: 22px; height: 22px; }
-body.map-view .rope-btn, #hud[hidden] ~ .rope-btn, #sayPanel:not([hidden]) ~ .rope-btn, body.in-game .rope-btn, body.home-editing .rope-btn, body.at-home .rope-btn, body.swimming .rope-btn, body.bg-on .rope-btn, body.piano-on .rope-btn, body.swing-on .rope-btn, body.hs-lock .rope-btn, body.home-building .rope-btn, body.home-looking .rope-btn { display: none !important; }
+body.map-view .rope-btn, #hud[hidden] ~ .rope-btn, #sayPanel:not([hidden]) ~ .rope-btn, body.in-game .rope-btn, body.home-editing .rope-btn, body.at-home .rope-btn, body.swimming .rope-btn, body.bg-on .rope-btn, body.piano-on .rope-btn, body.swing-on .rope-btn, body.hs-lock .rope-btn, body.hs-on .rope-btn, body.home-building .rope-btn, body.home-looking .rope-btn { display: none !important; }
 .run-btn[aria-pressed="true"] { background: radial-gradient(circle at 40% 32%, #8FE0A8, #3FAE66); color: #fff; box-shadow: 0 4px 0 #2B7F49, 0 8px 18px rgba(30, 90, 50, .25); }
 html.touch .run-btn { right: calc(max(16px, env(safe-area-inset-right)) + 98px); bottom: calc(33px + env(safe-area-inset-bottom)); width: 72px; height: 72px; padding: 0; border-radius: 50%; flex-direction: column; justify-content: center; gap: 0; font-size: 13px; }
 html.touch .run-btn svg { width: 26px; height: 26px; }
@@ -1068,7 +1068,8 @@ body.hs-on #toast { top: calc(152px + env(safe-area-inset-top)); }
 .hs-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(22px + env(safe-area-inset-bottom)); z-index: 16; display: flex; gap: 8px; }
 .hs-bar .btn { box-shadow: 0 6px 18px rgba(70, 50, 30, .22); white-space: nowrap; }
 body.hs-lock .pad, body.hs-lock .jump-btn, body.hs-lock .run-btn, body.hs-lock .umb-btn, body.hs-lock #prompt, body.hs-lock .pet-bar { display: none !important; }
-.hs-cover { position: fixed; inset: 0; z-index: 15; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 24px; background: radial-gradient(circle at 50% 45%, rgba(46, 82, 58, .9), rgba(16, 32, 24, .97)); color: #FFFDF7; text-align: center; pointer-events: none; }
+/* 술래가 세는 동안 마을이 조금도 비치지 않게 꽉 막고, 아래 단추(지도, 시점)도 눌리지 않게 한다 */
+.hs-cover { position: fixed; inset: 0; z-index: 15; display: grid; place-content: center; justify-items: center; gap: 10px; padding: 24px; background: #102018 radial-gradient(circle at 50% 45%, #2E523A, #102018); color: #FFFDF7; text-align: center; touch-action: none; user-select: none; -webkit-user-select: none; }
 .hs-cover p { margin: 0; }
 .hs-cover-eyes { font-size: 64px; line-height: 1; }
 .hs-cover-chant { font-family: var(--display); font-size: clamp(22px, 5.2vw, 34px); animation: hsBob 1.2s ease-in-out infinite; }
@@ -1105,6 +1106,8 @@ body.hs-lock .pad, body.hs-lock .jump-btn, body.hs-lock .run-btn, body.hs-lock .
 @media (max-width: 560px) {
   .hs-bar { bottom: calc(92px + env(safe-area-inset-bottom)); }
   html.touch .hs-bar { bottom: calc(250px + env(safe-area-inset-bottom)); }
+  /* 술래가 세거나 숨어 있을 때는 방향 단추와 점프 단추가 없으니 단추 줄을 아래로 내려 눈가림 글과 겹치지 않게 한다 */
+  html.touch body.hs-lock .hs-bar { bottom: calc(92px + env(safe-area-inset-bottom)); }
   .hs-hud { top: calc(100px + env(safe-area-inset-top)); padding: 7px 14px 8px; }
   .hs-hud b { font-size: 17px; }
   .hs-hud span { font-size: 13px; }

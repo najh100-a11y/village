@@ -154,6 +154,7 @@ export function createJumpRope({ v, ui, begin, stopAll, portrait, rpc, getToken,
     if (v.atHome) return '줄넘기는 마을 길에서 할 수 있어요.';
     if (v.swim) return '물속에서는 줄넘기를 할 수 없어요. 물 밖으로 나와요!';
     if (v.mode !== 'play') return '하던 놀이를 마치고 해 봐요.';
+    if (document.body.classList.contains('hs-on')) return '숨바꼭질을 마치고 해 봐요.'; // 숨바꼭질을 하는 동안에는(찾는 중, 판 결과 창) 하지 않는다
     return null;
   }
 
