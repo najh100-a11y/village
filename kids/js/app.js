@@ -1668,7 +1668,7 @@ function showNews() {
   news.push(['boardisle4', '새 소식! 보드게임 섬에서 방을 만들면 친구 넷까지 함께 놀 수 있어요(만칼라는 둘). 빈자리에는 컴퓨터 친구를 앉히고, 윷놀이는 2:2 편을 먹고 할 수도 있어요.']);
   if (state.features.home) news.push(['swing', "새 소식! 내 집 마당 그네를 탈 수 있어요. 그네에 앉아 '힘껏 구르기'를 누를수록 높이 올라가요. 놀러 온 친구에게도 그네 타는 모습이 보여요."]);
   if (state.features.home) news.push(['slide', '새 소식! 내 집 마당 미끄럼틀도 탈 수 있어요. 미끄럼틀을 누르면 사다리를 올라가서 쭉 미끄러져 내려와요. 같은 집에 있는 친구에게도 타는 모습이 보여요.']);
-  if (state.features.hide) news.push(['hide', "새 소식! 마을 섬 북쪽, 내 집 뒤로 다리를 건너면 숨바꼭질 섬이 있어요. 가운데 술래 나무를 누르면 컴퓨터 친구나 마을 친구와 숨바꼭질을 해요. 찾은 친구는 술래와 같이 찾고, 이기면 열매 1개(하루 3개까지)를 받아요."]);
+  if (state.features.hide) news.push(['hide', "새 소식! 마을 섬 북쪽, 내 집 뒤로 다리를 건너면 숨바꼭질 섬이 있어요. 가운데 술래 나무를 누르면 컴퓨터 친구나 마을 친구와 숨바꼭질을 해요. 술래는 혼자 찾고, 이기면 열매 1개(하루 3개까지)를 받아요."]);
   if (state.features.rewards) {
     const up = REWARD.qt >= 2 && REWARD.memory >= 1 && REWARD.copy >= 3 && REWARD.photo >= 10 && REWARD.stamp >= 10; // 예전(묵상 2, 암송 1, 필사 3, 사진 10, 도장 10)보다 줄어든 것이 없으면
     news.push(['rewards1116', `새 소식! 말씀 활동 열매가 ${up ? '늘었어요' : '바뀌었어요'}. 묵상은 하루 ${REWARD.qt}개, 암송 연습은 구절마다 ${REWARD.memory}개(하루 ${REWARD.verses}구절까지), 필사는 ${REWARD.copy}개이고 공책 사진을 올리면 그 주 필사 열매가 모두 ${REWARD.photo}개예요. 선생님 도장은 ${REWARD.stamp}개예요.`]);

@@ -1,6 +1,6 @@
 // 진숲 어린이 마을 — 숨바꼭질 (숨바꼭질 섬의 술래 나무)
 // 술래가 술래 나무에서 눈을 가리고 30초를 세는 동안('꼭꼭 숨어라 머리카락 보일라') 나머지는 숨을 곳 47군데 가운데 한 곳에 숨는다(한 곳에 한 명).
-// 그다음 2분 동안 술래가 숨을 곳 앞으로 가서 찾아본다(한 번 찾아보면 3.5초 쉰다). 찾은 친구는 술래와 같이 찾는다.
+// 그다음 2분 동안 술래가 숨을 곳 앞으로 가서 찾아본다(한 번 찾아보면 3.5초 쉰다). 찾힌 친구는 같이 찾지 않고 술래 나무 옆에서 구경한다.
 // 찾는 시간이 4분의 3 지나면 10~14초마다 부스럭 소리가 난다(절반은 아무도 없는 곳에서 나는 가짜 소리). 모두 찾으면 술래가,
 // 시간이 다 되거나 술래가 '못 찾겠다 꾀꼬리'를 외치면 끝까지 숨은 친구가 이긴다(이기면 열매 1개, 하루 3개까지: 서버 kids_hs_win). 처음 찾은 친구가 다음 술래다.
 // 혼자 하면 컴퓨터 친구(다람이, 콩이, 별이)와 하고, 친구와 하면 방을 연 사람(방장) 화면이 판을 정해 알린다.
@@ -19,7 +19,7 @@ import { friendPicker } from './play.js';
 
 export const HS_RULE = { hideSec: 30, seekSec: 120, checkSec: 3.5, max: 8, giveUpSec: 30, winMax: 3, rustleAt: 0.75, decoy: 0.5 };
 // 컴퓨터 친구가 찾는 빠르기(m/초)와 두리번거리는 시간(ms), 숨은 친구를 못 보고 지나칠 확률, 부스럭 소리를 따라갈 확률
-export const HS_CPU = { seekSpeed: 4.0, helpSpeed: 3.6, look: 800, think: [2700, 3400], miss: 0.1, follow: 0.5 };
+export const HS_CPU = { seekSpeed: 4.0, look: 800, think: [2700, 3400], miss: 0.1, follow: 0.5 };
 // 컴퓨터 친구 셋 (숨바꼭질 섬에 놀러 오는 친구들)
 export const HS_CPUS = [
   { name: '다람이', av: { skin: 1, eyes: 'big', eyeColor: 0, brows: 'soft', nose: 'button', mouth: 'grin', cheek: 'pink', hair: 'short', hairColor: 3,
@@ -77,8 +77,10 @@ export function createHideGame(o) {
   const P = (pid) => (G ? G.players.find((p) => p.pid === pid) : null);
   const nameOf = (pid) => { const p = P(pid); return p ? p.name : '친구'; };
   const myId = () => { const me = o.getMe(); return me ? me.id : null; };
-  const seekers = () => (G ? [G.seeker, ...G.found] : []);
-  const isSeeker = (pid) => G && (pid === G.seeker || G.found.includes(pid));
+  // 찾아볼 수 있는 사람은 술래 한 명이다 (찾힌 친구는 같이 찾지 않는다)
+  const isSeeker = (pid) => !!G && pid === G.seeker;
+  // 술래 나무 둘레에서 이 사람이 설 자리 (판 시작 때 모이는 자리, 찾힌 뒤 구경하는 자리)
+  const gatherSpot = (pid) => gatherPoint(Math.max(0, G.players.findIndex((p) => p.pid === pid)), G.players.length);
   const hiddenLeft = () => (G ? G.hidden.size : 0);
   const hiders = () => (G ? G.players.filter((p) => p.pid !== G.seeker) : []);
   const spotTaken = (k) => G && [...G.hidden.values()].includes(k);
@@ -409,14 +411,20 @@ export function createHideGame(o) {
       if (q === G.me) {
         exitHidden();
         sayAs(q, '들켰다!');
-        toast(`${josa(who, '이가', '가')} 나를 찾았어요! 이제 같이 찾아요. 숨을 곳을 눌러 찾아봐요.`, 3600);
+        toast(`${josa(who, '이가', '가')} 나를 찾았어요! 이번 판은 술래 나무 옆에서 구경해요.`, 3600);
         if (isle()) isle().setRings('seek', G.checked);
+        const gp = gatherSpot(q);
+        setTimeout(() => { if (G && G.phase === 'seek' && G.found.includes(G.me)) v.walkToPoint(gp.x, gp.z, gp.rot); }, 900);
       } else {
         showHidden(q, false);
         setTimeout(() => { if (G) sayAs(q, '들켰다!'); }, 350);
       }
       const fa = actor(q);
-      if (fa) fa.brain = { mode: 'idle', until: nowMs() + 1500, k: -1 }; // 찾은 컴퓨터 친구도 같이 찾는다
+      if (fa) {
+        // 찾힌 컴퓨터 친구도 같이 찾지 않고 술래 나무 옆으로 가서 구경한다
+        fa.brain = { mode: 'out', until: 0, k: -1 };
+        if (G.host) { const gp = gatherSpot(q); setTimeout(() => { if (G && G.phase === 'seek' && actor(q)) emit('N', { p: q, x: gp.x, z: gp.z, s: 3.4 }); }, 900); }
+      }
       celebrate(q);
     }
     sfx.success();
@@ -613,7 +621,7 @@ export function createHideGame(o) {
       }
       const sp = HS_SPOTS[k];
       b.k = k; b.mode = 'walk';
-      emit('N', { p: a.pid, x: sp.door2.x, z: sp.door2.z, s: a.pid === G.seeker ? HS_CPU.seekSpeed : HS_CPU.helpSpeed });
+      emit('N', { p: a.pid, x: sp.door2.x, z: sp.door2.z, s: HS_CPU.seekSpeed });
       return;
     }
     if (b.mode === 'walk' && a.arrived) { b.mode = 'look'; b.until = t + HS_CPU.look; return; }
@@ -798,12 +806,15 @@ export function createHideGame(o) {
       small = `${nameOf(G.seeker)}${G.seeker === me ? '' : ' 술래'}가 세는 중 · ${fmt(left)}${G.myHide >= 0 ? ' · 다른 곳으로 옮겨도 돼요' : ' · 숨을 곳을 누르면 그리로 가서 숨어요'}`;
     } else if (G.phase === 'seek') {
       const n = hiddenLeft();
-      if (G.seeker === me || G.found.includes(me)) {
-        big = G.seeker === me ? `👀 나는 술래! 숨은 친구 ${n}명` : `👀 같이 찾아요! 숨은 친구 ${n}명`;
+      if (G.seeker === me) {
+        big = `👀 나는 술래! 숨은 친구 ${n}명`;
         const cool = Math.max(0, G.lastCheck + HS_RULE.checkSec * 1000 - nowMs());
         small = `남은 시간 ${fmt(left)}${cool > 0 ? ' · 숨 고르는 중…' : ' · 숨을 곳을 눌러 찾아봐요'}`;
       } else if (G.myHide >= 0) {
         big = `🤫 ${HS_SPOTS[G.myHide].name}에 숨어 있어요`;
+        small = `${nameOf(G.seeker)} 술래가 찾는 중 · 남은 시간 ${fmt(left)} · 숨은 친구 ${n}명`;
+      } else if (G.found.includes(me)) {
+        big = '🙌 들켰어요! 이번 판은 구경해요';
         small = `${nameOf(G.seeker)} 술래가 찾는 중 · 남은 시간 ${fmt(left)} · 숨은 친구 ${n}명`;
       } else {
         big = '👀 술래가 찾는 중';
@@ -876,6 +887,7 @@ export function createHideGame(o) {
       return;
     }
     if (G.phase === 'seek') {
+      if (G.found.includes(G.me)) { toast('찾힌 친구는 같이 찾지 않아요. 술래 나무 옆에서 구경해요.', 2600); return; }
       if (!isSeeker(G.me)) { toast('숨어 있는 동안은 움직일 수 없어요. 쉿!', 2200); return; }
       const wait = G.lastCheck + HS_RULE.checkSec * 1000 - nowMs();
       const go = () => { if (!G || G.phase !== 'seek') return; G.lastCheck = nowMs(); ask('t', { k }); drawHud(); };
@@ -899,7 +911,7 @@ export function createHideGame(o) {
   function howTo() {
     return h('ul', { class: 'hs-how' },
       h('li', {}, `술래가 술래 나무에 눈을 가리고 ${HS_RULE.hideSec}초를 세는 동안 숨을 곳 ${HS_SPOTS.length}군데 가운데 한 곳에 숨어요. 숨을 곳을 누르면 그 앞으로 가서 쏙 숨어요.`),
-      h('li', {}, `술래는 ${fmt(HS_RULE.seekSec)} 동안 숨을 곳을 눌러 찾아봐요. 한 번 찾아보면 ${HS_RULE.checkSec}초 쉬어요. 찾은 친구는 술래와 같이 찾아요.`),
+      h('li', {}, `술래는 ${fmt(HS_RULE.seekSec)} 동안 숨을 곳을 눌러 찾아봐요. 한 번 찾아보면 ${HS_RULE.checkSec}초 쉬어요. 찾힌 친구는 같이 찾지 않고 술래 나무 옆에서 구경해요.`),
       h('li', {}, '찾는 시간이 거의 끝나 가면 가끔 부스럭 소리가 나요. 그런데 아무도 없는 곳에서 나는 가짜 소리도 있어요! 모두 찾으면 술래가, 끝까지 숨으면 숨은 친구가 이겨요.'),
       h('li', {}, `술래는 ${HS_RULE.giveUpSec}초가 지나면 '못 찾겠다 꾀꼬리'를 외칠 수 있어요. 처음 찾은 친구가 다음 술래예요.`));
   }
