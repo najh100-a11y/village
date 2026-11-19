@@ -1,5 +1,5 @@
 // 진숲 어린이 마을 — 곤충 채집
-// 곤충은 정해진 자리(꽃밭, 풀밭, 나무줄기, 물가) 열두 곳에 나타난다. 어느 자리에 어떤 곤충이 있을지는
+// 곤충은 정해진 자리(꽃밭, 풀밭, 나무줄기, 물가) 열여섯 곳에 나타난다. 어느 자리에 어떤 곤충이 있을지는
 // 마을 시계로 정해서 친구 화면에도 같은 곤충이 같은 곳에 있다. 누가 잡으면 그 곤충은 모두의 화면에서 사라진다.
 import * as THREE from './three.module.min.js';
 import { toon, toonGradient } from './avatar.js';
@@ -19,6 +19,21 @@ export const BUGS = [
   { id: 'stag_beetle', name: '사슴벌레', rarity: 2, habitat: 'tree', shape: 'stag', desc: '수컷의 큰턱이 사슴뿔처럼 생겼어요. 나무 수액을 먹어요.' },
   { id: 'rhino_beetle', name: '장수풍뎅이', rarity: 2, habitat: 'tree', shape: 'rhino', desc: '수컷 머리에 긴 뿔이 있어요. 참나무 수액을 좋아해요.' },
   { id: 'firefly', name: '반딧불이', rarity: 2, habitat: 'water', shape: 'firefly', night: true, desc: '배 끝에서 빛을 내요. 깨끗한 곳에서 살고, 밤에만 볼 수 있어요.' },
+  // 2026-11-19에 더한 14가지 (설명은 도감·백과에서 확인한 내용만 짧게 옮겼다. 출처는 README '곤충 채집')
+  { id: 'yellow_butterfly', name: '노랑나비', rarity: 0, habitat: 'flower', shape: 'butterfly', pattern: 'edge', wing: '#F7DC4A', mark: '#3A3A3A', desc: '노란 날개 가장자리에 까만 띠가 있어요. 애벌레는 토끼풀 같은 콩과 식물 잎을 먹어요.' },
+  { id: 'comma_butterfly', name: '네발나비', rarity: 1, habitat: 'flower', shape: 'butterfly', pattern: 'dots', wing: '#E8892B', mark: '#3A2A1E', desc: '주황색 날개에 까만 점이 있어요. 앞다리가 작게 줄어서 다리가 네 개처럼 보여요. 애벌레는 환삼덩굴 잎을 먹어요.' },
+  { id: 'hoverfly', name: '꽃등에', rarity: 0, habitat: 'flower', shape: 'hoverfly', desc: '벌처럼 생겼지만 파리 무리라서 사람을 쏘지 않아요. 공중 한자리에 멈춘 듯 떠 있기도 하고, 꽃꿀과 꽃가루를 먹어요.' },
+  { id: 'hawkmoth', name: '꼬리박각시', rarity: 2, habitat: 'flower', shape: 'hawkmoth', desc: '낮에 날아다니는 나방이에요. 벌새처럼 공중에 멈춘 채 긴 대롱 입으로 꽃꿀을 빨아요.' },
+  { id: 'acrida', name: '방아깨비', rarity: 0, habitat: 'grass', shape: 'acrida', desc: '머리가 뾰족하고 몸이 길어요. 긴 뒷다리를 잡으면 방아를 찧듯 위아래로 끄덕거려서 이런 이름이 붙었어요.' },
+  { id: 'cricket', name: '귀뚜라미', rarity: 1, habitat: 'grass', shape: 'cricket', night: true, desc: '수컷이 앞날개를 비벼서 소리를 내요. 주로 밤에 움직여요.' },
+  { id: 'stinkbug', name: '홍줄노린재', rarity: 1, habitat: 'grass', shape: 'shield', desc: '이름처럼 몸에 빨간 줄무늬가 있어요. 노린재 무리라서 위험하면 고약한 냄새를 내뿜어요.' },
+  { id: 'tiger_beetle', name: '길앞잡이', rarity: 2, habitat: 'grass', shape: 'tiger', desc: '몸이 보석처럼 여러 빛깔로 반짝여요. 사람이 다가가면 조금 앞에 날아가 앉아서, 길을 안내하는 것 같다고 이런 이름이 붙었어요.' },
+  { id: 'chafer', name: '풍뎅이', rarity: 0, habitat: 'tree', shape: 'chafer', body: '#3E9A4E', top: '#B8893A', desc: '초록빛과 구릿빛이 섞인 몸이 반짝반짝 빛나요. 다 자라면 나뭇잎을 먹고, 애벌레는 땅속에서 나무뿌리를 먹어요.' },
+  { id: 'longhorn', name: '알락하늘소', rarity: 1, habitat: 'tree', shape: 'longhorn', desc: '까맣게 반짝이는 몸에 하얀 점이 있고, 더듬이가 몸보다 길어요. 애벌레는 나무줄기 속을 파먹으며 자라요.' },
+  { id: 'flower_chafer', name: '흰점박이꽃무지', rarity: 1, habitat: 'tree', shape: 'chafer', body: '#4A3A26', top: '#5A4630', spots: true, desc: '구릿빛으로 반짝이는 몸에 하얀 무늬가 흩어져 있어요. 꽃이나 나무 수액에 모여들어요.' },
+  { id: 'skimmer', name: '밀잠자리', rarity: 0, habitat: 'water', shape: 'dragonfly', body: '#8EAFD4', eye: '#3F6E8C', desc: '수컷은 푸른빛, 암컷은 노란빛을 띠어요. 연못, 논두렁, 작은 냇가에서 흔히 볼 수 있어요.' },
+  { id: 'damselfly', name: '실잠자리', rarity: 1, habitat: 'water', shape: 'damsel', desc: '몸이 실처럼 가늘어요. 쉴 때는 대개 날개를 몸 위로 모아 접어요.' },
+  { id: 'water_strider', name: '소금쟁이', rarity: 0, habitat: 'water', shape: 'strider', pond: true, desc: '다리 끝 잔털에 기름기가 있어서 물 위에 떠요. 물에 떨어진 곤충을 잡아먹어요.' },
 ];
 export const BUG_IDS = BUGS.map((b) => b.id);
 export const bugById = (id) => BUGS.find((b) => b.id === id);
@@ -71,7 +86,8 @@ export function makeBug(def) {
   const dark = toon('#2E2A2A');
   const wings = [new THREE.Group(), new THREE.Group()];
   let glow = null;
-  const k = { butterfly: 1.7, bee: 1.8, dragonfly: 1.35, firefly: 1.6, ladybug: 1.6, hopper: 1.7, mantis: 1.5, cicada: 1.7, stag: 1.8, rhino: 1.8 }[def.shape] || 1.6;
+  const k = { butterfly: 1.7, bee: 1.8, dragonfly: 1.35, firefly: 1.6, ladybug: 1.6, hopper: 1.7, mantis: 1.5, cicada: 1.7, stag: 1.8, rhino: 1.8,
+    hoverfly: 1.6, hawkmoth: 1.7, acrida: 1.6, cricket: 1.7, shield: 1.7, tiger: 1.7, chafer: 1.8, longhorn: 1.7, damsel: 1.4, strider: 1.7 }[def.shape] || 1.6;
   switch (def.shape) {
     case 'butterfly': {
       body.add(ell(0.025, 0.025, 0.11, dark, 0, 0, 0));
@@ -79,11 +95,22 @@ export function makeBug(def) {
       body.add(rod(V(-0.01, 0.01, 0.1), V(-0.05, 0.04, 0.17), 0.005, dark));
       for (const s of [-1, 1]) {
         const wg = wings[s < 0 ? 0 : 1];
+        if (def.pattern === 'edge') {
+          // 날개 가장자리 띠: 조금 큰 까만 날개를 바로 아래에 깐다
+          for (const [rx, rz, z] of [[0.162, 0.13, 0.04], [0.11, 0.088, -0.07]]) { const rim = wing(rx, rz, def.mark, s, 0.005, z); rim.position.y = -0.003; wg.add(rim); }
+        }
         wg.add(wing(0.15, 0.12, def.wing, s, 0.01, 0.04));
         wg.add(wing(0.1, 0.08, def.wing, s, 0.01, -0.07));
-        const tip = wing(0.05, 0.04, def.mark, s, 0.15, 0.08);
-        tip.position.y = 0.003;
-        wg.add(tip);
+        if (!def.pattern) {
+          const tip = wing(0.05, 0.04, def.mark, s, 0.15, 0.08);
+          tip.position.y = 0.003;
+          wg.add(tip);
+        }
+        if (def.pattern === 'dots') for (const [x, z, r] of [[0.08, 0.07, 0.02], [0.15, 0.05, 0.016], [0.12, 0.11, 0.014], [0.2, 0.08, 0.012], [0.07, -0.07, 0.016]]) {
+          const d = wing(r, r, def.mark, s, x - r, z);
+          d.position.y = 0.003;
+          wg.add(d);
+        }
         if (def.id === 'swallowtail') for (let i = 0; i < 3; i++) { const st = wing(0.012, 0.09, def.mark, s, 0.05 + i * 0.05, 0.03); st.position.y = 0.004; wg.add(st); }
       }
       break;
@@ -97,11 +124,11 @@ export function makeBug(def) {
       break;
     }
     case 'dragonfly': {
-      const red = toon('#E5402F');
+      const red = toon(def.body || '#E5402F'), eye = toon(def.eye || '#B8301F');
       body.add(rod(V(0, 0, -0.32), V(0, 0, 0.0), 0.02, red));
       body.add(ell(0.045, 0.045, 0.06, red, 0, 0, 0.04));
-      body.add(ell(0.035, 0.035, 0.035, toon('#B8301F'), 0.025, 0.01, 0.1));
-      body.add(ell(0.035, 0.035, 0.035, toon('#B8301F'), -0.025, 0.01, 0.1));
+      body.add(ell(0.035, 0.035, 0.035, eye, 0.025, 0.01, 0.1));
+      body.add(ell(0.035, 0.035, 0.035, eye, -0.025, 0.01, 0.1));
       for (const s of [-1, 1]) {
         const wg = wings[s < 0 ? 0 : 1];
         wg.add(wing(0.2, 0.035, '#EAF6FF', s, 0.01, 0.05));
@@ -195,6 +222,170 @@ export function makeBug(def) {
       }
       break;
     }
+    case 'hoverfly': {
+      // 꽃등에: 납작한 노란 배에 까만 띠, 큰 겹눈, 날개는 한 쌍
+      const amber = toon('#E3B33C'), brown = toon('#4A3A2A');
+      body.add(ell(0.04, 0.035, 0.045, brown, 0, 0.005, 0.03));
+      body.add(ell(0.05, 0.022, 0.075, amber, 0, 0, -0.06));
+      for (const z of [-0.035, -0.07, -0.105]) body.add(ell(0.048, 0.024, 0.009, dark, 0, 0, z));
+      body.add(ell(0.038, 0.032, 0.03, toon('#8A3A22'), 0, 0.01, 0.08));
+      for (const s of [-1, 1]) { const wg = wings[s < 0 ? 0 : 1]; const w = wing(0.075, 0.03, '#EEF6FA', s, 0.0, -0.005); w.position.y = 0.035; wg.add(w); }
+      break;
+    }
+    case 'hawkmoth': {
+      // 꼬리박각시: 통통한 잿빛 몸, 꼬리 끝 털 뭉치, 주황 뒷날개, 앞으로 뻗은 대롱 입
+      const grey = toon('#7A6A58'), light = toon('#D9CBB0');
+      body.add(ell(0.05, 0.045, 0.06, grey, 0, 0, 0.03));
+      body.add(ell(0.045, 0.04, 0.08, grey, 0, -0.005, -0.06));
+      for (const s of [-1, 1]) body.add(ell(0.014, 0.014, 0.014, light, s * 0.034, 0, -0.08));
+      const tuft = mesh(new THREE.ConeGeometry(0.04, 0.06, 8), dark, 0, -0.005, -0.15);
+      tuft.rotation.x = Math.PI / 2;
+      body.add(tuft);
+      body.add(ell(0.032, 0.03, 0.03, grey, 0, 0.005, 0.1));
+      for (const s of [-1, 1]) body.add(ell(0.013, 0.013, 0.013, dark, s * 0.022, 0.014, 0.115));
+      body.add(rod(V(0, -0.005, 0.125), V(0, -0.035, 0.26), 0.004, dark));
+      for (const s of [-1, 1]) {
+        const wg = wings[s < 0 ? 0 : 1];
+        wg.add(wing(0.11, 0.042, '#6E5E4C', s, 0.02, 0.035));
+        const hind = wing(0.065, 0.035, '#E58A2E', s, 0.02, -0.02);
+        hind.position.y = -0.002;
+        wg.add(hind);
+      }
+      break;
+    }
+    case 'acrida': {
+      // 방아깨비: 길쭉한 몸, 원뿔처럼 뾰족한 머리, 아주 긴 뒷다리
+      const green = toon('#8CC152'), deep = toon('#6FA33E');
+      body.add(rod(V(0, 0.05, -0.22), V(0, 0.06, 0.08), 0.022, green));
+      const head = mesh(new THREE.ConeGeometry(0.026, 0.12, 8), green, 0, 0.075, 0.13);
+      head.rotation.x = Math.PI / 2 - 0.35;
+      body.add(head);
+      for (const s of [-1, 1]) {
+        body.add(ell(0.009, 0.012, 0.016, deep, s * 0.02, 0.085, 0.11));
+        body.add(rod(V(s * 0.01, 0.1, 0.17), V(s * 0.03, 0.12, 0.23), 0.005, deep));
+        body.add(rod(V(s * 0.02, 0.05, -0.04), V(s * 0.05, 0.14, -0.13), 0.011, deep));
+        body.add(rod(V(s * 0.05, 0.14, -0.13), V(s * 0.05, 0.0, -0.25), 0.007, deep));
+        body.add(rod(V(s * 0.02, 0.045, 0.03), V(s * 0.05, 0.0, 0.06), 0.006, deep));
+        body.add(rod(V(s * 0.02, 0.045, -0.01), V(s * 0.05, 0.0, -0.02), 0.006, deep));
+      }
+      break;
+    }
+    case 'cricket': {
+      // 귀뚜라미: 까만 밤색 몸, 등에 접은 날개, 아주 긴 더듬이, 굵은 뒷다리
+      const brown = toon('#3B2A1E'), wingc = toon('#6A5038');
+      body.add(ell(0.045, 0.035, 0.09, brown, 0, 0.04, -0.02));
+      body.add(ell(0.04, 0.014, 0.08, wingc, 0, 0.068, -0.045));
+      body.add(ell(0.042, 0.038, 0.036, brown, 0, 0.045, 0.085));
+      for (const s of [-1, 1]) {
+        body.add(rod(V(s * 0.015, 0.065, 0.115), V(s * 0.07, 0.1, 0.25), 0.0035, brown));
+        body.add(rod(V(s * 0.07, 0.1, 0.25), V(s * 0.13, 0.08, 0.33), 0.003, brown));
+        body.add(rod(V(s * 0.035, 0.04, -0.03), V(s * 0.075, 0.11, -0.1), 0.015, brown));
+        body.add(rod(V(s * 0.075, 0.11, -0.1), V(s * 0.065, 0.0, -0.18), 0.008, brown));
+        body.add(rod(V(s * 0.03, 0.03, 0.04), V(s * 0.065, 0.0, 0.07), 0.006, brown));
+        body.add(rod(V(s * 0.03, 0.03, 0.0), V(s * 0.07, 0.0, -0.01), 0.006, brown));
+        body.add(rod(V(s * 0.01, 0.04, -0.1), V(s * 0.03, 0.05, -0.18), 0.004, brown));
+      }
+      break;
+    }
+    case 'shield': {
+      // 홍줄노린재: 뒤가 뾰족한 방패 모양 빨간 등에 까만 세로줄
+      const red = toon('#D9452B');
+      const sh = mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.04, 5), red, 0, 0.035, -0.01);
+      sh.rotation.y = Math.PI;
+      sh.scale.set(1, 1, 1.25);
+      body.add(sh);
+      for (const [x, len, z] of [[-0.045, 0.12, -0.001], [-0.015, 0.15, -0.012], [0.015, 0.15, -0.012], [0.045, 0.12, -0.001]]) body.add(mesh(new THREE.BoxGeometry(0.012, 0.006, len), dark, x, 0.056, z));
+      body.add(ell(0.025, 0.018, 0.022, dark, 0, 0.035, 0.08));
+      for (const s of [-1, 1]) {
+        body.add(rod(V(s * 0.012, 0.04, 0.095), V(s * 0.04, 0.06, 0.15), 0.004, dark));
+        for (const z of [0.04, 0.0, -0.04]) body.add(rod(V(s * 0.04, 0.025, z), V(s * 0.085, 0.0, z + 0.01), 0.005, dark));
+      }
+      break;
+    }
+    case 'tiger': {
+      // 길앞잡이: 구릿빛 딱지날개에 푸른 띠, 초록 앞가슴과 머리, 큰 눈과 하얀 큰턱, 긴 다리
+      const green = toon('#2FA36B'), copper = toon('#C8553A'), blue = toon('#3A6FD0'), ivory = toon('#F2EBD8');
+      body.add(ell(0.045, 0.028, 0.075, copper, 0, 0.05, -0.04));
+      body.add(ell(0.046, 0.029, 0.012, blue, 0, 0.05, -0.065));
+      body.add(ell(0.046, 0.029, 0.012, green, 0, 0.05, -0.01));
+      body.add(ell(0.028, 0.024, 0.028, green, 0, 0.052, 0.05));
+      body.add(ell(0.036, 0.026, 0.028, green, 0, 0.052, 0.09));
+      for (const s of [-1, 1]) {
+        body.add(ell(0.014, 0.014, 0.014, dark, s * 0.032, 0.062, 0.095));
+        body.add(rod(V(s * 0.012, 0.045, 0.115), V(s * 0.004, 0.04, 0.15), 0.006, ivory));
+        body.add(rod(V(s * 0.02, 0.06, 0.11), V(s * 0.06, 0.08, 0.17), 0.003, dark));
+        for (const [z0, z1] of [[0.05, 0.11], [0.0, -0.01], [-0.04, -0.12]]) body.add(rod(V(s * 0.025, 0.045, z0), V(s * 0.1, 0.0, z1), 0.005, dark));
+      }
+      break;
+    }
+    case 'chafer': {
+      // 풍뎅이, 꽃무지: 둥글넓적한 등딱지 (꽃무지는 하얀 무늬)
+      const c = toon(def.body), top = toon(def.top);
+      body.add(ell(0.06, 0.04, 0.085, c, 0, 0.035, -0.02));
+      body.add(ell(0.048, 0.03, 0.035, top, 0, 0.037, 0.06));
+      body.add(ell(0.025, 0.02, 0.022, top, 0, 0.028, 0.095));
+      body.add(mesh(new THREE.BoxGeometry(0.003, 0.08, 0.15), dark, 0, 0.035, -0.025));
+      if (def.spots) {
+        const white = toon('#F4EFE2');
+        for (const [x, z] of [[0.025, 0.02], [-0.03, 0.0], [0.04, -0.03], [-0.02, -0.05], [0.015, -0.075], [-0.042, -0.07], [0.03, 0.065], [-0.025, 0.06]]) {
+          const zz = z < 0.04 ? (z + 0.02) / 0.085 : (z - 0.06) / 0.035;
+          const rx = z < 0.04 ? 0.06 : 0.048, ry = z < 0.04 ? 0.04 : 0.03, cy = z < 0.04 ? 0.035 : 0.037;
+          const y = cy + Math.sqrt(Math.max(0, 1 - (x / rx) ** 2 - zz ** 2)) * ry;
+          body.add(ell(0.008, 0.004, 0.011, white, x, y, z));
+        }
+      }
+      for (const s of [-1, 1]) for (const [z0, z1] of [[0.06, 0.1], [0.0, 0.0], [-0.05, -0.1]]) body.add(rod(V(s * 0.04, 0.02, z0), V(s * 0.09, 0.0, z1), 0.007, dark));
+      break;
+    }
+    case 'longhorn': {
+      // 알락하늘소: 까맣게 반짝이는 몸에 하얀 점, 몸보다 긴 줄무늬 더듬이
+      const black = toon('#1E1E24'), white = toon('#F2F2EE'), band = toon('#CFE1F0');
+      body.add(ell(0.045, 0.03, 0.11, black, 0, 0.03, -0.04));
+      body.add(ell(0.032, 0.028, 0.03, black, 0, 0.032, 0.08));
+      body.add(ell(0.028, 0.025, 0.025, black, 0, 0.03, 0.115));
+      for (const [x, z] of [[0.022, -0.12], [-0.022, -0.12], [0.03, -0.08], [-0.03, -0.08], [0.015, -0.05], [-0.015, -0.05], [0.032, -0.02], [-0.032, -0.02], [0.018, 0.02], [-0.018, 0.02]]) {
+        const y = 0.03 + Math.sqrt(Math.max(0, 1 - (x / 0.045) ** 2 - ((z + 0.04) / 0.11) ** 2)) * 0.03;
+        body.add(ell(0.009, 0.004, 0.009, white, x, y, z));
+      }
+      for (const s of [-1, 1]) {
+        const pt = (t) => V(s * (0.015 + 0.16 * t + 0.08 * t * t), 0.045 + 0.06 * t, 0.13 + 0.34 * t - 0.12 * t * t);
+        for (let j = 0; j < 9; j++) body.add(rod(pt(j / 9), pt((j + 1) / 9), 0.0045, j % 2 ? band : black));
+        for (const [z0, z1] of [[0.07, 0.12], [-0.01, -0.01], [-0.07, -0.14]]) body.add(rod(V(s * 0.03, 0.02, z0), V(s * 0.09, 0.0, z1), 0.006, black));
+      }
+      break;
+    }
+    case 'damsel': {
+      // 실잠자리: 실처럼 가는 배, 양쪽으로 떨어진 눈, 좁은 날개 네 장
+      const blue = toon('#3FA7B8'), eye = toon('#2C6E7A');
+      body.add(rod(V(0, 0, -0.34), V(0, 0, 0.0), 0.009, blue));
+      for (const z of [-0.08, -0.14, -0.2, -0.26, -0.32]) body.add(ell(0.0105, 0.0105, 0.007, dark, 0, 0, z));
+      body.add(ell(0.02, 0.02, 0.035, blue, 0, 0, 0.025));
+      for (const s of [-1, 1]) body.add(ell(0.016, 0.016, 0.016, eye, s * 0.03, 0.005, 0.065));
+      for (const s of [-1, 1]) {
+        const wg = wings[s < 0 ? 0 : 1];
+        wg.add(wing(0.12, 0.018, '#EAF6FF', s, 0.01, 0.04));
+        wg.add(wing(0.115, 0.018, '#EAF6FF', s, 0.01, 0.005));
+      }
+      break;
+    }
+    case 'strider': {
+      // 소금쟁이: 가는 몸, 짧은 앞다리, 물을 딛는 아주 긴 가운뎃다리와 뒷다리 (발끝에 물이 살짝 팬다)
+      const brown = toon('#3A3026'), dimple = toon('#CFEFFA');
+      body.add(ell(0.022, 0.016, 0.09, brown, 0, 0.04, -0.01));
+      body.add(ell(0.016, 0.014, 0.022, brown, 0, 0.042, 0.09));
+      const foot = (x, z) => { const o = mesh(new THREE.CircleGeometry(0.022, 12), dimple, x, 0.002, z); o.rotation.x = -Math.PI / 2; body.add(o); };
+      for (const s of [-1, 1]) {
+        body.add(rod(V(s * 0.008, 0.045, 0.105), V(s * 0.03, 0.06, 0.16), 0.003, brown));
+        body.add(rod(V(s * 0.012, 0.035, 0.06), V(s * 0.04, 0.01, 0.11), 0.004, brown));
+        body.add(rod(V(s * 0.018, 0.035, 0.0), V(s * 0.16, 0.03, 0.03), 0.004, brown));
+        body.add(rod(V(s * 0.16, 0.03, 0.03), V(s * 0.27, 0.0, -0.08), 0.003, brown));
+        body.add(rod(V(s * 0.016, 0.035, -0.03), V(s * 0.1, 0.02, -0.12), 0.0035, brown));
+        body.add(rod(V(s * 0.1, 0.02, -0.12), V(s * 0.15, 0.0, -0.29), 0.003, brown));
+        foot(s * 0.27, -0.08);
+        foot(s * 0.15, -0.29);
+      }
+      break;
+    }
   }
   merge(body);
   if (wings[0].children.length) {
@@ -212,12 +403,16 @@ export function bugIcon(id, known = true) {
   const dk = known ? '#2E2A2A' : '#B7A994';
   const svg = (inner) => `<svg viewBox="0 0 64 64" aria-hidden="true">${inner}</svg>`;
   switch (b && b.shape) {
-    case 'butterfly':
-      return svg(`<ellipse cx="20" cy="24" rx="15" ry="12" fill="${c(b.wing)}" stroke="${dk}" stroke-width="1.5"/><ellipse cx="44" cy="24" rx="15" ry="12" fill="${c(b.wing)}" stroke="${dk}" stroke-width="1.5"/><ellipse cx="23" cy="42" rx="10" ry="9" fill="${c(b.wing)}" stroke="${dk}" stroke-width="1.5"/><ellipse cx="41" cy="42" rx="10" ry="9" fill="${c(b.wing)}" stroke="${dk}" stroke-width="1.5"/><circle cx="10" cy="18" r="5" fill="${c(b.mark)}"/><circle cx="54" cy="18" r="5" fill="${c(b.mark)}"/>${b.id === 'swallowtail' ? `<path d="M14 26l10-6M40 20l10 6M18 34l8-6M38 28l8 6" stroke="${dk}" stroke-width="3"/>` : ''}<rect x="30" y="14" width="4" height="38" rx="2" fill="${dk}"/><path d="M31 15 26 6M33 15l5-9" stroke="${dk}" stroke-width="1.5" fill="none"/>`);
+    case 'butterfly': {
+      const sw = b.pattern === 'edge' ? 4 : 1.5, st = b.pattern === 'edge' ? c(b.mark) : dk;
+      const marks = b.pattern === 'dots' ? [[16, 20, 3], [24, 26, 2.6], [12, 28, 2.4], [48, 20, 3], [40, 26, 2.6], [52, 28, 2.4], [22, 42, 2.4], [42, 42, 2.4]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${c(b.mark)}"/>`).join('')
+        : b.pattern ? '' : `<circle cx="10" cy="18" r="5" fill="${c(b.mark)}"/><circle cx="54" cy="18" r="5" fill="${c(b.mark)}"/>`;
+      return svg(`<ellipse cx="20" cy="24" rx="15" ry="12" fill="${c(b.wing)}" stroke="${st}" stroke-width="${sw}"/><ellipse cx="44" cy="24" rx="15" ry="12" fill="${c(b.wing)}" stroke="${st}" stroke-width="${sw}"/><ellipse cx="23" cy="42" rx="10" ry="9" fill="${c(b.wing)}" stroke="${st}" stroke-width="${sw}"/><ellipse cx="41" cy="42" rx="10" ry="9" fill="${c(b.wing)}" stroke="${st}" stroke-width="${sw}"/>${marks}${b.id === 'swallowtail' ? `<path d="M14 26l10-6M40 20l10 6M18 34l8-6M38 28l8 6" stroke="${dk}" stroke-width="3"/>` : ''}<rect x="30" y="14" width="4" height="38" rx="2" fill="${dk}"/><path d="M31 15 26 6M33 15l5-9" stroke="${dk}" stroke-width="1.5" fill="none"/>`);
+    }
     case 'bee':
       return svg(`<ellipse cx="22" cy="20" rx="10" ry="7" fill="#fff" opacity=".85" stroke="${dk}" stroke-width="1.2"/><ellipse cx="42" cy="20" rx="10" ry="7" fill="#fff" opacity=".85" stroke="${dk}" stroke-width="1.2"/><ellipse cx="32" cy="36" rx="13" ry="17" fill="${c('#F6C344')}"/><rect x="19" y="32" width="26" height="5" fill="${dk}"/><rect x="21" y="42" width="22" height="5" fill="${dk}"/><circle cx="32" cy="17" r="7" fill="${dk}"/>`);
     case 'dragonfly':
-      return svg(`<ellipse cx="18" cy="20" rx="15" ry="4" fill="#eaf6ff" stroke="${dk}" stroke-width="1"/><ellipse cx="46" cy="20" rx="15" ry="4" fill="#eaf6ff" stroke="${dk}" stroke-width="1"/><ellipse cx="18" cy="29" rx="14" ry="4" fill="#eaf6ff" stroke="${dk}" stroke-width="1"/><ellipse cx="46" cy="29" rx="14" ry="4" fill="#eaf6ff" stroke="${dk}" stroke-width="1"/><rect x="30" y="16" width="4" height="44" rx="2" fill="${c('#E5402F')}"/><circle cx="28" cy="13" r="4" fill="${c('#B8301F')}"/><circle cx="36" cy="13" r="4" fill="${c('#B8301F')}"/>`);
+      return svg(`<ellipse cx="18" cy="20" rx="15" ry="4" fill="#eaf6ff" stroke="${dk}" stroke-width="1"/><ellipse cx="46" cy="20" rx="15" ry="4" fill="#eaf6ff" stroke="${dk}" stroke-width="1"/><ellipse cx="18" cy="29" rx="14" ry="4" fill="#eaf6ff" stroke="${dk}" stroke-width="1"/><ellipse cx="46" cy="29" rx="14" ry="4" fill="#eaf6ff" stroke="${dk}" stroke-width="1"/><rect x="30" y="16" width="4" height="44" rx="2" fill="${c(b.body || '#E5402F')}"/><circle cx="28" cy="13" r="4" fill="${c(b.eye || '#B8301F')}"/><circle cx="36" cy="13" r="4" fill="${c(b.eye || '#B8301F')}"/>`);
     case 'firefly':
       return svg(`<circle cx="32" cy="46" r="13" fill="${known ? '#E8FF8A' : '#E3DCCB'}" opacity=".6"/><circle cx="32" cy="46" r="7" fill="${c('#D8F25A')}"/><ellipse cx="32" cy="30" rx="8" ry="13" fill="${dk}"/><circle cx="32" cy="16" r="5" fill="${c('#E86A3A')}"/>`);
     case 'ladybug':
@@ -232,13 +427,39 @@ export function bugIcon(id, known = true) {
       return svg(`<path d="M26 18 16 6 20 4 30 14M38 18l10-12-4-2-10 10" fill="${c('#4A2E1E')}"/><ellipse cx="32" cy="22" rx="10" ry="7" fill="${c('#6B4429')}"/><ellipse cx="32" cy="42" rx="14" ry="17" fill="${c('#4A2E1E')}"/><path d="M32 28v30" stroke="${dk}" stroke-width="1.5"/>`);
     case 'rhino':
       return svg(`<path d="M30 20 26 4 34 2 36 18z" fill="${c('#3A2416')}"/><ellipse cx="32" cy="24" rx="11" ry="7" fill="${c('#5A3A24')}"/><ellipse cx="32" cy="43" rx="15" ry="17" fill="${c('#3A2416')}"/><path d="M32 30v28" stroke="${known ? '#1E130B' : '#B7A994'}" stroke-width="1.5"/><ellipse cx="27" cy="38" rx="3" ry="7" fill="#fff" opacity="${known ? 0.2 : 0}"/>`);
+    case 'hoverfly':
+      return svg(`<ellipse cx="20" cy="26" rx="13" ry="6" fill="#eef6fa" opacity=".9" stroke="${dk}" stroke-width="1" transform="rotate(20 20 26)"/><ellipse cx="44" cy="26" rx="13" ry="6" fill="#eef6fa" opacity=".9" stroke="${dk}" stroke-width="1" transform="rotate(-20 44 26)"/><ellipse cx="32" cy="42" rx="11" ry="15" fill="${c('#E3B33C')}"/><rect x="21" y="38" width="22" height="4" fill="${dk}"/><rect x="22" y="46" width="20" height="4" fill="${dk}"/><rect x="25" y="53" width="14" height="3" fill="${dk}"/><ellipse cx="32" cy="24" rx="8" ry="7" fill="${c('#4A3A2A')}"/><ellipse cx="32" cy="14" rx="10" ry="7" fill="${c('#8A3A22')}"/>`);
+    case 'hawkmoth':
+      return svg(`<path d="M30 22 6 14 10 30 28 30z" fill="${c('#6E5E4C')}"/><path d="M34 22 58 14 54 30 36 30z" fill="${c('#6E5E4C')}"/><path d="M28 30 14 38 28 38z" fill="${c('#E58A2E')}"/><path d="M36 30 50 38 36 38z" fill="${c('#E58A2E')}"/><ellipse cx="32" cy="34" rx="7" ry="16" fill="${c('#7A6A58')}"/><circle cx="28" cy="40" r="2" fill="${c('#D9CBB0')}"/><circle cx="36" cy="40" r="2" fill="${c('#D9CBB0')}"/><path d="M26 50h12l-6 10z" fill="${dk}"/><circle cx="32" cy="17" r="6" fill="${c('#7A6A58')}"/><path d="M32 11V2" stroke="${dk}" stroke-width="1.5"/>`);
+    case 'acrida':
+      return svg(`<path d="M8 52 42 22" stroke="${c('#8CC152')}" stroke-width="7" stroke-linecap="round"/><path d="M40 22 58 8 46 28z" fill="${c('#8CC152')}"/><path d="M50 14l8-6M52 16l9-3" stroke="${c('#6FA33E')}" stroke-width="2"/><path d="M24 38 30 22 6 60M30 34l6 12M36 30l8 10" stroke="${c('#6FA33E')}" stroke-width="2.5" fill="none" stroke-linecap="round"/><circle cx="46" cy="22" r="2" fill="${dk}"/>`);
+    case 'cricket':
+      return svg(`<path d="M26 12 8 2M38 12 56 2" stroke="${c('#3B2A1E')}" stroke-width="1.5" fill="none"/><ellipse cx="32" cy="38" rx="11" ry="18" fill="${c('#3B2A1E')}"/><ellipse cx="32" cy="40" rx="8" ry="13" fill="${c('#6A5038')}"/><circle cx="32" cy="16" r="9" fill="${c('#3B2A1E')}"/><path d="M22 40 10 30 14 58M42 40l12-10-4 28M26 56l-4 6M38 56l4 6" stroke="${c('#3B2A1E')}" stroke-width="3" fill="none" stroke-linecap="round"/>`);
+    case 'shield':
+      return svg(`<path d="M14 18h36l4 18-22 24-22-24z" fill="${c('#D9452B')}"/><path d="M22 18v28M29 18v36M35 18v36M42 18v28" stroke="${dk}" stroke-width="3.5"/><ellipse cx="32" cy="13" rx="7" ry="5" fill="${dk}"/><path d="M28 10 22 2M36 10l6-8M12 24l-6-4M12 34l-7 2M52 24l6-4M52 34l7 2" stroke="${dk}" stroke-width="2" fill="none"/>`);
+    case 'tiger':
+      return svg(`<path d="M22 22 6 12M22 32 4 34M24 42 8 56M42 22l16-10M42 32l18 2M40 42l16 14" stroke="${dk}" stroke-width="2" fill="none"/><ellipse cx="32" cy="42" rx="11" ry="17" fill="${c('#C8553A')}"/><rect x="21" y="46" width="22" height="4" fill="${c('#3A6FD0')}"/><rect x="21" y="34" width="22" height="3" fill="${c('#2FA36B')}"/><ellipse cx="32" cy="22" rx="7" ry="6" fill="${c('#2FA36B')}"/><ellipse cx="32" cy="13" rx="10" ry="6" fill="${c('#2FA36B')}"/><circle cx="23" cy="12" r="3.5" fill="${dk}"/><circle cx="41" cy="12" r="3.5" fill="${dk}"/><path d="M29 7l-3-5M35 7l3-5" stroke="${known ? '#F2EBD8' : '#B7A994'}" stroke-width="3" stroke-linecap="round"/>`);
+    case 'chafer': {
+      const spots = b.spots ? [[26, 36], [38, 40], [30, 48], [40, 52], [24, 50], [36, 28]].map(([x, y]) => `<ellipse cx="${x}" cy="${y}" rx="2.4" ry="1.6" fill="${known ? '#F4EFE2' : '#E3DCCB'}"/>`).join('') : '';
+      return svg(`<path d="M20 30 8 26M20 42 6 46M24 54 12 60M44 30l12-4M44 42l14 4M40 54l12 6" stroke="${dk}" stroke-width="2.5" fill="none"/><ellipse cx="32" cy="42" rx="16" ry="18" fill="${c(b.body)}"/><path d="M32 26v34" stroke="${dk}" stroke-width="1.2"/><ellipse cx="32" cy="22" rx="12" ry="8" fill="${c(b.top)}"/><ellipse cx="32" cy="12" rx="6" ry="4" fill="${c(b.top)}"/>${spots}`);
+    }
+    case 'longhorn': {
+      const ant = (sx) => [0, 1, 2, 3, 4, 5].map((j) => `<path d="M${32 + sx * (3 + j * 4.5)} ${12 - j * 2.2} L${32 + sx * (3 + (j + 1) * 4.5)} ${12 - (j + 1) * 2.2 + (j > 3 ? 2 : 0)}" stroke="${j % 2 ? (known ? '#CFE1F0' : '#E3DCCB') : c('#1E1E24')}" stroke-width="2.4"/>`).join('');
+      return svg(`${ant(-1)}${ant(1)}<path d="M22 34 12 30M22 44 10 48M26 54 16 62M42 34l10-4M42 44l12 4M38 54l10 8" stroke="${dk}" stroke-width="2" fill="none"/><ellipse cx="32" cy="42" rx="11" ry="20" fill="${c('#1E1E24')}"/><ellipse cx="32" cy="18" rx="7" ry="5" fill="${c('#1E1E24')}"/><ellipse cx="32" cy="12" rx="6" ry="4" fill="${c('#1E1E24')}"/>${[[27, 30], [37, 30], [26, 40], [38, 40], [28, 50], [36, 50], [32, 58]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="2.4" fill="${known ? '#F2F2EE' : '#E3DCCB'}"/>`).join('')}`);
+    }
+    case 'damsel':
+      return svg(`<ellipse cx="20" cy="22" rx="13" ry="2.6" fill="#eaf6ff" stroke="${dk}" stroke-width="1"/><ellipse cx="44" cy="22" rx="13" ry="2.6" fill="#eaf6ff" stroke="${dk}" stroke-width="1"/><ellipse cx="21" cy="28" rx="12" ry="2.6" fill="#eaf6ff" stroke="${dk}" stroke-width="1"/><ellipse cx="43" cy="28" rx="12" ry="2.6" fill="#eaf6ff" stroke="${dk}" stroke-width="1"/><rect x="31" y="18" width="2" height="44" rx="1" fill="${c('#3FA7B8')}"/><path d="M31 30h2M31 38h2M31 46h2M31 54h2" stroke="${dk}" stroke-width="1.5"/><ellipse cx="32" cy="20" rx="3" ry="5" fill="${c('#3FA7B8')}"/><circle cx="26" cy="13" r="3.2" fill="${c('#2C6E7A')}"/><circle cx="38" cy="13" r="3.2" fill="${c('#2C6E7A')}"/>`);
+    case 'strider':
+      return svg(`<g fill="none" stroke="${known ? '#9FD8EE' : '#E3DCCB'}" stroke-width="1.5"><ellipse cx="6" cy="36" rx="5" ry="2"/><ellipse cx="58" cy="36" rx="5" ry="2"/><ellipse cx="14" cy="60" rx="5" ry="2"/><ellipse cx="50" cy="60" rx="5" ry="2"/></g><path d="M30 26 16 22 6 36M34 26l14-4 10 14M30 38 20 46 14 60M34 38l10 8 6 14M30 16 24 8M34 16l6-8" stroke="${c('#3A3026')}" stroke-width="2" fill="none"/><ellipse cx="32" cy="30" rx="4" ry="15" fill="${c('#3A3026')}"/><ellipse cx="32" cy="13" rx="3.5" ry="4" fill="${c('#3A3026')}"/>`);
     default:
       return svg('');
   }
 }
 
 // ---------- 마을에 사는 곤충 ----------
-const SLOTS = ['flower', 'flower', 'flower', 'flower', 'grass', 'grass', 'grass', 'tree', 'tree', 'tree', 'water', 'water'];
+// 곤충이 늘어서(2026-11-19) 자리를 넷 더했다 (뒤에 붙여서 앞 열두 자리는 예전과 같다)
+const SLOTS = ['flower', 'flower', 'flower', 'flower', 'grass', 'grass', 'grass', 'tree', 'tree', 'tree', 'water', 'water', 'flower', 'grass', 'tree', 'water'];
+const POND = { x: -9.5, z: 13 }; // 연못 가운데 (world.js와 같다)
 const WINDOW = 90, PRESENT = 75; // 90초마다 자리마다 새 곤충, 75초 동안 머문다
 const WEIGHT = [10, 5, 2];
 
@@ -283,9 +504,9 @@ export class Bugs {
       const a = (k / 16) * TAU;
       const x = -9.5 + Math.cos(a) * 4.5, z = 13 + Math.sin(a) * 3.9;
       if (x > -8.6 && Math.abs(z - 12.9) < 1.6) continue; // 낚시 데크
-      if (free(x, z, 0.3)) water.push([x, z]);
+      if (free(x, z, 0.3)) water.push([x, z, 0]);
     }
-    for (const [x, z] of [[-3, -1.5], [2, 1.5], [-1, 0.5], [3.5, -1.2]]) water.push([POOL.x + x, POOL.z + z]); // 수영장 섬 수영장 위
+    for (const [x, z] of [[-3, -1.5], [2, 1.5], [-1, 0.5], [3.5, -1.2]]) water.push([POOL.x + x, POOL.z + z, 1]); // 수영장 섬 수영장 위 (셋째 값 1: 수영장)
     return { flower, grass, tree, water };
   }
 
@@ -296,13 +517,14 @@ export class Bugs {
     const w = Math.floor((T + off) / WINDOW);
     const inWin = T + off - w * WINDOW;
     const night = this.isNight();
-    const list = BUGS.filter((b) => b.habitat === s.habitat && (b.night ? night : !(night && s.habitat === 'water')));
+    const spots = this.spots[s.habitat];
+    const spot = spots.length ? spots[Math.floor(hash(i + 1, w, 7) * spots.length)] : null;
+    const pool = s.habitat === 'water' && !!spot && spot[2] === 1; // 소금쟁이는 수영장에는 없다
+    const list = BUGS.filter((b) => b.habitat === s.habitat && (b.night ? night : !(night && s.habitat === 'water')) && !(b.pond && pool));
     let total = 0;
     for (const b of list) total += WEIGHT[b.rarity];
     let r = hash(i + 1, w, 3) * total, kind = list[0];
     for (const b of list) { r -= WEIGHT[b.rarity]; if (r <= 0) { kind = b; break; } }
-    const spots = this.spots[s.habitat];
-    const spot = spots.length ? spots[Math.floor(hash(i + 1, w, 7) * spots.length)] : null;
     return { w, kind, spot, present: !!spot && inWin < PRESENT && !this.caught.has(`${i}:${w}`), t: inWin };
   }
   isNight() { const ph = this.v.phase; return ph === 'night' || ph === 'dusk'; }
@@ -378,18 +600,21 @@ export class Bugs {
       s.ground.set(sx + ox * 1.15, 0, sz + oz * 1.15);
     } else if (b.habitat === 'grass') {
       let x = sx, z = sz, y = 0.03, h = ph;
-      if (b.shape === 'hopper') {
-        // 3초마다 폴짝
-        const n = Math.floor((T + ph) / 3), k = (T + ph) / 3 - n;
+      // 뛰는 곤충: [몇 초마다, 자리에서 얼마나 떨어진 곳까지, 얼마나 높이, 한 주기에서 뛰기 시작하는 때]
+      const hop = { hopper: [3, 0.6, 0.45, 0.8], acrida: [4, 0.9, 0.5, 0.78], cricket: [2.6, 0.45, 0.25, 0.85], tiger: [2.2, 0.7, 0.18, 0.86] }[b.shape];
+      if (hop) {
+        const [P, R, H, at] = hop;
+        const n = Math.floor((T + ph) / P), k = (T + ph) / P - n;
         const a0 = hash(s.i, n, 11) * TAU, a1 = hash(s.i, n + 1, 11) * TAU;
-        const p0 = [sx + Math.cos(a0) * 0.6, sz + Math.sin(a0) * 0.6], p1 = [sx + Math.cos(a1) * 0.6, sz + Math.sin(a1) * 0.6];
-        const j = k > 0.8 ? (k - 0.8) / 0.2 : 0;
+        const p0 = [sx + Math.cos(a0) * R, sz + Math.sin(a0) * R], p1 = [sx + Math.cos(a1) * R, sz + Math.sin(a1) * R];
+        const j = k > at ? (k - at) / (1 - at) : 0;
         x = p0[0] + (p1[0] - p0[0]) * j; z = p0[1] + (p1[1] - p0[1]) * j;
-        y += Math.sin(j * Math.PI) * 0.45;
+        y += Math.sin(j * Math.PI) * H;
         h = Math.atan2(p1[0] - p0[0], p1[1] - p0[1]);
-      } else if (b.shape === 'ladybug') {
-        const a = T * 0.25 + ph;
-        x = sx + Math.cos(a) * 0.35; z = sz + Math.sin(a) * 0.35;
+      } else if (b.shape === 'ladybug' || b.shape === 'shield') {
+        const sp = b.shape === 'shield' ? 0.15 : 0.25, rr = b.shape === 'shield' ? 0.25 : 0.35;
+        const a = T * sp + ph;
+        x = sx + Math.cos(a) * rr; z = sz + Math.sin(a) * rr;
         h = Math.atan2(-Math.sin(a), Math.cos(a));
       } else {
         h = ph + Math.sin(T * 0.4 + ph) * 0.3;
@@ -398,11 +623,36 @@ export class Bugs {
       g.rotation.set(0, h, 0);
       if (b.shape === 'mantis') g.rotation.z = Math.sin(T * 1.3 + ph) * 0.08;
       s.ground.set(x, 0, z);
+    } else if (b.shape === 'strider') {
+      // 연못 물 위: 물가 자리에서 연못 가운데 쪽으로 조금 들어간 곳에서 미끄러지듯 옮겨 다닌다
+      const cx = sx + (POND.x - sx) * 0.28, cz = sz + (POND.z - sz) * 0.28;
+      const n = Math.floor((T + ph) / 1.8), k = (T + ph) / 1.8 - n;
+      const a0 = hash(s.i, n, 13) * TAU, a1 = hash(s.i, n + 1, 13) * TAU;
+      const p0 = [cx + Math.cos(a0) * 0.15, cz + Math.sin(a0) * 0.15], p1 = [cx + Math.cos(a1) * 0.15, cz + Math.sin(a1) * 0.15];
+      const j = k < 0.22 ? Math.sin((k / 0.22) * Math.PI / 2) : 1;
+      const x = p0[0] + (p1[0] - p0[0]) * j, z = p0[1] + (p1[1] - p0[1]) * j;
+      s.pos.set(x, 0.035, z);
+      g.rotation.set(0, Math.atan2(p1[0] - p0[0], p1[1] - p0[1]), 0);
+      s.ground.set(sx, 0, sz);
+    } else if (b.shape === 'hoverfly' || b.shape === 'hawkmoth') {
+      // 공중 한자리에 떠 있다가 휙 옮겨 간다
+      const moth = b.shape === 'hawkmoth';
+      const P = moth ? 2.2 : 2.8, R = moth ? 0.8 : 0.6, base = moth ? 0.75 : 0.95;
+      const q = (m) => { const a = hash(s.i, m, 17) * TAU, rr = 0.3 + hash(s.i, m, 19) * R; return [sx + Math.cos(a) * rr, base + hash(s.i, m, 23) * 0.35, sz + Math.sin(a) * rr]; };
+      const n = Math.floor((T + ph) / P), k = (T + ph) / P - n;
+      const p0 = q(n), p1 = q(n + 1);
+      const u = k > 0.82 ? (k - 0.82) / 0.18 : 0, j = u * u * (3 - 2 * u);
+      const x = p0[0] + (p1[0] - p0[0]) * j, z = p0[2] + (p1[2] - p0[2]) * j;
+      s.pos.set(x, p0[1] + (p1[1] - p0[1]) * j + Math.sin(T * 5 + ph) * 0.015, z);
+      g.rotation.set(0, Math.atan2(p1[0] - p0[0], p1[2] - p0[2]), 0);
+      s.ground.set(x, 0, z);
+      flap = Math.sin(T * 60 + ph) * 0.3;
     } else {
       // 날아다닌다
-      const sp = b.shape === 'dragonfly' ? 0.9 : b.shape === 'firefly' ? 0.35 : 0.6;
-      const r = b.shape === 'dragonfly' ? 1.6 : 0.9;
-      const hy = b.shape === 'dragonfly' ? 1.55 : b.shape === 'firefly' ? 1.0 : 1.05;
+      const dam = b.shape === 'damsel';
+      const sp = b.shape === 'dragonfly' ? 0.9 : b.shape === 'firefly' ? 0.35 : dam ? 0.45 : 0.6;
+      const r = b.shape === 'dragonfly' ? 1.6 : dam ? 1.0 : 0.9;
+      const hy = b.shape === 'dragonfly' ? 1.55 : b.shape === 'firefly' ? 1.0 : dam ? 0.75 : 1.05;
       let a = T * sp + ph;
       if (b.shape === 'dragonfly') a += Math.sin(T * 0.7 + ph) * 0.8; // 멈칫하다 휙
       const x = sx + Math.cos(a) * r, z = sz + Math.sin(a * 1.3) * r * 0.7;
@@ -411,7 +661,7 @@ export class Bugs {
       s.pos.set(x, y, z);
       g.rotation.set(0, Math.atan2(dx, dz), 0);
       s.ground.set(x, 0, z);
-      flap = b.shape === 'butterfly' ? Math.sin(T * 9 + ph) * 0.9 + 0.2 : b.shape === 'firefly' ? Math.sin(T * 20) * 0.5 : Math.sin(T * 40 + ph) * 0.35;
+      flap = b.shape === 'butterfly' ? Math.sin(T * 9 + ph) * 0.9 + 0.2 : b.shape === 'firefly' ? Math.sin(T * 20) * 0.5 : dam ? Math.sin(T * 25 + ph) * 0.4 : Math.sin(T * 40 + ph) * 0.35;
     }
     g.position.copy(s.pos);
     if (m.wings) { m.wings[0].rotation.z = flap; m.wings[1].rotation.z = -flap; }

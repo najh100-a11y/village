@@ -37,4 +37,7 @@ export const salePrice = (price, sale) => Math.max(1, Math.floor((price * (100 -
 export const BUG_NAMES = {
   cabbage_white: '배추흰나비', swallowtail: '호랑나비', honeybee: '꿀벌', ladybug: '칠성무당벌레', grasshopper: '메뚜기', red_dragonfly: '고추잠자리',
   mantis: '사마귀', cicada: '매미', stag_beetle: '사슴벌레', rhino_beetle: '장수풍뎅이', firefly: '반딧불이',
+  yellow_butterfly: '노랑나비', comma_butterfly: '네발나비', hoverfly: '꽃등에', hawkmoth: '꼬리박각시', acrida: '방아깨비', cricket: '귀뚜라미',
+  stinkbug: '홍줄노린재', tiger_beetle: '길앞잡이', chafer: '풍뎅이', longhorn: '알락하늘소', flower_chafer: '흰점박이꽃무지', skimmer: '밀잠자리',
+  damselfly: '실잠자리', water_strider: '소금쟁이',
 };

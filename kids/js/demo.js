@@ -13,8 +13,9 @@ import { HOUSE_ITEMS, HOUSE_STYLES, ROOF_COLORS, isFreeHouse, houseItem, HOUSE_I
 import { randomAvatar } from './face.js';
 // 보물 무게 (서버 kids_treasure_kinds와 같다)
 const TREASURE_WEIGHT = { shell: 24, conch: 18, seaglass: 14, starfish: 10, crab: 8, coin: 6, pearl: 3, bottle: 3, fossil: 2, chest: 1, can: 7, sandal: 5 };
-const BUG_KINDS = ['cabbage_white', 'swallowtail', 'honeybee', 'ladybug', 'grasshopper', 'red_dragonfly', 'mantis', 'cicada', 'stag_beetle', 'rhino_beetle', 'firefly'];
-const BUG_RARITY = [0, 1, 0, 0, 0, 0, 1, 1, 2, 2, 2]; // js/bugs.js와 같은 차례
+const BUG_KINDS = ['cabbage_white', 'swallowtail', 'honeybee', 'ladybug', 'grasshopper', 'red_dragonfly', 'mantis', 'cicada', 'stag_beetle', 'rhino_beetle', 'firefly',
+  'yellow_butterfly', 'comma_butterfly', 'hoverfly', 'hawkmoth', 'acrida', 'cricket', 'stinkbug', 'tiger_beetle', 'chafer', 'longhorn', 'flower_chafer', 'skimmer', 'damselfly', 'water_strider'];
+const BUG_RARITY = [0, 1, 0, 0, 0, 0, 1, 1, 2, 2, 2, 0, 1, 0, 2, 0, 1, 1, 2, 0, 1, 1, 0, 1, 0]; // js/bugs.js와 같은 차례
 const ITEM_PRICE = { fw_spark: 1, fw_flower: 3, fw_heart: 5, fw_volley: 7, ...Object.fromEntries(PET_IDS.map((id) => [id, PET_ITEMS[id].price])), ...Object.fromEntries(HOME_IDS.map((id) => [id, HOME_ITEMS[id].price])),
   ...Object.fromEntries(WARDROBE_IDS.map((id) => [id, WARDROBE[id].price])), ...Object.fromEntries(Object.entries(HOUSE_ITEMS).map(([id, it]) => [id, it.price])) };
 // 열매 1개가 되는 묶음 마릿수 (서버 kids__sell_bundle과 같다)
