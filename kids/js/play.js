@@ -8,10 +8,10 @@ const KIND_ASK = {
   omok: '오목 한 판 두자고 해요!', cook: '같이 요리하자고 해요!', ark: '노아의 방주 짝 맞추기 하자고 해요!',
   bg_fruit: '보드게임 섬에서 과일 종 치기 하자고 해요!', bg_n77: '보드게임 섬에서 77 피하기 하자고 해요!', bg_code: '보드게임 섬에서 숫자 암호 맞히기 하자고 해요!',
   bg_mancala: '보드게임 섬에서 만칼라 하자고 해요!', bg_yut: '보드게임 섬에서 윷놀이 하자고 해요!', bg_dots: '보드게임 섬에서 땅따먹기(점 잇기) 하자고 해요!',
-  hide: '숨바꼭질 섬에서 숨바꼭질 하자고 해요!',
+  hide: '숨바꼭질 섬에서 숨바꼭질 하자고 해요!', jrteam: '도서관 옆 잔디밭에서 긴 줄넘기 같이 하자고 해요!',
 };
-// 여럿이 하는 놀이 (보드게임 섬, 숨바꼭질): 방 하나(gid)에 친구 여럿이 들어온다
-export const isRoomKind = (k) => typeof k === 'string' && (k.startsWith('bg_') || k === 'hide');
+// 여럿이 하는 놀이 (보드게임 섬, 숨바꼭질, 긴 줄넘기): 방 하나(gid)에 친구 여럿이 들어온다
+export const isRoomKind = (k) => typeof k === 'string' && (k.startsWith('bg_') || k === 'hide' || k === 'jrteam');
 const newGid = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]).join('') + Date.now().toString(36).slice(-4);
 
 // 받는 쪽에서 메시지를 한 번만 처리하고, 보내는 쪽은 받았다는 대답이 올 때까지 다시 보낸다
@@ -227,7 +227,7 @@ export function createPlayHub({ getNet, getPerson, getMe, onAccept, onInviteShow
     const me = getMe();
     if (!me || p.to !== me) return false;
     if (type === 'inv') {
-      const why = isBusy ? isBusy() : false;
+      const why = isBusy ? isBusy(p.k) : false;
       if (why === 'locked') { reply(from, p.g, false, 2); if (onLockedInvite) onLockedInvite(from, p.k); return true; }
       if (session || card || why) { reply(from, p.g, false, 1); return true; }
       showCard(from, p);

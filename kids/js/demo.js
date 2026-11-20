@@ -358,7 +358,7 @@ export class DemoBackend {
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true, breeds: true, skip2: true, volley: true, expand: true, houses: true, hide: true, nbr: true, rewards: this.rewards(), jrope: true }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true, breeds: true, skip2: true, volley: true, expand: true, houses: true, hide: true, nbr: true, rewards: this.rewards(), jrope: true, jr2: true }; }
   // 쪽지함: 친구별 마지막 쪽지와 안 읽은 수 (최근 30일)
   kids_dm_box({ p_token }) {
     const me = this.session(p_token, 'child');
@@ -598,9 +598,12 @@ export class DemoBackend {
       .slice(0, 10)
       .map(({ j, c }) => ({ name: c.village_name, avatar: c.avatar, n: isToday ? j.day_best : j.best, me: c.id === me, teacher: !!c.teacher }));
   }
-  kids_jr_save({ p_token, p_count, p_ms }) {
+  // p_double: 2단 뛰기 수 (2단 뛰기 한 번은 2번으로 센다. 2번에 0.85초보다 빠르면 받지 않는다)
+  kids_jr_save({ p_token, p_count, p_ms, p_double = 0 }) {
     const me = this.session(p_token, 'child');
-    if (!Number.isInteger(p_count) || p_count < 1 || p_count > 3000 || !Number.isInteger(p_ms) || p_ms < 0 || p_ms > 3600000 || p_count * 500 > p_ms + 1500) fail('BAD_JUMP');
+    const dbl = p_double == null ? 0 : p_double;
+    if (!Number.isInteger(p_count) || p_count < 1 || p_count > 3000 || !Number.isInteger(p_ms) || p_ms < 0 || p_ms > 3600000
+      || !Number.isInteger(dbl) || dbl < 0 || dbl * 2 > p_count || (p_count - 2 * dbl) * 500 + dbl * 850 > p_ms + 1500) fail('BAD_JUMP');
     this.jrDb();
     const d = today(), at = nowIso();
     const j = this.db.jrope[me] || { best: 0, best_at: at, day: d, day_best: 0, day_at: at, runs: 0, jumps: 0, last_at: null };
@@ -617,7 +620,27 @@ export class DemoBackend {
   kids_jr_board({ p_token }) {
     const me = this.session(p_token, 'child');
     const j = this.jrDb()[me];
-    return { today: this.jrRows(me, true), all: this.jrRows(me, false), best: j ? j.best : 0, best_today: j && j.day === today() ? j.day_best : 0 };
+    const mine = this.jrTeams().filter((t) => t.members.includes(me));
+    return { today: this.jrRows(me, true), all: this.jrRows(me, false), best: j ? j.best : 0, best_today: j && j.day === today() ? j.day_best : 0,
+      team_today: this.jrTeamRows(me, true), team_all: this.jrTeamRows(me, false), team_best: mine.length ? Math.max(...mine.map((t) => t.n)) : 0 };
+  }
+  // ---------- 긴 줄 함께 넘기 모둠 기록 (서버 kids_jr_team_save와 같다) ----------
+  jrTeams() { if (!this.db.jrteams) this.db.jrteams = []; return this.db.jrteams; }
+  jrTeamRows(me, isToday) {
+    const d = today();
+    return this.jrTeams().filter((t) => !isToday || t.day === d).slice().sort((a, b) => b.n - a.n || a.made_at.localeCompare(b.made_at)).slice(0, 5)
+      .map((t) => ({ n: t.n, me: t.members.includes(me), names: t.members.map((id) => this.db.children.find((c) => c.id === id)).filter((c) => c && c.village_name).map((c) => c.village_name) }));
+  }
+  kids_jr_team_save({ p_token, p_count, p_ms, p_members }) {
+    const me = this.session(p_token, 'child');
+    if (!Number.isInteger(p_count) || p_count < 1 || p_count > 3000 || !Number.isInteger(p_ms) || p_ms < 0 || p_ms > 3600000 || p_count * 750 > p_ms + 3000) fail('BAD_JUMP');
+    const ms = Array.isArray(p_members) ? p_members : [];
+    if (ms.length < 2 || ms.length > 6 || !ms.includes(me) || new Set(ms).size !== ms.length || !ms.every((id) => this.db.children.some((c) => c.id === id))) fail('BAD_TEAM');
+    const list = this.jrTeams(), d = today();
+    if (list.some((t) => t.host === me && Date.now() - Date.parse(t.made_at) < 2000)) fail('TOO_FAST');
+    const topToday = Math.max(0, ...list.filter((t) => t.day === d).map((t) => t.n)), topAll = Math.max(0, ...list.map((t) => t.n));
+    list.push({ day: d, n: p_count, members: ms.slice(), host: me, made_at: nowIso() });
+    return { count: p_count, today_top: p_count > topToday, all_top: p_count > topAll, best: Math.max(...list.filter((t) => t.members.includes(me)).map((t) => t.n)) };
   }
   kids_skip_board({ p_token }) {
     const me = this.session(p_token, 'child');

@@ -76,7 +76,7 @@ async function boot() {
       const p = $('#prompt');
       if (!d) { p.hidden = true; return; }
       $('#promptName').textContent = d.name;
-      $('#promptAct').textContent = d.id.startsWith('hs_') && hide ? hide.promptAct(d.id) : d.id.startsWith('bg_') ? '하기' : (d.id.startsWith('nb_') || d.id.startsWith('nbm_')) && nbr ? nbr.promptAct(d.id) : { board: '보기', fish: '낚시하기', skip: '던지기', ark: '놀기', omok: '두기', cook: '요리하기', art: '그리기', ferris: '타기', viking: '타기', carousel: '타기', bumper: '타기', coaster: '타기', 'home-exit': '나가기', 'home-closet': '옷 갈아입기', 'home-build': '집 넓히기', 'home-cook': '요리하기', suggest: '건의하기' }[d.id] || '들어가기';
+      $('#promptAct').textContent = d.id.startsWith('hs_') && hide ? hide.promptAct(d.id) : d.id.startsWith('bg_') ? '하기' : (d.id.startsWith('nb_') || d.id.startsWith('nbm_')) && nbr ? nbr.promptAct(d.id) : { board: '보기', fish: '낚시하기', skip: '던지기', ark: '놀기', omok: '두기', cook: '요리하기', art: '그리기', ferris: '타기', viking: '타기', carousel: '타기', bumper: '타기', coaster: '타기', 'home-exit': '나가기', 'home-closet': '옷 갈아입기', 'home-build': '집 넓히기', 'home-cook': '요리하기', suggest: '건의하기', jrlong: '같이 뛰기' }[d.id] || '들어가기';
       p.dataset.id = d.id;
       p.hidden = false;
     },
@@ -166,7 +166,8 @@ async function boot() {
     getNet: () => net,
     getPerson: (id) => state.people.get(id),
     getMe: () => state.me && state.me.id,
-    isBusy: () => (!$('#maker').hidden || $('#hud').hidden || (hide && hide.active) ? true : !playOpen() ? 'locked' : false),
+    // 긴 줄넘기는 혼자 하는 줄넘기처럼 그날 말씀 활동을 하지 않아도 할 수 있다
+    isBusy: (kind) => (!$('#maker').hidden || $('#hud').hidden || (hide && hide.active) ? true : kind !== 'jrteam' && !playOpen() ? 'locked' : false),
     onLockedInvite: (from, kind) => {
       const p = state.people.get(from);
       const bid = bgIdOf(kind);
@@ -191,6 +192,7 @@ async function boot() {
     watchable: () => watchableGames(),
     getMe: () => state.me,
     getPerson: (id) => state.people.get(id),
+    sendNet: (ev, p) => { if (net) net.send(ev, p); },
   });
   // 숨바꼭질 섬: 술래 나무에서 시작한다 (놀이 마당처럼 그날 말씀 활동을 해야 열린다)
   hide = createHideGame({
@@ -848,11 +850,12 @@ async function startNet() {
       village.removeRemote(id);
       hub.onLeave(id);
       if (hide) hide.peerLeft(id);
+      if (play3d && play3d.longRope) play3d.longRope.peerLeft(id);
     },
     onMsg: async (type, id, raw) => {
       const p = clean(type, raw);
       if (!p) return;
-      if ((type === 'inv' || type === 'invr' || type === 'hinv' || type === 'hj' || type === 'hjr') && p.to !== (state.me && state.me.id)) return;
+      if ((type === 'inv' || type === 'invr' || type === 'hinv' || type === 'hj' || type === 'hjr' || type === 'lj' || type === 'ljr') && p.to !== (state.me && state.me.id)) return;
       const person = await ensurePerson(id);
       if (!person || net !== n) return;
       if (!online.has(id)) { online.add(id); showCount(); village.addRemote(id, person.avatar, person.name, person.teacher); village.setPets(id, personPets(person)); }
@@ -875,6 +878,8 @@ async function startNet() {
         hub.onMsg(type, id, p);
       } else if (type === 'hroom' || type === 'hj' || type === 'hjr') {
         if (hide) hide.onNet(type, id, p);
+      } else if (type === 'lrope' || type === 'lj' || type === 'ljr') {
+        if (play3d && play3d.longRope) play3d.longRope.onNet(type, id, p);
       } else if (type === 'act') {
         village.setRemoteActivity(id, ACT_ICON[p.a] || '', p.a || '', p.s);
       } else if (type === 'fish') {
@@ -1674,6 +1679,7 @@ function showNews() {
     news.push(['rewards1116', `새 소식! 말씀 활동 열매가 ${up ? '늘었어요' : '바뀌었어요'}. 묵상은 하루 ${REWARD.qt}개, 암송 연습은 구절마다 ${REWARD.memory}개(하루 ${REWARD.verses}구절까지), 필사는 ${REWARD.copy}개이고 공책 사진을 올리면 그 주 필사 열매가 모두 ${REWARD.photo}개예요. 선생님 도장은 ${REWARD.stamp}개예요.`]);
   }
   if (state.features.bugs) news.push(['bugs25', '새 소식! 마을에 곤충이 14가지 더 왔어요. 노랑나비, 네발나비, 꽃등에, 꼬리박각시, 방아깨비, 귀뚜라미(밤), 홍줄노린재, 길앞잡이, 풍뎅이, 알락하늘소, 흰점박이꽃무지, 밀잠자리, 실잠자리, 소금쟁이(연못)를 잡아 곤충 도감을 채워 봐요.']);
+  if (state.features.jr2) news.push(['jr2', '새 소식! 필사 도서관 옆 잔디밭에서 친구들과 긴 줄넘기를 함께 할 수 있어요. 마을 친구 하랑이와 다온이가 줄을 돌려요. 혼자 하는 줄넘기에는 ‘2단!’ 단추가 생겼어요.']);
   news.push(['jrope', "새 소식! 이제 마을 길 어디서나 줄넘기를 할 수 있어요. 오른쪽 아래 '줄넘기' 단추를 누르고, 줄이 발밑에 올 때 뛰어서 기록을 세워 봐요."]);
   if (state.features.nbr) news.push(['nbr', "새 소식! 마을 섬 남서쪽에 '이웃 마을' 섬이 생겼어요. 묵상의 숲 앞 길 끝 다리를 건너면 마을 친구들 집이 모두 모여 있어요. 친구가 마을에 없어도 그 집에 놀러 갈 수 있고, 집 앞 우체통에 인사 스티커를 남길 수 있어요."]);
   if (state.features.hide) news.push(['hide2', "새 소식! 숨바꼭질 섬이 마을 섬만큼 넓어졌어요. 헛간, 뒤집힌 배, 나무 구멍, 옥수수밭처럼 숨을 곳이 47군데나 돼요. 친구가 방을 열면 초대가 없어도 술래 나무를 눌러 바로 들어갈 수 있어요(8명까지)."]);
@@ -2781,6 +2787,7 @@ async function openGameWith(kind, session) {
   hideHint();
   $('#sayPanel').hidden = true;
   if (kind === 'hide') { if (play3d.active) play3d.stop(); hide.join(session); return; } // 숨바꼭질 방에 들어가 방장이 시작하기를 기다린다
+  if (kind === 'jrteam') { play3d.longRope.join(session); return; } // 긴 줄넘기 방에 들어가 방장이 시작하기를 기다린다
   const bid = bgIdOf(kind);
   if (bid) play3d.boardJoin(bid, session); // 친구 방에 들어가 방장이 시작하기를 기다린다
   else if (kind === 'omok') play3d.omok({ session });
@@ -2795,6 +2802,7 @@ function onEnter(id) {
   if (id.startsWith('hs_')) { hide.onSpot(Number(id.slice(3))); return; }
   if (hide && hide.active) { toast("숨바꼭질 중이에요! 그만하려면 아래 '그만하기'를 눌러요.", 2600); return; }
   if (nbr && nbr.onDoor(id)) return; // 이웃 마을: 안내판, 집, 우체통
+  if (id === 'jrlong') { play3d.longRope.enter(); return; } // 도서관 옆 잔디밭 긴 줄넘기
   if (id === 'home') return homeUI.enter();
   if (id === 'suggest') return openSuggest();
   if (id === 'memory') return openHouse(() => memory.open(), 'memory');

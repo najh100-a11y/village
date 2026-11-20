@@ -121,6 +121,10 @@ export function createGuide(o) {
     add({ id: 'art', isle: 'main', cat: 'play', icon: '🎨', name: '그림 공방', short: '이젤에서 그림 그리기', x: 11.2, z: 11.2, lbl: 'e', lock: true,
       lines: ['이젤에서 연필, 붓, 크레파스, 도장 같은 도구로 그림을 그려요.', '가장 최근 그림 여섯 장이 공방 전시 벽에 걸려요.'],
       go: { t: 'door', id: 'art' } });
+    add({ id: 'jrlong', isle: 'main', cat: 'play', icon: '🪢', name: '긴 줄넘기 잔디밭', label: '긴 줄넘기', short: '친구들과 긴 줄 함께 넘기', x: 12.6, z: -5.2, lbl: 'e', need: 'jr2',
+      lines: ['필사 도서관 옆 잔디밭에서 마을 친구 하랑이와 다온이가 긴 줄을 돌려요. 여섯 명까지 줄 안에 나란히 서서 함께 뛰어요.',
+        '한 명이라도 걸리면 끝나고, 모두 함께 넘은 수가 모둠 기록이 돼요. 혼자 연습해도 되고, 그날 말씀 활동을 안 해도 할 수 있어요.'],
+      go: { t: 'door', id: 'jrlong' } });
     add({ id: 'omok', isle: 'main', cat: 'play', icon: '⚫', name: '오목 놀이터', label: '오목', short: '오목 두기', x: 7.2, z: 17.4, lbl: 'w', lock: true,
       lines: ['숲지기 솔(쉬움·보통·어려움)이나 지금 마을에 있는 친구와 오목을 둬요.'],
       go: { t: 'door', id: 'omok' } });

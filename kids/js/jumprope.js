@@ -2,6 +2,8 @@
 // 오른쪽 아래 '줄넘기' 단추를 누르면 그 자리에서 줄을 돌린다. 줄이 발밑에 오기 조금 전에 '뛰기'(컴퓨터는 스페이스바)를 눌러 넘는다.
 // 한 번 넘을 때마다 줄이 조금씩 빨라지고(한 바퀴 1.15초에서 0.55초까지), 줄에 걸리면 끝난다. 이어서 넘은 수가 기록이다.
 // 내 최고 기록, 오늘 내 최고, 오늘의 줄넘기 왕은 서버(kids_jr_save, kids_jr_board)가 센다. 줄넘기로는 열매를 주지 않는다.
+// 2단 뛰기: '2단!'(컴퓨터는 D나 Shift+스페이스바)을 누르면 더 높이 뛰고, 줄이 발밑을 한 번 지나자마자 아주 빠르게 한 바퀴 더 돌아
+// 내려오기 전에 발밑을 또 지난다. 줄이 발밑을 지날 때마다 1번이라 2단 뛰기는 2번으로 센다(같은 기록에 이어서).
 // 친구 화면에서는 줄을 돌리며 폴짝폴짝 뛰는 모습으로 보인다(놀이 소식 'jrope').
 import * as THREE from './three.module.min.js';
 import { toon } from './avatar.js';
@@ -13,6 +15,12 @@ import { drawFaceIcon, normalizeAvatar } from './face.js';
 // P0 처음 한 바퀴(초), PMIN 가장 빠른 한 바퀴, STEP 넘을 때마다 줄어드는 시간, AIR 뛰어 있는 시간, H 뛰는 높이,
 // CLEAR 줄이 발밑을 지날 때 몸이 뛴 높이의 이만큼 이상 떠 있으면 넘는다 (누르는 때가 줄이 지나기 0.03~0.37초 전이면 넘는다)
 export const JR = { P0: 1.15, PMIN: 0.55, STEP: 0.01, AIR: 0.4, H: 0.42, CLEAR: 0.2 };
+// 2단 뛰기: AIR 뛰어 있는 시간, H 높이, WHIP 첫 번째로 넘은 뒤 줄이 한 바퀴 더 도는 시간
+// 넘는 높이는 한 번 뛰기와 같다(JR.H * JR.CLEAR). 그래서 줄이 발밑을 지나기 0.03~0.25초 전에 눌러야 두 번 다 넘는다
+export const JR2 = { AIR: 0.62, H: 0.6, WHIP: 0.34 };
+const CLEAR_H = JR.H * JR.CLEAR;
+const LO2 = (JR2.AIR * Math.asin(CLEAR_H / JR2.H)) / Math.PI; // 뛰고 이만큼 지나야 넘을 높이
+export const WIN2 = [LO2, JR2.AIR - JR2.WHIP - LO2]; // 2단 뛰기로 넘으려면 줄이 발밑을 지나기 이만큼 전에 누른다 (초)
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const TAU = Math.PI * 2;
 const ROPE_C = '#FF6FA8', HANDLE_C = '#FFD54A';
@@ -108,16 +116,17 @@ export function remoteRope(av) {
 }
 
 // 줄 각도 판: 점이 줄, 아래 신발이 발밑, 초록 칸에 점이 있을 때 누르면 알맞다
-function dialSvg() {
+export function dialSvg() {
   const ticks = Array.from({ length: 12 }, (_, i) => { const a = (i * 30 * Math.PI) / 180; return `<line x1="${(36 * Math.sin(a)).toFixed(2)}" y1="${(-36 * Math.cos(a)).toFixed(2)}" x2="${(40 * Math.sin(a)).toFixed(2)}" y2="${(-40 * Math.cos(a)).toFixed(2)}" stroke="#D9CBB0" stroke-width="2"/>`; }).join('');
   return `<svg viewBox="-50 -50 100 100" aria-hidden="true"><circle r="45" fill="#FFFDF7" stroke="#E8DCC4" stroke-width="3"/>${ticks}`
     + '<path class="jr-zone" d="" stroke="#7CC46A" stroke-width="11" fill="none"/>'
+    + '<path class="jr-zone2" d="" stroke="#A98BE8" stroke-width="6" fill="none"/>'
     + '<text x="0" y="6" text-anchor="middle" font-size="18" fill="#B9A98E">👟</text>'
     + '<path d="M0 44 l-5 -7 h10 z" fill="#EF6461"/>'
     + '<g class="jr-dot"><circle cx="0" cy="-40" r="7" fill="' + ROPE_C + '" stroke="#fff" stroke-width="2.5"/></g></svg>';
 }
 // 각도 a(라디안, 0이 위, 시계 방향)의 원 위 점
-const onRing = (a, r) => `${(r * Math.sin(a)).toFixed(2)} ${(-r * Math.cos(a)).toFixed(2)}`;
+export const onRing = (a, r) => `${(r * Math.sin(a)).toFixed(2)} ${(-r * Math.cos(a)).toFixed(2)}`;
 
 export function createJumpRope({ v, ui, begin, stopAll, portrait, rpc, getToken, lost, live, onCelebrate, features = () => ({}) }) {
   // ---------- 기록판 ----------
@@ -145,7 +154,19 @@ export function createJumpRope({ v, ui, begin, stopAll, portrait, rpc, getToken,
       today.length ? h('div', { class: 'fl-list' }, today) : h('p', { class: 'fb-empty' }, '오늘은 아직 아무도 넘지 않았어요. 첫 기록을 세워 봐요!'),
       h('div', { class: 'sub-head' }, h('h3', {}, '최고 기록'), h('p', {}, '지금까지 가장 많이 넘은 기록')),
       all.length ? h('div', { class: 'fl-list' }, all) : h('p', { class: 'fb-empty' }, '아직 기록이 없어요.'),
-      h('p', { class: 'note' }, `내 오늘 최고 ${b.best_today || 0}번 · 내 최고 기록 ${b.best || 0}번 · 쉬지 않고 이어서 넘은 수를 세요.`));
+      h('p', { class: 'note' }, `내 오늘 최고 ${b.best_today || 0}번 · 내 최고 기록 ${b.best || 0}번 · 쉬지 않고 이어서 넘은 수를 세요. 2단 뛰기는 2번으로 세요.`));
+    // 긴 줄 함께 넘기 (모둠 기록)
+    if (b && Array.isArray(b.team_today)) {
+      const teams = (list) => list.map((t, i) => h('div', { class: 'fl-row' + (t.me ? ' me' : '') }, h('b', { class: 'rank' }, `${i + 1}`),
+        h('div', { class: 'fl-main' }, h('b', {}, (t.names || []).join(' · ') || '친구들', t.me ? ' (나도)' : ''), h('span', {}, `${(t.names || []).length}명이 함께 ${t.n}번`))));
+      box.append(
+        h('div', { class: 'sub-head' }, h('h3', {}, '🪢 긴 줄 함께 넘기'), h('p', {}, '도서관 옆 잔디밭, 모둠 기록 다섯 개씩')),
+        h('h4', { class: 'lr-h' }, '오늘'),
+        b.team_today.length ? h('div', { class: 'fl-list' }, teams(b.team_today)) : h('p', { class: 'fb-empty' }, '오늘은 아직 함께 넘은 모둠이 없어요.'),
+        h('h4', { class: 'lr-h' }, '지금까지'),
+        (b.team_all || []).length ? h('div', { class: 'fl-list' }, teams(b.team_all)) : h('p', { class: 'fb-empty' }, '아직 모둠 기록이 없어요.'),
+        h('p', { class: 'note' }, `내가 함께 넘은 모둠 최고 ${b.team_best || 0}번 · 두 명 이상 함께 뛰면 기록돼요.`));
+    }
   }
 
   // 줄넘기를 할 수 있는 곳인지 (마을 땅 위, 걷고 있을 때)
@@ -173,15 +194,17 @@ export function createJumpRope({ v, ui, begin, stopAll, portrait, rpc, getToken,
     const rig = ropeRig(pl);
     const REST = Math.PI + Math.PI / 3; // 쉬는 동안 줄은 발뒤꿈치 뒤 땅에
     let st = 'idle', T = 0, perfAt = performance.now(), theta = REST, omega = 0, n = 0, tj = -9, t0 = 0, waitT = 0, failWhy = '', trip = 0;
+    let ja = JR.AIR, jh = JR.H, dbl = 0, doubles = 0; // 이번에 뛴 시간과 높이, 2단 뛰기(1 첫 번째 넘기 전, 2 두 번째 넘기 전), 2단 뛰기 수
+    const can2 = () => !!features().jr2; // 2단 뛰기를 받는 서버일 때만 (예전 서버는 빠르게 센 기록을 받지 않는다)
     let best = null, bestToday = null, saving = false;
     const now = () => T + Math.min(0.1, (performance.now() - perfAt) / 1000); // 눌린 때 (화면 사이 시간까지 잰다)
-    const hgtAt = (t) => { const tau = t - tj; return tau >= 0 && tau <= JR.AIR ? JR.H * Math.sin((Math.PI * tau) / JR.AIR) : 0; };
+    const hgtAt = (t) => { const tau = t - tj; return tau >= 0 && tau <= ja ? jh * Math.sin((Math.PI * tau) / ja) : 0; };
     const period = () => Math.max(JR.PMIN, JR.P0 - n * JR.STEP);
 
     // 화면: 큰 수, 줄 각도 판, 내 기록
     const dial = h('div', { class: 'jr-dial' });
     dial.innerHTML = dialSvg();
-    const zone = dial.querySelector('.jr-zone'), dot = dial.querySelector('.jr-dot');
+    const zone = dial.querySelector('.jr-zone'), zone2 = dial.querySelector('.jr-zone2'), dot = dial.querySelector('.jr-dot');
     const big = h('b', { class: 'jr-count' }, '0');
     const sub = h('span', { class: 'jr-sub' }, '');
     const panel = h('div', { class: 'jr-panel' }, dial, h('div', { class: 'jr-num' }, big, h('span', { class: 'jr-unit' }, '번'), sub));
@@ -193,6 +216,9 @@ export function createJumpRope({ v, ui, begin, stopAll, portrait, rpc, getToken,
       const w = TAU / period();
       const a1 = Math.PI - Math.min(Math.PI * 0.95, w * 0.33), a2 = Math.PI - w * 0.07;
       zone.setAttribute('d', `M ${onRing(a1, 40)} A 40 40 0 0 1 ${onRing(a2, 40)}`);
+      // 보라 칸: 2단 뛰기를 누르기 알맞은 때 (조금 더 좁다)
+      if (can2()) { const b1 = Math.PI - w * (WIN2[1] - 0.02), b2 = Math.PI - w * (WIN2[0] + 0.02); zone2.setAttribute('d', `M ${onRing(b1, 31)} A 31 31 0 0 1 ${onRing(b2, 31)}`); }
+      else zone2.setAttribute('d', '');
     }
     function idle(msg) {
       st = 'idle';
@@ -200,38 +226,46 @@ export function createJumpRope({ v, ui, begin, stopAll, portrait, rpc, getToken,
       pl.body.rotation.x = 0;
       ui.setPanel(panel);
       drawDial();
-      ui.say(msg || '줄이 발밑에 오기 조금 전에 ‘뛰기’를 눌러요. 컴퓨터는 스페이스바도 돼요.');
+      ui.say(msg || (can2() ? '줄이 발밑에 오기 조금 전에 ‘뛰기’를 눌러요. ‘2단!’은 조금 더 늦게(발밑에 오기 바로 전에) 눌러요.' : '줄이 발밑에 오기 조금 전에 ‘뛰기’를 눌러요. 컴퓨터는 스페이스바도 돼요.'));
       ui.setMain(n ? '다시 하기' : '시작', { pulse: true, onClick: () => start() });
+      btn2.hidden = true;
     }
     function start() {
       if (st === 'turn' || st === 'ready') return;
-      n = 0; tj = -9; failWhy = '';
+      n = 0; tj = -9; failWhy = ''; dbl = 0; doubles = 0; ja = JR.AIR; jh = JR.H;
       big.textContent = '0';
+      btn2.hidden = !can2();
       st = 'ready'; waitT = 0;
       theta = REST;
       ui.say('줄을 돌려요! 발밑에 올 때 뛰어요.');
       ui.setMain('뛰기!', { onClick: () => {} }); // 누르는 순간(pointerdown)에 뛴다
     }
-    function hop() {
+    // two: 2단 뛰기
+    function hop(two = false) {
       if (st !== 'turn' && st !== 'ready') return;
+      if (two && !can2()) return;
       const t = now();
-      if (t - tj < JR.AIR) return; // 아직 공중
+      if (t - tj < ja) return; // 아직 공중
       tj = t;
+      if (two) { ja = JR2.AIR; jh = JR2.H; dbl = 1; } else { ja = JR.AIR; jh = JR.H; dbl = 0; }
       sfx.hop();
     }
     function pass(tp) {
       // 줄이 발밑을 지나는 때 tp: 몸이 떠 있으면 넘었다
       const hgt = hgtAt(tp);
-      if (hgt >= JR.H * JR.CLEAR) {
+      if (hgt >= CLEAR_H) {
         n++;
         big.textContent = String(n);
         big.classList.remove('bump'); void big.offsetWidth; big.classList.add('bump');
         sfx.tick();
         if (n % 10 === 0) { sfx.ding(); ui.banner(`${n}번!`, n >= 50 ? '대단해요!' : '잘하고 있어요!', 900); }
         if (best != null && n === best + 1 && best > 0) ui.banner('새 기록!', `${n}번째`, 1000);
+        if (dbl === 1) { dbl = 2; omega = TAU / JR2.WHIP; return true; } // 2단 뛰기: 줄이 휙 한 바퀴 더
+        if (dbl === 2) { dbl = 0; doubles++; ui.banner('2단!', doubles > 1 ? `${doubles}번째 2단 뛰기` : '줄이 두 번 지나갔어요', 800); }
         omega = TAU / period();
         return true;
       }
+      if (dbl === 2) { failWhy = 'dbl'; return false; } // 2단 뛰기 두 번째에 걸렸다: 너무 일찍 뛰어서 먼저 내려왔다
       // 왜 걸렸는지: 막 뛰려던 참이면 늦었고, 벌써 내려왔으면 일렀고, 한참 안 뛰었으면 박자를 놓쳤다
       const tau = tp - tj;
       failWhy = tau >= 0 && tau <= JR.AIR / 2 ? 'late' : tau > JR.AIR / 2 && tau < JR.AIR + 0.5 ? 'early' : 'none';
@@ -241,14 +275,17 @@ export function createJumpRope({ v, ui, begin, stopAll, portrait, rpc, getToken,
       st = 'trip'; trip = 0;
       sfx.bonk();
       const ms = Math.round((T - t0) * 1000);
-      const tip = failWhy === 'early' ? '조금 늦게 뛰어 봐요! 줄이 발 바로 앞에 왔을 때요.'
+      const tip = failWhy === 'dbl' ? '2단 뛰기는 줄이 발밑에 오기 바로 전에 눌러요. 보라 칸에 점이 있을 때요!'
+        : failWhy === 'early' ? '조금 늦게 뛰어 봐요! 줄이 발 바로 앞에 왔을 때요.'
         : failWhy === 'late' ? '조금만 더 일찍 뛰어 봐요!'
           : '줄이 발밑에 오기 조금 전에 ‘뛰기’를 눌러요.';
       let note = n === 0 ? '줄에 걸렸어요!' : '';
       let r = null;
       if (n > 0 && features().jrope && !saving) {
         saving = true;
-        try { r = await rpc('kids_jr_save', { p_token: getToken(), p_count: n, p_ms: ms }); } catch (e) { if (lost(e)) return; note = message(e); }
+        const args = { p_token: getToken(), p_count: n, p_ms: ms };
+        if (can2()) args.p_double = doubles;
+        try { r = await rpc('kids_jr_save', args); } catch (e) { if (lost(e)) return; note = message(e); }
         saving = false;
         if (!live(game)) return;
       }
@@ -261,11 +298,12 @@ export function createJumpRope({ v, ui, begin, stopAll, portrait, rpc, getToken,
         if (best == null || n > best) { best = n; note = '이번에 가장 많이 넘었어요!'; }
       }
       drawSub();
-      ui.banner(n ? `${n}번 넘었어요!` : '앗!', note, 2600);
+      btn2.hidden = true;
+      ui.banner(n ? `${n}번 넘었어요!` : '앗!', doubles ? `${note} · 2단 뛰기 ${doubles}번` : note, 2600);
       setTimeout(() => { if (live(game) && st === 'trip') idle(tip); }, 1300);
     }
 
-    let curH = 0; // 지금 뛰어오른 높이 (자세 함수가 쓴다)
+    let curH = 0, jumpY = 0; // 지금 뛰어오른 높이 (자세 함수가 쓴다)
     game.update = (dt) => {
       T += dt;
       perfAt = performance.now();
@@ -287,19 +325,23 @@ export function createJumpRope({ v, ui, begin, stopAll, portrait, rpc, getToken,
         trip = Math.min(1, trip + dt * 3);
         hgt = 0;
       }
-      curH = st === 'trip' ? 0 : hgt;
+      curH = st === 'trip' ? 0 : Math.min(hgt, JR.H); // 팔과 다리 자세는 한 번 뛰기 높이까지만 쓴다 (2단 뛰기는 몸만 더 높이)
+      jumpY = st === 'trip' ? 0 : hgt;
       drawDial();
     };
     // 자세: 아바타가 걷기 흔들림을 정한 뒤에 덮어쓴다 (줄은 손 자리가 정해진 다음에 그린다)
     const ropePose = (a) => {
       ropeArms(a, theta, curH);
+      a.body.position.y = jumpY;
+      if (dbl && jumpY > 0) { a.legs[0].rotation.x = a.legs[1].rotation.x = -0.55 * (jumpY / JR2.H); } // 2단 뛰기는 무릎을 더 굽힌다
       if (st === 'trip') { a.body.rotation.x = 0.04 + 0.22 * Math.sin(trip * Math.PI); a.arms[0].rotation.x = a.arms[1].rotation.x = -0.32 - 0.6 * trip; }
       rig.update(theta);
     };
     game.onTap = () => hop();
-    game.debug = () => ({ st, theta, omega, n, T, tj }); // 시험용
+    game.debug = () => ({ st, theta, omega, n, T, tj, dbl, doubles }); // 시험용
     const kd = (e) => {
       if (e.repeat) return;
+      if (e.code === 'KeyD' || ((e.code === 'Space' || e.key === ' ') && e.shiftKey)) { e.preventDefault(); if (st !== 'idle') hop(true); return; }
       if (e.code === 'Space' || e.code === 'ArrowUp' || e.key === ' ') {
         e.preventDefault();
         if (st === 'idle') start(); else hop();
@@ -307,6 +349,7 @@ export function createJumpRope({ v, ui, begin, stopAll, portrait, rpc, getToken,
     };
     game.stop = () => {
       window.removeEventListener('keydown', kd);
+      btn2.remove();
       rig.dispose();
       pl.pose = null;
       pl.body.rotation.x = 0;
@@ -315,6 +358,10 @@ export function createJumpRope({ v, ui, begin, stopAll, portrait, rpc, getToken,
     pl.pose = ropePose;
     window.addEventListener('keydown', kd);
     ui.main.addEventListener('pointerdown', (e) => { if (st === 'turn' || st === 'ready') { e.preventDefault(); hop(); } });
+    // 2단 뛰기 단추: 큰 '뛰기!' 단추 왼쪽에 둔다 (누르는 순간 뛴다)
+    const btn2 = h('button', { class: 'g-main jr-two', type: 'button', 'data-quiet': '', hidden: true, 'aria-label': '2단 뛰기' }, '2단!');
+    btn2.addEventListener('pointerdown', (e) => { e.preventDefault(); hop(true); });
+    ui.main.before(btn2);
     idle();
     // 지난 기록을 불러와 보여 준다
     if (features().jrope) {

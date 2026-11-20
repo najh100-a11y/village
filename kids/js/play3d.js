@@ -14,6 +14,7 @@ import { createRides } from './rides.js';
 import { createSkipGame, SKIP_STANDS, SKIP_FACE } from './beach.js';
 import { createArkGame, ARK_SEATS } from './ark.js';
 import { createJumpRope, remoteRope } from './jumprope.js';
+import { createLongRope } from './longrope.js';
 import { SEA_Y, SEA_SPOTS, MOOR, BOARD, BOAT_FACE, HARBOR, seatOf, seaRoute, seaBlock, shoreGap, nearSchool } from './sea.js';
 import { onPier, PIER } from './isles.js';
 import { BG_TABLES, bgTable, stoolsFor } from './boardisle.js';
@@ -644,6 +645,13 @@ export function createPlay3D(ctx) {
     const av = r.av;
     // 줄넘기하는 친구: 그 자리에서 줄을 돌리며 폴짝폴짝 뛴다
     if (act !== 'jrope' && av.jrope) { av.jrope.dispose(); av.jrope = null; }
+    // 긴 줄 함께 넘기: 잔디밭 긴 줄 안 자기 자리에서 줄에 맞춰 뛴다
+    if (act !== 'jrteam' && r.pin && r.pin.kind === 'jrteam') v.unpinRemote(r.id);
+    if (act === 'jrteam') {
+      if (av.held) { const o = av.held.obj; av.drop(); if (o.userData.isRod) disposeTree(o); }
+      lrope.decorate(r);
+      return;
+    }
     if (act === 'jrope') {
       if (r.pin && r.pin.auto) v.unpinRemote(r.id);
       if (av.held) { const o = av.held.obj; av.drop(); if (o.userData.isRod) disposeTree(o); }
@@ -3282,6 +3290,9 @@ export function createPlay3D(ctx) {
   const rides = createRides({ v, ui, begin, stopAll, portrait, shout: (id) => ctx.shout && ctx.shout(id), setActivity });
   const skip = createSkipGame({ v, ui, begin, stopAll, portrait, rpc, getToken, lost, live, onCelebrate, features: () => (ctx.features ? ctx.features() : {}) });
   const jrope = createJumpRope({ v, ui, begin, stopAll, portrait, rpc, getToken, lost, live, onCelebrate, features: () => (ctx.features ? ctx.features() : {}) });
+  // 긴 줄 함께 넘기 (도서관 옆 잔디밭)
+  const lrope = createLongRope({ v, ui, begin, stopAll, portrait, rpc, getToken, lost, onCelebrate, features: () => (ctx.features ? ctx.features() : {}),
+    hub, myId: () => (ctx.myId ? ctx.myId() : null), getMe: ctx.getMe, getPerson: ctx.getPerson, onlineFriends, sendNet: ctx.sendNet, board: jrope.board, toast, setActivity });
   const arkGame = createArkGame({ v, ui, begin, stopAll, portrait, live, hub, onlineFriends, friendPicker, waitInvite,
     menuTok: { next: () => ++menuTok, is: (t) => t === menuTok }, myId: () => (ctx.myId ? ctx.myId() : null), seatPose, SEAT_Y, onCelebrate,
     rpc, getToken, lost, features: () => (ctx.features ? ctx.features() : {}) });
@@ -3362,7 +3373,7 @@ export function createPlay3D(ctx) {
     get boardState() { return cur && cur.id === 'bgame' && cur.game.state ? cur.game.state() : null; },
     ride: rides.ride,
     fishing, seaFishing, omokMenu, omok, omokWatch, cookMenu, cook, cookFree, easel, artSaved,
-    skipping: skip.skipping, jumpRope: jrope.jumpRope, jrBoard: jrope.board, arkMenu: arkGame.arkMenu, ark: arkGame.ark, arkBoard: arkGame.arkBoard,
+    skipping: skip.skipping, jumpRope: jrope.jumpRope, jrBoard: jrope.board, longRope: lrope, arkMenu: arkGame.arkMenu, ark: arkGame.ark, arkBoard: arkGame.arkBoard,
     observe(id, st) { if (watchUpdate) watchUpdate(id, st); },
     stop: stopAll, decorateRemote,
     get active() { return cur && cur.id; },
