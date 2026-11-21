@@ -97,7 +97,9 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
     if (pr && pr.height > 0) { if (wideLayout()) left = pr.right; else bt = Math.min(bt, pr.top); }
     game.cover = { top: tb, bottom: Math.max(0, H - bt), left };
   }
+  let lastCam = null;
   function setCam(pos, look) {
+    lastCam = [pos, look];
     const P = V(...pos), L = V(...look);
     if (portrait()) P.sub(L).multiplyScalar(1.55).add(L);
     game.cam.pos.copy(P);
@@ -356,6 +358,7 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
     window.addEventListener('keydown', kd);
     window.addEventListener('keyup', ku);
     window.addEventListener('blur', blur);
+    window.addEventListener('resize', onResize);
     syncRemotes();
     buildLobby();
     // 처음 시점은 바로 동굴 안으로 (마을에서 날아오지 않게)
@@ -991,6 +994,8 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
   };
   const ku = (e) => { if (KEYMAP[e.code]) keys.delete(KEYMAP[e.code]); };
   const blur = () => keys.clear();
+  // 기기를 돌리면(세로·가로) 카메라 거리를 다시 맞춘다
+  const onResize = () => { if (game && lastCam) setCam(...lastCam); };
 
   // ---------- 매 화면 ----------
   function tick(dt, t) {
@@ -1075,6 +1080,7 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
     window.removeEventListener('keydown', kd);
     window.removeEventListener('keyup', ku);
     window.removeEventListener('blur', blur);
+    window.removeEventListener('resize', onResize);
     keys.clear();
     for (const id of [...remotes.keys()]) dropRemote(id);
     if (me.tag) { me.tag.remove(); me.tag = null; }

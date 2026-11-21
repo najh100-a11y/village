@@ -453,6 +453,11 @@ export class Village {
     this.bindInput();
     this.resize();
     window.addEventListener('resize', () => this.resize());
+    // 아이패드·휴대폰을 돌리면 resize 알림이 새 화면 크기보다 먼저 오는 때가 있다 (화면이 납작하게 눌려 보인다).
+    // 돌린 뒤 조금씩 기다렸다가 resize를 다시 보내서, 마을 화면과 다른 창들이 바뀐 크기로 다시 맞추게 한다
+    const settle = () => { for (const ms of [150, 450, 1000]) setTimeout(() => window.dispatchEvent(new Event('resize')), ms); };
+    window.addEventListener('orientationchange', settle);
+    if (window.screen && screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener('change', settle);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) this.clock.getDelta(); });
     this.loop = this.loop.bind(this);
     requestAnimationFrame(this.loop);
@@ -3542,6 +3547,11 @@ export class Village {
   }
 
   // ---------- 화면 ----------
+  // 화면 크기가 그리는 크기와 다르면 다시 맞춘다 (매 화면 확인: 돌린 뒤 늦게 바뀐 크기도 바로 따라간다)
+  fitSize() {
+    const w = this.canvas.clientWidth, h = this.canvas.clientHeight;
+    if (w && h && (w !== this.w || h !== this.h)) this.resize();
+  }
   resize() {
     const w = this.canvas.clientWidth || window.innerWidth;
     const h = this.canvas.clientHeight || window.innerHeight;
@@ -3632,6 +3642,7 @@ export class Village {
   loop() {
     requestAnimationFrame(this.loop);
     if (this.paused || document.hidden) return;
+    this.fitSize();
     const dt = Math.min(0.05, this.clock.getDelta());
     this.time += dt;
     this.update(dt);

@@ -230,6 +230,7 @@ export class Maker {
   resize() {
     const w = this.canvas.clientWidth, hgt = this.canvas.clientHeight;
     if (!w || !hgt) return;
+    this.size = `${w}x${hgt}`;
     this.renderer.setSize(w, hgt, false);
     this.camera.aspect = w / hgt;
     this.camera.updateProjectionMatrix();
@@ -238,6 +239,8 @@ export class Maker {
   loop() {
     if (!this.running) return;
     requestAnimationFrame(this.loop);
+    // 기기를 돌려 미리보기 칸 크기가 바뀌면 다시 맞춘다 (납작하게 눌리지 않게)
+    if (this.canvas.clientWidth && `${this.canvas.clientWidth}x${this.canvas.clientHeight}` !== this.size) this.resize();
     const dt = Math.min(0.05, this.clock.getDelta());
     this.idle += dt;
     if (this.idle > 2.2) {
