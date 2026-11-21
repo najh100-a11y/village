@@ -362,7 +362,7 @@ export class DemoBackend {
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true, breeds: true, skip2: true, volley: true, expand: true, houses: true, hide: true, nbr: true, rewards: this.rewards(), jrope: true, jr2: true, bath: true, hlock: true, ropes: true }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true, breeds: true, skip2: true, volley: true, expand: true, houses: true, hide: true, nbr: true, rewards: this.rewards(), jrope: true, jr2: true, bath: true, hlock: true, ropes: true, dungeon: true }; }
   // 쪽지함: 친구별 마지막 쪽지와 안 읽은 수 (최근 30일)
   kids_dm_box({ p_token }) {
     const me = this.session(p_token, 'child');
@@ -533,6 +533,36 @@ export class DemoBackend {
     if (got) c.fruits += 1;
     this.db.hsWins.push({ child: me, role: p_role, got, at: nowIso() });
     return { got, today: n + (got ? 1 : 0), max: 3, fruits: c.fruits };
+  }
+  // ---------- 새벽 동굴 (서버 kids_dungeon_book, kids_dungeon_clear와 같다) ----------
+  // 동굴마다 받는 열매와 가장 짧은 시간 (방 하나에 10초): 서버 kids__dg_info와 같다
+  dgInfo(dg) { return { d1: [1, 3], d2: [1, 3], d3: [1, 3], d4: [2, 4], d5: [2, 4], d6: [2, 4], d7: [3, 7] }[dg] || null; }
+  kids_dungeon_book({ p_token }) {
+    const me = this.session(p_token, 'child');
+    const mine = (this.db.dungeon || []).filter((x) => x.child === me);
+    const by = new Map();
+    for (const x of mine) { const r = by.get(x.dg) || { dg: x.dg, clears: 0, best_ms: null }; r.clears++; if (r.best_ms == null || x.ms < r.best_ms) r.best_ms = x.ms; by.set(x.dg, r); }
+    const t0 = startOfToday();
+    return { rows: [...by.values()], today: mine.filter((x) => x.at >= t0).reduce((s, x) => s + x.got, 0), cap: 5 };
+  }
+  kids_dungeon_clear({ p_token, p_dg, p_ms, p_party = 1 }) {
+    const me = this.session(p_token, 'child');
+    const info = this.dgInfo(p_dg);
+    if (!info || !Number.isInteger(p_ms) || p_ms < info[1] * 10000 || p_ms > 3 * 3600000 || !Number.isInteger(p_party) || p_party < 1 || p_party > 4) fail('BAD_DG');
+    this.gate(me);
+    this.db.dungeon = this.db.dungeon || [];
+    const mine = this.db.dungeon.filter((x) => x.child === me);
+    const last = mine.map((x) => x.at).sort().pop();
+    if (last && Date.now() - Date.parse(last) < 20000) fail('TOO_FAST');
+    const t0 = startOfToday(), todays = mine.filter((x) => x.at >= t0);
+    if (todays.length >= 60) fail('DG_DAY');
+    const today = todays.reduce((s, x) => s + x.got, 0);
+    const got = Math.max(0, Math.min(info[0], 5 - today));
+    const c = this.child(me);
+    c.fruits += got;
+    this.db.dungeon.push({ child: me, dg: p_dg, ms: p_ms, party: p_party, got, at: nowIso() });
+    const rows = this.db.dungeon.filter((x) => x.child === me && x.dg === p_dg);
+    return { got, fruits: c.fruits, today: today + got, cap: 5, clears: rows.length, best_ms: Math.min(...rows.map((x) => x.ms)), first: rows.length === 1 };
   }
   // ---------- 물수제비 (서버 kids_skip_throw와 같다) ----------
   skipTop(me) {

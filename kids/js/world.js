@@ -251,10 +251,13 @@ export const PATHS = [
   [[9, 1.0], [14, -4.5], [22, -5.5], [34, -4.0]], // 동쪽 끝은 수영장 섬 다리
   [[-9, 1.2], [-14, -4.5], [-22, -5.5], [-34, -4.0]], // 서쪽 끝은 보드게임 섬 다리 (나중에 낸 길)
   [[-13.6, 4.2], [-16.35, 14.72], [-24.9, 22.4]], // 묵상의 숲 앞에서 남서쪽 이웃 마을 섬 다리로 (나중에 낸 길, 마지막 토막은 다리와 한 줄)
+  [[-20.6, -5.4], [-21.0, -8.5], [-21.3, -11.4]], // 서쪽 길에서 북쪽 새벽 동굴 앞으로 (나중에 낸 길)
 ];
 // 나중에 낸 길: 나무·덤불·돌·꽃은 이 길이 없던 때와 같은 자리에 두고, 이 길 위에 있던 것만 뺀다 (마을 숲 모습이 바뀌지 않게)
-const NEW_PATHS = PATHS.slice(-2);
-const OLD_PATHS = PATHS.slice(0, -2);
+const NEW_PATHS = PATHS.slice(-3);
+const OLD_PATHS = PATHS.slice(0, -3);
+// 새벽 동굴 (하나님의 전신갑주): 마을 섬 북서쪽 바위 언덕. 입구는 남동쪽(길 쪽)을 본다. 이 둘레 나무도 나중에 낸 길처럼 뺀다
+export const CAVE = { x: -23.2, z: -16.0, r: 3.6, rot: 0.45, door: 4.3 };
 export const PLAZA = { x: 0, z: -2.5, r: 5.4 };
 export const YARD = { x: 11.2, z: 16.4, r: 3.4 }; // 놀이 마당
 
@@ -399,6 +402,7 @@ export class Village {
       this.addObstacleCircle(x, z, 0.15);
     }
     this.buildNature();
+    this.buildCave(); // 나무를 심은 뒤에 짓는다 (나무 자리가 바뀌지 않게)
     this.sea = new Sea(this, { signMesh }); // 나무를 심은 뒤에 짓는다 (나무 자리가 바뀌지 않게)
     this.beach = new Beach(this); // 수영장 섬 보물 캐기 자리와 물수제비 터
     buildBoardIsle(this, { signMesh }); // 보드게임 섬 (서쪽 다리 건너)
@@ -1936,7 +1940,7 @@ export class Village {
     const coneGeo = [new THREE.ConeGeometry(1.3, 1.6, 10), new THREE.ConeGeometry(1.05, 1.4, 10), new THREE.ConeGeometry(0.75, 1.2, 10)];
     const fruitGeo = new THREE.SphereGeometry(0.15, 10, 8);
     const ghosts = []; // 새 길 때문에 뺀 것들 (자리 계산에는 있는 것처럼 둔다)
-    const onNew = (x, z, pad) => nearPath(x, z, pad, NEW_PATHS, false);
+    const onNew = (x, z, pad) => nearPath(x, z, pad, NEW_PATHS, false) || Math.hypot(x - CAVE.x, z - CAVE.z) < CAVE.r + pad;
     const blocked = (x, z, pad) => {
       if (Math.hypot(x, z) > 29.5) return true;
       if (nearPath(x, z, pad, OLD_PATHS)) return true;
@@ -2123,6 +2127,92 @@ export class Village {
   }
 
   // ---------- 사람들 ----------
+  // ---------- 새벽 동굴 입구 (동굴 안은 dungeon.js의 따로 된 장면) ----------
+  buildCave() {
+    const C = CAVE;
+    const g = new THREE.Group();
+    const rocks = [toon('#857D98'), toon('#958EAA'), toon('#766E8A')];
+    const rockGeo = new THREE.DodecahedronGeometry(1, 0);
+    const r = rng(77);
+    // 말굽 모양 바위 언덕 (입구 쪽 +z가 열려 있다)
+    for (let i = 0; i < 15; i++) {
+      const a = 0.9 + (i / 14) * (Math.PI * 2 - 1.8); // 입구 쪽(+z) 양옆 0.9 라디안은 비운다
+      const d = 1.3 + r() * 1.1;
+      const s = 1.0 + r() * 0.8;
+      const rk = m(rockGeo, rocks[i % 3], Math.sin(a) * d, s * 0.7, Math.cos(a) * d);
+      rk.scale.set(s * (1 + r() * 0.4), s * (1.2 + r() * 0.7), s);
+      rk.rotation.set(r() * 3, r() * 3, r() * 3);
+      g.add(rk);
+    }
+    const top = m(rockGeo, rocks[1], 0, 3.1, -0.6);
+    top.scale.set(2.2, 1.5, 2.0);
+    g.add(top);
+    // 입구: 양옆 작은 바위와 위 돌, 안은 어둡고 가장자리가 금빛으로 빛난다
+    for (const sx of [-1, 1]) {
+      const p = m(rockGeo, rocks[2], sx * 1.6, 0.6, 2.45);
+      p.scale.set(0.5, 0.85, 0.5);
+      g.add(p);
+    }
+    const lintel = m(rockGeo, rocks[0], 0, 2.2, 2.35);
+    lintel.scale.set(1.75, 0.45, 0.6);
+    g.add(lintel);
+    const hole = m(new THREE.CircleGeometry(1.25, 28, 0, Math.PI), new THREE.MeshBasicMaterial({ color: '#1C1630' }), 0, 0.02, 2.62, false);
+    hole.scale.set(1, 1.45, 1);
+    g.add(hole);
+    const rim = m(new THREE.TorusGeometry(1.27, 0.07, 6, 28, Math.PI), new THREE.MeshBasicMaterial({ color: '#FFD98A' }), 0, 0.02, 2.64, false);
+    rim.scale.set(1, 1.45, 1);
+    g.add(rim);
+    // 입구 앞 돌판
+    for (let i = 0; i < 4; i++) {
+      const st = m(new THREE.CylinderGeometry(0.42, 0.45, 0.06, 7), toon('#B7B0C4'), (i % 2 ? 0.25 : -0.25), 0.03, 3.0 + i * 0.6, false);
+      st.rotation.y = i;
+      g.add(st);
+    }
+    // 빛나는 수정
+    for (const [x, z, c] of [[-1.9, 1.5, '#8FD8FF'], [2.0, 1.3, '#C9A6FF'], [-2.4, 0.2, '#C9A6FF']]) {
+      for (let k = 0; k < 3; k++) {
+        const cr = m(new THREE.OctahedronGeometry(0.22, 0), new THREE.MeshBasicMaterial({ color: c }), x + (k - 1) * 0.18, 0.25 + k * 0.05, z + (k % 2) * 0.1, false);
+        cr.scale.set(0.6, 1.5 + k * 0.3, 0.6);
+        cr.rotation.z = (k - 1) * 0.3;
+        g.add(cr);
+      }
+    }
+    // 이름판: 입구 오른쪽 (길에서 잘 보이게)
+    const sign = signMesh('새벽 동굴', 2.0, { bg: '#FFFDF7', fg: '#4A3B78', border: '#8E7BC4', sub: '하나님의 전신갑주' });
+    const post = new THREE.Group();
+    post.add(box(0.12, 1.25, 0.12, toon('#8B5E3C'), 0, 0.62, 0));
+    sign.position.set(0, 1.45, 0.07);
+    post.add(sign);
+    post.position.set(2.15, 0, 2.9);
+    post.rotation.y = -0.25;
+    g.add(post);
+    this.spot('dungeon', '새벽 동굴', g, { x: C.x, z: C.z, rot: C.rot, door: C.door });
+    this.addObstacleCircle(C.x, C.z, 3.0);
+    const sp = (lx, lz) => { const c = Math.cos(C.rot), s = Math.sin(C.rot); return { x: C.x + lx * c + lz * s, z: C.z - lx * s + lz * c }; };
+    { const q = sp(2.15, 2.9); this.addObstacleCircle(q.x, q.z, 0.15); }
+    // 횃불 둘 (불꽃은 흔들린다)
+    const flames = [];
+    for (const sx of [-1, 1]) {
+      const q = sp(sx * 1.75, 2.75);
+      const t = new THREE.Group();
+      t.add(cyl(0.06, 0.09, 1.6, toon('#6B4429'), 0, 0.8, 0, 6));
+      t.add(cyl(0.17, 0.1, 0.18, toon('#4A3B2E'), 0, 1.65, 0, 8));
+      t.position.set(q.x, 0, q.z);
+      mergeStatic(t);
+      this.scene.add(t);
+      const fl = m(new THREE.ConeGeometry(0.14, 0.42, 8), new THREE.MeshBasicMaterial({ color: '#FF9A3C' }), q.x, 1.95, q.z, false);
+      const core = m(new THREE.ConeGeometry(0.07, 0.24, 8), new THREE.MeshBasicMaterial({ color: '#FFF3B0' }), q.x, 1.88, q.z, false);
+      this.scene.add(fl, core);
+      flames.push({ fl, core, ph: sx * 1.7 });
+      this.addObstacleCircle(q.x, q.z, 0.15);
+    }
+    this.tickers = this.tickers || [];
+    this.tickers.push(() => {
+      const t = this.time;
+      for (const f of flames) { const k = 1 + Math.sin(t * 13 + f.ph) * 0.09 + Math.sin(t * 7.1 + f.ph * 2) * 0.06; f.fl.scale.set(1, k, 1); f.core.scale.set(1, 2 - k, 1); }
+    });
+  }
+
   buildNpcs() {
     const guide = new Avatar({
       skin: 2, eyes: 'smile', eyeColor: 1, brows: 'soft', nose: 'round', mouth: 'grin', cheek: 'pink',
@@ -3549,7 +3639,8 @@ export class Village {
     const sm = this.renderer.shadowMap;
     if ((this.mapS || 0) > 0.9) { this.shadowTick = ((this.shadowTick || 0) + 1) % 4; sm.autoUpdate = false; sm.needsUpdate = this.shadowTick === 0; }
     else sm.autoUpdate = true;
-    this.renderer.render(this.activeScene(), this.camera);
+    // 따로 된 장면이 있는 놀이(새벽 동굴)는 그 장면을 그린다
+    this.renderer.render(this.mode === 'game' && this.game && this.game.scene ? this.game.scene : this.activeScene(), this.camera);
   }
 
   update(dt) {
@@ -3691,7 +3782,14 @@ export class Village {
       const el = this.renderer.domElement, W = el.clientWidth || 1, H = el.clientHeight || 1;
       const dy = Math.max(0, Math.min(H * 0.38, (this.coverS - 90) / 2));
       this.camera.setViewOffset(W, H, 0, dy, W, H);
-    } else if (this.camera.view && this.camera.view.enabled) this.camera.clearViewOffset();
+    } else if (this.mode === 'game' && this.game && this.game.cover) {
+      // 놀이 화면의 판과 단추가 가리는 곳(위·아래·왼쪽 px)을 빼고 남은 칸 가운데에 놀이가 보이게 화면을 옮긴다 (새벽 동굴)
+      const c = this.game.cover, el = this.renderer.domElement, W = el.clientWidth || 1, H = el.clientHeight || 1;
+      const k = Math.min(1, dt * 5);
+      this.gcx = (this.gcx || 0) + (-(c.left || 0) / 2 - (this.gcx || 0)) * k;
+      this.gcy = (this.gcy || 0) + (Math.max(-H * 0.3, Math.min(H * 0.38, ((c.bottom || 0) - (c.top || 0)) / 2)) - (this.gcy || 0)) * k;
+      this.camera.setViewOffset(W, H, this.gcx, this.gcy, W, H);
+    } else if (this.camera.view && this.camera.view.enabled) { this.camera.clearViewOffset(); this.gcx = this.gcy = 0; }
     this.fitFar();
     const focus = (this.mode === 'play' || this.mode === 'game') && this.player && !(this.mapT > 0.05) ? this.player.root.position : this.camLook;
     const sk = this.shadowK || 1;

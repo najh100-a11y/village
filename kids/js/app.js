@@ -172,7 +172,7 @@ async function boot() {
     onLockedInvite: (from, kind) => {
       const p = state.people.get(from);
       const bid = bgIdOf(kind);
-      const what = bid ? BG_INFO[bid].name : { omok: '오목', ark: '방주 짝 맞추기', cook: '요리', hide: '숨바꼭질' }[kind] || '놀이';
+      const what = bid ? BG_INFO[bid].name : { omok: '오목', ark: '방주 짝 맞추기', cook: '요리', hide: '숨바꼭질', dgn: '새벽 동굴 탐험' }[kind] || '놀이';
       if (p) toast(`${josa(p.name, '이가', '가')} ${josa(what, '을', '를')} 같이 하재요. ${unlockHint()} 놀 수 있어요!`, 3800);
     },
     onAccept: (kind, session) => openGameWith(kind, session),
@@ -195,6 +195,7 @@ async function boot() {
     getPerson: (id) => state.people.get(id),
     sendNet: (ev, p) => { if (net) net.send(ev, p); },
     myRope: () => myRope(), pickRope: (cb) => openRopes(cb),
+    setFruits: (n) => setFruits(n),
   });
   // 숨바꼭질 섬: 술래 나무에서 시작한다 (놀이 마당처럼 그날 말씀 활동을 해야 열린다)
   hide = createHideGame({
@@ -680,6 +681,15 @@ function setupPad() {
   jump.addEventListener('pointercancel', up);
   jump.addEventListener('pointerleave', up);
   jump.addEventListener('contextmenu', (e) => e.preventDefault());
+}
+// 새벽 동굴: 하나님의 전신갑주를 입고 들어가는 동굴 (놀이 마당처럼 그날 말씀 활동을 해야 열린다)
+async function openDungeon() {
+  if (!state.features.dungeon) { toast('새벽 동굴은 곧 열려요! 조금만 기다려 줘요.', 2600); return; }
+  if (!playOpen()) await refreshToday();
+  if (!playOpen()) return showLocked();
+  hideHint();
+  $('#sayPanel').hidden = true;
+  play3d.dungeon.enter();
 }
 async function openGame(id) {
   if (!playOpen()) await refreshToday();
@@ -1709,6 +1719,7 @@ function showNews() {
     news.push(['rewards1116', `새 소식! 말씀 활동 열매가 ${up ? '늘었어요' : '바뀌었어요'}. 묵상은 하루 ${REWARD.qt}개, 암송 연습은 구절마다 ${REWARD.memory}개(하루 ${REWARD.verses}구절까지), 필사는 ${REWARD.copy}개이고 공책 사진을 올리면 그 주 필사 열매가 모두 ${REWARD.photo}개예요. 선생님 도장은 ${REWARD.stamp}개예요.`]);
   }
   if (state.features.bugs) news.push(['bugs25', '새 소식! 마을에 곤충이 14가지 더 왔어요. 노랑나비, 네발나비, 꽃등에, 꼬리박각시, 방아깨비, 귀뚜라미(밤), 홍줄노린재, 길앞잡이, 풍뎅이, 알락하늘소, 흰점박이꽃무지, 밀잠자리, 실잠자리, 소금쟁이(연못)를 잡아 곤충 도감을 채워 봐요.']);
+  if (state.features.dungeon) news.push(['dungeon', "새 소식! 마을 섬 북서쪽에 '새벽 동굴'이 생겼어요. 갑주의 방에서 하나님의 전신갑주를 입고 기도한 뒤 들어가요. 거짓말, 참소, 불화살, 의심 같은 어둠을 말씀과 믿음으로 이기고 끝까지 서면 새벽이 와요. 친구와 넷까지 함께 갈 수 있고, 동굴을 깨면 열매를 받아요(하루 5개까지)."]);
   if (state.features.bath && state.features.expand) news.push(['bath', "새 소식! 집 넓히기에서 화장실을 지을 수 있어요(내 방 뒤). 열매 상점 '집 안' 칸의 화장실에서 변기, 세면대, 욕조, 샤워기, 세탁기를 사서 꾸며 봐요. 욕조에 들어가 앉을 수도 있어요."]);
   if (state.features.hlock) news.push(['hlock', "새 소식! 내 집 문을 잠글 수 있어요. 내 집 아래 '🔓 열림'을 눌러 '비울 때 잠그기'를 고르면, 내가 마을에 없을 때 친구들이 들어오지 못해요."]);
   if (state.features.ropes) news.push(['ropes', "새 소식! 열매 상점에 '줄넘기' 칸이 생겼어요. 하늘·연두·포도색 줄, 사탕 줄, 구슬 줄, 무지개 줄, 야광 줄, 별빛 줄을 사서 줄넘기의 '줄 고르기'로 바꿔 가며 뛰어요."]);
@@ -2902,6 +2913,7 @@ async function openGameWith(kind, session) {
   $('#sayPanel').hidden = true;
   if (kind === 'hide') { if (play3d.active) play3d.stop(); hide.join(session); return; } // 숨바꼭질 방에 들어가 방장이 시작하기를 기다린다
   if (kind === 'jrteam') { play3d.longRope.join(session); return; } // 긴 줄넘기 방에 들어가 방장이 시작하기를 기다린다
+  if (kind === 'dgn') { play3d.dungeon.join(session); return; } // 새벽 동굴 갑주의 방에 들어가 갑주를 입고 방장을 기다린다
   const bid = bgIdOf(kind);
   if (bid) play3d.boardJoin(bid, session); // 친구 방에 들어가 방장이 시작하기를 기다린다
   else if (kind === 'omok') play3d.omok({ session });
@@ -2917,6 +2929,7 @@ function onEnter(id) {
   if (hide && hide.active) { toast("숨바꼭질 중이에요! 그만하려면 아래 '그만하기'를 눌러요.", 2600); return; }
   if (nbr && nbr.onDoor(id)) return; // 이웃 마을: 안내판, 집, 우체통
   if (id === 'jrlong') { play3d.longRope.enter(); return; } // 도서관 옆 잔디밭 긴 줄넘기
+  if (id === 'dungeon') { openDungeon(); return; } // 새벽 동굴 (놀이 마당처럼 그날 말씀 활동을 해야 열린다)
   if (id === 'home') return homeUI.enter();
   if (id === 'suggest') return openSuggest();
   if (id === 'memory') return openHouse(() => memory.open(), 'memory');

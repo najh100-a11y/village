@@ -9,9 +9,10 @@ const KIND_ASK = {
   bg_fruit: '보드게임 섬에서 과일 종 치기 하자고 해요!', bg_n77: '보드게임 섬에서 77 피하기 하자고 해요!', bg_code: '보드게임 섬에서 숫자 암호 맞히기 하자고 해요!',
   bg_mancala: '보드게임 섬에서 만칼라 하자고 해요!', bg_yut: '보드게임 섬에서 윷놀이 하자고 해요!', bg_dots: '보드게임 섬에서 땅따먹기(점 잇기) 하자고 해요!',
   hide: '숨바꼭질 섬에서 숨바꼭질 하자고 해요!', jrteam: '도서관 옆 잔디밭에서 긴 줄넘기 같이 하자고 해요!',
+  dgn: '새벽 동굴에 같이 들어가자고 해요! 하나님의 전신갑주를 입고 가요.',
 };
-// 여럿이 하는 놀이 (보드게임 섬, 숨바꼭질, 긴 줄넘기): 방 하나(gid)에 친구 여럿이 들어온다
-export const isRoomKind = (k) => typeof k === 'string' && (k.startsWith('bg_') || k === 'hide' || k === 'jrteam');
+// 여럿이 하는 놀이 (보드게임 섬, 숨바꼭질, 긴 줄넘기, 새벽 동굴): 방 하나(gid)에 친구 여럿이 들어온다
+export const isRoomKind = (k) => typeof k === 'string' && (k.startsWith('bg_') || k === 'hide' || k === 'jrteam' || k === 'dgn');
 const newGid = () => Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]).join('') + Date.now().toString(36).slice(-4);
 
 // 받는 쪽에서 메시지를 한 번만 처리하고, 보내는 쪽은 받았다는 대답이 올 때까지 다시 보낸다
@@ -96,6 +97,8 @@ export function createPlayHub({ getNet, getPerson, getMe, onAccept, onInviteShow
       on(name, fn) { this.handlers[name] = fn; return this; },
       emit(name, ...a) { if (this.handlers[name]) this.handlers[name](...a); },
       send(t, data) { if (rel) rel.send(t, data); },
+      // 받았다는 대답을 기다리지 않고 한 번만 보낸다 (자주 바뀌는 자리 알림). t는 '~'로 시작한다
+      blast(t, data) { if (raw) raw.send({ ...data, t }); },
       nameOf: (id) => (getPerson(id) || {}).name || '친구',
       setMembers(ids) { members.clear(); for (const id of ids) if (id && id !== me) members.add(id); },
       left(id) { if (members.delete(id)) s.emit('left', id); },
@@ -129,6 +132,7 @@ export function createPlayHub({ getNet, getPerson, getMe, onAccept, onInviteShow
     if (net) {
       raw = net.openGame(gid, (m) => {
         if (m.t === 'bye' && typeof m.s !== 'number') { if (typeof m._f === 'string') s.left(m._f); return; }
+        if (typeof m.t === 'string' && m.t[0] === '~' && typeof m.s !== 'number') { if (typeof m._f === 'string') s.emit('msg', m, m._f); return; }
         rel.receive(m);
       }, () => s.emit('ready'));
       rel = reliableRoom(raw || { send() {} }, me, () => [...members], (m, from) => s.emit('msg', m, from));

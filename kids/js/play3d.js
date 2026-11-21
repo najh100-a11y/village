@@ -16,6 +16,7 @@ import { createArkGame, ARK_SEATS } from './ark.js';
 import { createJumpRope, remoteRope } from './jumprope.js';
 import { ROPE_IDS } from './ropes.js';
 import { createLongRope } from './longrope.js';
+import { createDungeon } from './dungeon.js';
 import { SEA_Y, SEA_SPOTS, MOOR, BOARD, BOAT_FACE, HARBOR, seatOf, seaRoute, seaBlock, shoreGap, nearSchool } from './sea.js';
 import { onPier, PIER } from './isles.js';
 import { BG_TABLES, bgTable, stoolsFor } from './boardisle.js';
@@ -3296,6 +3297,9 @@ export function createPlay3D(ctx) {
   // 긴 줄 함께 넘기 (도서관 옆 잔디밭)
   const lrope = createLongRope({ v, ui, begin, stopAll, portrait, rpc, getToken, lost, onCelebrate, features: () => (ctx.features ? ctx.features() : {}),
     hub, myId: () => (ctx.myId ? ctx.myId() : null), getMe: ctx.getMe, getPerson: ctx.getPerson, onlineFriends, sendNet: ctx.sendNet, board: jrope.board, toast, setActivity });
+  // 새벽 동굴 (하나님의 전신갑주): 마을 북서쪽 바위 동굴, 동굴 안은 따로 된 장면
+  const dungeon = createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, lost, onCelebrate, features: () => (ctx.features ? ctx.features() : {}),
+    hub, myId: () => (ctx.myId ? ctx.myId() : null), getMe: ctx.getMe, getPerson: ctx.getPerson, onlineFriends, setFruits: ctx.setFruits || null });
   const arkGame = createArkGame({ v, ui, begin, stopAll, portrait, live, hub, onlineFriends, friendPicker, waitInvite,
     menuTok: { next: () => ++menuTok, is: (t) => t === menuTok }, myId: () => (ctx.myId ? ctx.myId() : null), seatPose, SEAT_Y, onCelebrate,
     rpc, getToken, lost, features: () => (ctx.features ? ctx.features() : {}) });
@@ -3376,7 +3380,7 @@ export function createPlay3D(ctx) {
     get boardState() { return cur && cur.id === 'bgame' && cur.game.state ? cur.game.state() : null; },
     ride: rides.ride,
     fishing, seaFishing, omokMenu, omok, omokWatch, cookMenu, cook, cookFree, easel, artSaved,
-    skipping: skip.skipping, jumpRope: jrope.jumpRope, jrBoard: jrope.board, longRope: lrope, arkMenu: arkGame.arkMenu, ark: arkGame.ark, arkBoard: arkGame.arkBoard,
+    skipping: skip.skipping, jumpRope: jrope.jumpRope, jrBoard: jrope.board, longRope: lrope, dungeon, arkMenu: arkGame.arkMenu, ark: arkGame.ark, arkBoard: arkGame.arkBoard,
     observe(id, st) { if (watchUpdate) watchUpdate(id, st); },
     stop: stopAll, decorateRemote,
     get active() { return cur && cur.id; },
