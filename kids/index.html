@@ -586,6 +586,7 @@ body.in-game .view-ctl .zc.guide, body.home-editing .view-ctl .zc.guide { displa
 .shop-item p { margin: 2px 0 0; font-size: 14px; color: var(--ink-soft); }
 .shop-item .acts { display: grid; gap: 6px; justify-items: end; }
 .shop-item .fw-ic.pet svg { background: #D7EFC4; }
+.shop-item .fw-ic.rope svg { background: #FFF3DA; }
 .shop-item .fw-ic.pet img { width: 60px; height: 60px; display: block; background: #D7EFC4; border-radius: 14px; }
 .pet-name .fw-ic.big img, .pet-gift .fw-ic.big img { width: 72px; height: 72px; display: block; background: #D7EFC4; border-radius: 18px; }
 .pet-groups { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -1178,6 +1179,12 @@ body.home-editing .pad, body.home-editing .jump-btn, body.home-editing #hud .hud
 .style-sw { width: 78px; display: grid; justify-items: center; gap: 4px; padding: 6px 4px; background: #fff; border: 3px solid #F1E6CF; border-radius: 14px; cursor: pointer; font-family: var(--display); font-size: 12.5px; color: var(--ink); }
 .style-sw i { width: 54px; height: 36px; border-radius: 8px; border: 1px solid rgba(0, 0, 0, .12); display: block; }
 .style-sw.on { border-color: var(--leaf); background: #EEF8E6; }
+/* 집 잠그기 */
+.lock-opts { display: grid; gap: 10px; margin: 12px 0 4px; }
+.lock-opt { display: grid; gap: 3px; justify-items: start; text-align: left; padding: 12px 16px; background: #fff; border: 3px solid #F1E6CF; border-radius: 16px; cursor: pointer; color: var(--ink); font-family: var(--body); }
+.lock-opt b { font-family: var(--display); font-size: 17px; }
+.lock-opt span { font-size: 14px; color: var(--ink-soft); }
+.lock-opt.on { border-color: var(--leaf); background: #EEF8E6; }
 .he-tab, .shop-tab { border: 3px solid var(--line); background: #fff; border-radius: 999px; padding: 6px 12px; font-family: var(--display); font-size: 15px; cursor: pointer; }
 .he-tab[aria-selected="true"], .shop-tab[aria-selected="true"] { border-color: var(--leaf); background: #EEF8E6; color: var(--leaf-deep); }
 .he-btns { display: flex; gap: 6px; }

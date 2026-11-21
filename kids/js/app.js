@@ -16,7 +16,7 @@ import { TREASURES, treasureById, treasureIcon, treasureShadow, TREASURE_RARITY,
 import { FIREWORKS, FW_IDS, fireworkIcon } from './fireworks.js';
 import { PET_ITEMS, PET_IDS, PET_FOOD, makeAnyPet } from './critters.js';
 import { PET_GROUPS, petGroup, shopPets } from './pets-data.js';
-import { HOME_ITEMS, HOME_IDS, ZONE_NAMES, HARVEST, CROP_IDS, GROUP_NAMES } from './homeitems.js';
+import { HOME_ITEMS, HOME_IDS, ZONE_NAMES, HARVEST, CROP_IDS, GROUP_NAMES, setBathOn } from './homeitems.js';
 import { itemThumb, avatarThumb, objThumb } from './home.js';
 import { WARDROBE, WARDROBE_IDS, WEAR_OFF } from './wardrobe.js';
 import { COVER_HATS } from './avatar.js';
@@ -34,6 +34,7 @@ import { BG_IDS, BG_INFO, bgIdOf, bgKind } from './boardgames.js';
 import { VILLAGERS, TALK } from './villagers.js';
 import { createGuide } from './guide.js';
 import { createNbrUI } from './nbrui.js';
+import { ROPES, ROPE_IDS, isRope, ropeSvg } from './ropes.js';
 
 const $ = (s) => document.querySelector(s);
 const state = { token: store.get('token'), me: null, people: new Map(), today: null, features: {}, dms: new Map(), unread: 0 };
@@ -193,6 +194,7 @@ async function boot() {
     getMe: () => state.me,
     getPerson: (id) => state.people.get(id),
     sendNet: (ev, p) => { if (net) net.send(ev, p); },
+    myRope: () => myRope(), pickRope: (cb) => openRopes(cb),
   });
   // 숨바꼭질 섬: 술래 나무에서 시작한다 (놀이 마당처럼 그날 말씀 활동을 해야 열린다)
   hide = createHideGame({
@@ -213,6 +215,7 @@ async function boot() {
     openCook: () => openGame('cook'),
     onShopData: (r) => { shopData = r; },
     nbr: { unseen: () => (nbr ? nbr.unseen() : 0), myNotes: () => nbr && nbr.myNotes(), leaveNote: (g) => nbr && nbr.leaveNote(g), refresh: () => nbr && nbr.load(true) },
+    onlineIds: () => [...online], getPerson: (id) => state.people.get(id),
   });
   // 이웃 마을: 아이들 집이 모두 모인 섬 (주인이 없어도 놀러 가고, 다녀간 인사를 남긴다)
   nbr = createNbrUI({
@@ -492,6 +495,7 @@ async function join() {
 }
 
 function showLogin() {
+  stopHere();
   if (play3d) play3d.stop();
   if (hide) hide.quit(true);
   if (homeUI) homeUI.reset();
@@ -519,6 +523,20 @@ async function refreshToday() {
   if (!state.todayChecked) setTimeout(showQtNudge, 4500);
   state.todayChecked = true;
 }
+
+// ---------- 마을에 있다고 알리기 (집 잠그기) ----------
+// 잠가 둔 집은 주인이 마을에 있을 때만 친구가 들어올 수 있다. 서버는 이 알림을 2분 30초까지 '마을에 있다'로 본다 (kids_here)
+let hereTimer = 0;
+function startHere() {
+  stopHere();
+  const ping = () => {
+    if (!state.me || !state.token || $('#hud').hidden) return;
+    rpc('kids_here', { p_token: token() }).catch((e) => { if (e.code === 'SESSION') sessionLost(); });
+  };
+  ping();
+  hereTimer = setInterval(ping, 60000);
+}
+function stopHere() { clearInterval(hereTimer); hereTimer = 0; }
 
 // ---------- 선생님 도장 알림 ----------
 // 선생님이 선생님 화면에서 도장을 찍으면, 마을에 있는 아이 화면에 1분 안에 알린다 (40초마다 도장판을 다시 읽는다)
@@ -746,6 +764,8 @@ async function enterVillage(greet) {
   rpc('kids_chat_open').then(showChatInput).catch(() => showChatInput(false));
   rpc('kids_features').then((f) => {
     state.features = f || {};
+    setBathOn(!!state.features.bath); // 집 넓히기에 화장실 (서버에 있을 때만)
+    if (state.features.hlock) startHere(); // 집 잠그기: 마을에 있다고 1분마다 알린다
     setRewards(state.features.rewards); // 말씀 활동 열매 (선생님이 정한 숫자)
     showNews(); checkFeedbackReply(); checkGifts(); loadMail(true);
     // 마을의 '○○의 집'을 고른 집 모양으로
@@ -754,7 +774,7 @@ async function enterVillage(greet) {
     if (state.features.nbr && nbr) nbr.load(true).then(() => {
       if (state.me === me && nbr.unseen()) setTimeout(() => { if (state.me === me && nbr.unseen() && !village.atHome) toast(`💌 우리 집에 친구가 다녀갔어요(인사 ${nbr.unseen()}개)! 내 집에 들어가서 '다녀간 친구'를 눌러 보세요.`, 4600); }, 7000);
     });
-  }).catch(() => { state.features = {}; });
+  }).catch(() => { state.features = {}; setBathOn(false); });
   village.setPaused(false);
   updateHud();
   $('#hud').hidden = false;
@@ -851,6 +871,7 @@ async function startNet() {
       hub.onLeave(id);
       if (hide) hide.peerLeft(id);
       if (play3d && play3d.longRope) play3d.longRope.peerLeft(id);
+      if (homeUI) homeUI.ownerLeft(id); // 놀러 간 잠긴 집의 주인이 나갔으면
     },
     onMsg: async (type, id, raw) => {
       const p = clean(type, raw);
@@ -1163,6 +1184,15 @@ async function openBag(focusBug, focusTreasure) {
     if (!owned.length) sec.append(h('p', { class: 'note' }, `아직 없어요. 열매 상점의 꾸미기 칸에서 날개, 망토, 안경 같은 물건을${state.features.hair ? ', 머리 칸에서 여러 머리 모양을' : ''} 살 수 있어요.`));
     else sec.append(h('div', { class: 'bag-chips' }, owned.map((id) => h('span', { class: 'bag-chip' }, WARDROBE[id].name))));
     sec.append(h('div', { class: 'row' }, h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => { modal.close(); openMaker(false); } }, '옷장 열기')));
+    secs.push(sec);
+  }
+  // 줄넘기 줄
+  if (state.features.ropes) {
+    const items = (shop && shop.items) || {};
+    const owned = ROPE_IDS.filter((id) => id === 'basic' || items[id] > 0);
+    const sec = h('section', { class: 'bag-sec' }, h('h3', {}, '🪢 내 줄넘기'),
+      h('div', { class: 'bag-chips' }, owned.map((id) => h('span', { class: 'bag-chip' }, ROPES[id].name, myRope() === id ? ' ✓' : ''))),
+      h('p', { class: 'note' }, owned.length > 1 ? "줄넘기를 하다가 '줄 고르기'를 누르면 바꿔 쓸 수 있어요." : '열매 상점의 줄넘기 칸에서 여러 가지 줄을 살 수 있어요.'));
     secs.push(sec);
   }
   // 수확 바구니 (밭에서 거둔 것)
@@ -1679,7 +1709,10 @@ function showNews() {
     news.push(['rewards1116', `새 소식! 말씀 활동 열매가 ${up ? '늘었어요' : '바뀌었어요'}. 묵상은 하루 ${REWARD.qt}개, 암송 연습은 구절마다 ${REWARD.memory}개(하루 ${REWARD.verses}구절까지), 필사는 ${REWARD.copy}개이고 공책 사진을 올리면 그 주 필사 열매가 모두 ${REWARD.photo}개예요. 선생님 도장은 ${REWARD.stamp}개예요.`]);
   }
   if (state.features.bugs) news.push(['bugs25', '새 소식! 마을에 곤충이 14가지 더 왔어요. 노랑나비, 네발나비, 꽃등에, 꼬리박각시, 방아깨비, 귀뚜라미(밤), 홍줄노린재, 길앞잡이, 풍뎅이, 알락하늘소, 흰점박이꽃무지, 밀잠자리, 실잠자리, 소금쟁이(연못)를 잡아 곤충 도감을 채워 봐요.']);
-  if (state.features.jr2) news.push(['jr2', '새 소식! 필사 도서관 옆 잔디밭에서 친구들과 긴 줄넘기를 함께 할 수 있어요. 마을 친구 하랑이와 다온이가 줄을 돌려요. 혼자 하는 줄넘기에는 ‘2단!’ 단추가 생겼어요.']);
+  if (state.features.bath && state.features.expand) news.push(['bath', "새 소식! 집 넓히기에서 화장실을 지을 수 있어요(내 방 뒤). 열매 상점 '집 안' 칸의 화장실에서 변기, 세면대, 욕조, 샤워기, 세탁기를 사서 꾸며 봐요. 욕조에 들어가 앉을 수도 있어요."]);
+  if (state.features.hlock) news.push(['hlock', "새 소식! 내 집 문을 잠글 수 있어요. 내 집 아래 '🔓 열림'을 눌러 '비울 때 잠그기'를 고르면, 내가 마을에 없을 때 친구들이 들어오지 못해요."]);
+  if (state.features.ropes) news.push(['ropes', "새 소식! 열매 상점에 '줄넘기' 칸이 생겼어요. 하늘·연두·포도색 줄, 사탕 줄, 구슬 줄, 무지개 줄, 야광 줄, 별빛 줄을 사서 줄넘기의 '줄 고르기'로 바꿔 가며 뛰어요."]);
+  if (state.features.jr2) news.push(['jr2','새 소식! 필사 도서관 옆 잔디밭에서 친구들과 긴 줄넘기를 함께 할 수 있어요. 마을 친구 하랑이와 다온이가 줄을 돌려요. 혼자 하는 줄넘기에는 ‘2단!’ 단추가 생겼어요.']);
   news.push(['jrope', "새 소식! 이제 마을 길 어디서나 줄넘기를 할 수 있어요. 오른쪽 아래 '줄넘기' 단추를 누르고, 줄이 발밑에 올 때 뛰어서 기록을 세워 봐요."]);
   if (state.features.nbr) news.push(['nbr', "새 소식! 마을 섬 남서쪽에 '이웃 마을' 섬이 생겼어요. 묵상의 숲 앞 길 끝 다리를 건너면 마을 친구들 집이 모두 모여 있어요. 친구가 마을에 없어도 그 집에 놀러 갈 수 있고, 집 앞 우체통에 인사 스티커를 남길 수 있어요."]);
   if (state.features.hide) news.push(['hide2', "새 소식! 숨바꼭질 섬이 마을 섬만큼 넓어졌어요. 헛간, 뒤집힌 배, 나무 구멍, 옥수수밭처럼 숨을 곳이 47군데나 돼요. 친구가 방을 열면 초대가 없어도 술래 나무를 눌러 바로 들어갈 수 있어요(8명까지)."]);
@@ -1733,7 +1766,7 @@ async function openShop(t, grp) {
   if (!modal.isOpen) return;
   drawShop(body, shop);
 }
-const SHOP_TABS = ['fw', 'pet', 'wear', 'room', 'yard', 'garden', 'house', 'sell', 'gift'];
+const SHOP_TABS = ['fw', 'pet', 'wear', 'room', 'yard', 'garden', 'house', 'rope', 'sell', 'gift'];
 const SHOP_NOTE = {
   fw: '산 불꽃은 가방에 들어가고, 마을 어디서나 터트릴 수 있어요. 친구들 하늘에도 같이 터져요.',
   pet: '애완동물은 한 번 데려오면 계속 우리 집 친구예요. 한 번에 한 마리가 나를 따라다녀요.',
@@ -1744,12 +1777,13 @@ const SHOP_NOTE = {
   yard: "마당에 놓는 물건이에요. 내 집에 들어가서 '집 꾸미기'를 누르면 놓을 수 있어요. 산 물건은 없어지지 않아요.",
   house: "집 모양은 한 번 사면 계속 내 것이에요. 나무 오두막과 빨간 벽돌집은 누구나 골라요. 내 집 '집 꾸미기'의 '🏡 집 모양'에서 사기 전에 미리 볼 수 있고, 지붕 색도 열매 없이 바꿔요.",
   garden: '씨앗과 모종은 밭 한 칸에 하나씩 심어요. 다 자란 채소를 거두면 그 씨앗은 없어지고, 꽃은 다 피면 계속 피어 있어요.',
+  rope: "줄넘기는 한 번 사면 계속 내 것이에요. 여기서 '이 줄로 하기'를 누르거나, 줄넘기를 하다가 '줄 고르기'를 눌러 바꿔요. 친구 화면에도 내가 고른 줄로 보여요.",
   sell: '잡은 물고기와 곤충은 같은 것끼리 모아서 팔아요. 흔한 것은 10마리, 가끔 보이는 것은 5마리, 드문 것은 2마리, 아주 드문 것은 1마리에 열매 1개예요. 팔아도 도감 기록은 그대로 남아요. 쓰레기(낡은 장화, 빈 깡통 같은 것)는 팔 수 없어요.',
   gift: '모은 열매를 친구에게 선물해요. 한 번에 1~10개, 하루에 모두 열매 10개까지 보낼 수 있어요. 선생님도 선물 기록을 볼 수 있어요.',
 };
 const PET_NOTE3 = `애완동물은 한 번 데려오면 계속 우리 집 친구예요. 세 마리까지 함께 다닐 수 있어요. 다시 팔면 데려올 때 값의 반(열매 15개)을 받고, 친구에게 선물할 수도 있어요.`;
 // 원래 값과 지금 값 (선생님이 할인을 켜면 지금 값이 싸다)
-function basePrice(id) { return (FIREWORKS[id] || PET_ITEMS[id] || HOME_ITEMS[id] || WARDROBE[id] || HOUSE_ITEMS[id] || {}).price || 0; }
+function basePrice(id) { return (FIREWORKS[id] || PET_ITEMS[id] || HOME_ITEMS[id] || WARDROBE[id] || HOUSE_ITEMS[id] || (String(id).startsWith('jr_') && ROPES[id]) || {}).price || 0; }
 function priceOf(id, shop) { const p = shop && shop.prices && shop.prices[id]; return Number.isFinite(p) ? p : basePrice(id); }
 function buyBtn(id, shop, verb, onclick) {
   const p = priceOf(id, shop), b = basePrice(id);
@@ -1777,14 +1811,18 @@ function petShopRows(shop, items, body) {
 }
 // 집 안 칸: 서버에 집 넓히기가 있으면 방·거실·주방 작은 칸으로 나눈다 (없으면 예전 방 가구만)
 function homeShopRows(shop, items, body) {
-  const indoor = HOME_IDS.filter((id) => ['room', 'kitchen'].includes(HOME_ITEMS[id].zone));
-  if (!state.features.expand) return indoor.filter((id) => !HOME_ITEMS[id].v2).map((id) => homeRow(id, items[id] || 0, shop));
-  const chips = h('div', { class: 'pet-groups', role: 'tablist', 'aria-label': '가구 종류' }, Object.entries(GROUP_NAMES).map(([k, label]) => {
+  const bathOn = !!state.features.bath;
+  const indoor = HOME_IDS.filter((id) => ['room', 'kitchen', 'bath'].includes(HOME_ITEMS[id].zone) && (bathOn || !HOME_ITEMS[id].bath));
+  if (!state.features.expand) return indoor.filter((id) => !HOME_ITEMS[id].v2 && !HOME_ITEMS[id].bath).map((id) => homeRow(id, items[id] || 0, shop));
+  if (homeGrp === 'bath' && !bathOn) homeGrp = 'bed';
+  const chips = h('div', { class: 'pet-groups', role: 'tablist', 'aria-label': '가구 종류' }, Object.entries(GROUP_NAMES).filter(([k]) => k !== 'bath' || bathOn).map(([k, label]) => {
     const n = indoor.filter((id) => HOME_ITEMS[id].grp === k && items[id] > 0).length;
     return h('button', { class: 'pet-group', type: 'button', role: 'tab', 'aria-selected': String(homeGrp === k), onclick: () => { homeGrp = k; drawShop(body, shop); } },
       label, n ? h('small', {}, ` ${n}`) : null);
   }));
-  const note = homeGrp === 'kitchen' ? '식탁은 어느 방에나 놓을 수 있고, 냉장고·싱크대·그릇장·오븐은 주방에만 놓아요. 주방은 내 집 공사 터에서 지어요.' : homeGrp === 'living' ? '거실 가구는 거실이 아니어도 집 안 어느 방에나 놓을 수 있어요.' : '방 가구는 내 방과 새로 지은 방, 거실, 주방 어디에나 놓을 수 있어요.';
+  const note = homeGrp === 'kitchen' ? '식탁은 어느 방에나 놓을 수 있고, 냉장고·싱크대·그릇장·오븐은 주방에만 놓아요. 주방은 내 집 공사 터에서 지어요.'
+    : homeGrp === 'bath' ? '변기, 세면대, 욕조, 샤워기, 세탁기, 수건걸이는 화장실에만 놓고, 발 매트는 어느 방에나 깔 수 있어요. 화장실은 내 집 공사 터에서 지어요(내 방 뒤).'
+      : homeGrp === 'living' ? '거실 가구는 거실이 아니어도 집 안 어느 방에나 놓을 수 있어요.' : '방 가구는 내 방과 새로 지은 방, 거실, 주방 어디에나 놓을 수 있어요.';
   return [chips, h('p', { class: 'pet-group-note' }, note), ...indoor.filter((id) => HOME_ITEMS[id].grp === homeGrp).map((id) => homeRow(id, items[id] || 0, shop))];
 }
 // 집 모양 칸: 오두막·벽돌집은 누구나, 나머지는 산다. 고르기는 내 집에서 (사기 전에 미리 보기)
@@ -1829,6 +1867,7 @@ function drawShop(body, shop) {
   const f = state.features;
   const tabsDef = [['fw', '🎆 불꽃'], f.pets && ['pet', '🐾 동물'], f.wardrobe && ['wear', '👗 꾸미기'], f.wardrobe && f.hair && ['hair', '💇 머리'],
     f.home && ['room', f.expand ? '🏠 집 안' : '🛏️ 방'], f.home && ['yard', '🌳 마당'], f.home && ['garden', '🥕 밭'], f.home && f.houses && ['house', '🏡 집 모양'],
+    f.ropes && ['rope', '🪢 줄넘기'],
     f.sell && shop.sell && ['sell', '🧺 팔기'], f.gift && ['gift', '🎁 선물']].filter(Boolean);
   if (!tabsDef.some(([k]) => k === shopTab)) shopTab = 'fw';
   const tabs = tabsDef.length > 1 ? h('div', { class: 'shop-tabs', role: 'tablist' }, tabsDef.map(([k, label]) => h('button', {
@@ -1843,18 +1882,93 @@ function drawShop(body, shop) {
   else if (shopTab === 'gift') rows = giftRows(shop);
   else if (shopTab === 'room') rows = homeShopRows(shop, items, body);
   else if (shopTab === 'house') rows = houseShopRows(shop, items);
+  else if (shopTab === 'rope') rows = ROPE_IDS.map((id) => ropeRow(id, shop, 'shop'));
   else rows = HOME_IDS.filter((id) => HOME_ITEMS[id].zone === shopTab).map((id) => homeRow(id, items[id] || 0, shop));
   const sale = shop.sale > 0 && !['sell', 'gift'].includes(shopTab) ? h('p', { class: 'shop-sale' }, `🎉 지금 선생님이 모든 물건을 ${shop.sale}% 할인해 주고 있어요!`) : null;
   body.replaceChildren(...[
     h('p', { class: 'shop-fruit' }, `내 열매 🍎 ${shop.fruits}개`),
     tabs, sale,
     h('div', { class: 'shop-list' }, rows),
-    h('p', { class: 'note' }, `${['sell', 'gift'].includes(shopTab) ? '' : '열매는 암송 연습, 묵상, 필사를 하면 모여요. '}${shopTab === 'pet' && f.pets3 ? PET_NOTE3 : shopTab === 'room' && f.expand ? SHOP_NOTE.room2 : SHOP_NOTE[shopTab]}`)].filter(Boolean));
+    h('p', { class: 'note' }, `${['sell', 'gift'].includes(shopTab) ? '' : '열매는 암송 연습, 묵상, 필사를 하면 모여요. '}${shopTab === 'pet' && f.pets3 ? PET_NOTE3 : shopTab === 'room' && f.expand ? SHOP_NOTE.room2 + (f.bath ? ' 변기, 세면대, 욕조 같은 화장실 물건은 화장실에만 놓아요.' : '') : SHOP_NOTE[shopTab]}`)].filter(Boolean));
 }
 function redrawShop(r) {
   if (r) shopData = r;
   const body = document.querySelector('#modalBody .talk.shop');
   if (body && shopData) drawShop(body, shopData);
+}
+
+// ---------- 줄넘기 줄: 상점에서 사고, 상점이나 줄넘기 화면에서 고른다 (서버 kids_jr_rope) ----------
+const myRope = () => (state.features.ropes && state.me && isRope(state.me.rope) ? state.me.rope : 'basic');
+const ownsRope = (id, shop) => id === 'basic' || ((shop && shop.items) || {})[id] > 0;
+let ropePicked = null; // 줄넘기 화면에서 연 고르기 창: 고르면 줄넘기 화면의 줄을 바로 바꾼다
+function ropeIcon(id) {
+  const ic = h('div', { class: 'fw-ic rope', 'aria-hidden': 'true' });
+  ic.innerHTML = ropeSvg(id);
+  return ic;
+}
+// where: 'shop' 상점 칸, 'pick' 줄넘기 화면의 고르기 창
+function ropeRow(id, shop, where) {
+  const R = ROPES[id], mine = ownsRope(id, shop), using = myRope() === id;
+  const acts = h('div', { class: 'acts' });
+  if (!mine) acts.append(buyBtn(id, shop, '사기', () => buyRope(id, where)));
+  else if (using) acts.append(h('span', { class: 'build-done' }, '쓰고 있어요 ✓'));
+  else acts.append(h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => chooseRope(id, where) }, '이 줄로 하기'));
+  return h('div', { class: 'shop-item' + (using ? ' with-me' : '') }, ropeIcon(id),
+    h('div', {}, h('b', {}, R.name), h('p', {}, R.desc), h('p', {}, id === 'basic' ? '누구나 가진 줄이에요' : mine ? '내 것이에요' : '')), acts);
+}
+async function openRopes(onPick) {
+  ropePicked = onPick || null;
+  const body = h('div', { class: 'talk shop rope-pick' }, h('p', { class: 'fb-empty' }, '줄넘기를 꺼내는 중…'));
+  openSheet('줄 고르기', body, 'shop-sheet');
+  const shop = await loadShop();
+  if (!modal.isOpen || !body.isConnected) return;
+  drawRopes(body, shop);
+}
+function drawRopes(body, shop) {
+  if (!shop) { body.replaceChildren(h('p', { class: 'note' }, '줄넘기를 꺼내지 못했어요. 잠시 뒤에 다시 해 주세요.')); return; }
+  body.replaceChildren(
+    h('p', { class: 'shop-fruit' }, `내 열매 🍎 ${shop.fruits}개`),
+    h('div', { class: 'shop-list' }, ROPE_IDS.map((id) => ropeRow(id, shop, 'pick'))),
+    h('p', { class: 'note' }, '산 줄은 계속 내 것이라 언제든 바꿔 쓸 수 있어요. 친구 화면에도 내가 고른 줄로 보여요.'));
+}
+let ropeBusy = false;
+async function chooseRope(id, where, quiet = false) {
+  if (ropeBusy || !state.me) return;
+  ropeBusy = true;
+  try {
+    const r = await rpc('kids_jr_rope', { p_token: token(), p_rope: id });
+    state.me.rope = isRope(r.rope) ? r.rope : 'basic';
+    if (!quiet) sfx.tick();
+    if (where === 'pick') {
+      const cb = ropePicked;
+      ropePicked = null;
+      modal.close();
+      if (cb) cb(state.me.rope);
+    } else {
+      redrawShop();
+      if (!quiet) toast(`${ROPES[state.me.rope].name}로 바꿨어요! 줄넘기를 하면 이 줄로 뛰어요.`, 2800);
+    }
+  } catch (e) {
+    if (e.code === 'SESSION') { sessionLost(); return; }
+    toast(message(e), 3000);
+  } finally { ropeBusy = false; }
+}
+async function buyRope(id, where) {
+  if (buying) return;
+  buying = true;
+  let r;
+  try { r = await rpc('kids_shop_buy', { p_token: token(), p_item: id, p_n: 1 }); } catch (e) {
+    buying = false;
+    if (e.code === 'SESSION') { sessionLost(); return; }
+    toast(message(e), 3000);
+    return;
+  }
+  buying = false;
+  shopData = r;
+  setFruits(r.fruits);
+  sfx.success();
+  toast(`${ROPES[id].name}를 샀어요! 이 줄로 바꿨어요.`, 2800);
+  await chooseRope(id, where, true); // 산 줄로 바로 바꾼다 (줄넘기 화면에서 샀으면 창을 닫고 그 줄로)
 }
 
 // ---------- 꾸미기 물건 (모자, 안경, 날개, 특별한 옷) ----------
@@ -2114,7 +2228,7 @@ async function buyHome(id) {
     setFruits(r.fruits);
     sfx.success();
     const it = HOME_ITEMS[id];
-    const where = it.zone === 'kitchen' ? ' 주방에만 놓을 수 있어요.' : '';
+    const where = it.zone === 'kitchen' ? ' 주방에만 놓을 수 있어요.' : it.zone === 'bath' ? ' 화장실에만 놓을 수 있어요.' : '';
     toast(village.atHome ? `${josa(it.name, '을', '를')} 샀어요! '집 꾸미기'에서 놓아 봐요.${where}` : `${josa(it.name, '을', '를')} 샀어요! 내 집에 들어가서 '집 꾸미기'를 누르면 놓을 수 있어요.${where}`, 3200);
     if (homeUI) homeUI.onShopChanged(r.items);
     const body = document.querySelector('#modalBody .talk.shop');

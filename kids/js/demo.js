@@ -11,13 +11,17 @@ import { TREASURES } from './beach-data.js';
 import { PET_ITEMS, PET_IDS } from './pets-data.js';
 import { HOUSE_ITEMS, HOUSE_STYLES, ROOF_COLORS, isFreeHouse, houseItem, HOUSE_IDS } from './houses-data.js';
 import { randomAvatar } from './face.js';
+import { ROPES, SHOP_ROPES, isRope } from './ropes.js';
 // 보물 무게 (서버 kids_treasure_kinds와 같다)
 const TREASURE_WEIGHT = { shell: 24, conch: 18, seaglass: 14, starfish: 10, crab: 8, coin: 6, pearl: 3, bottle: 3, fossil: 2, chest: 1, can: 7, sandal: 5 };
 const BUG_KINDS = ['cabbage_white', 'swallowtail', 'honeybee', 'ladybug', 'grasshopper', 'red_dragonfly', 'mantis', 'cicada', 'stag_beetle', 'rhino_beetle', 'firefly',
   'yellow_butterfly', 'comma_butterfly', 'hoverfly', 'hawkmoth', 'acrida', 'cricket', 'stinkbug', 'tiger_beetle', 'chafer', 'longhorn', 'flower_chafer', 'skimmer', 'damselfly', 'water_strider'];
 const BUG_RARITY = [0, 1, 0, 0, 0, 0, 1, 1, 2, 2, 2, 0, 1, 0, 2, 0, 1, 1, 2, 0, 1, 1, 0, 1, 0]; // js/bugs.js와 같은 차례
 const ITEM_PRICE = { fw_spark: 1, fw_flower: 3, fw_heart: 5, fw_volley: 7, ...Object.fromEntries(PET_IDS.map((id) => [id, PET_ITEMS[id].price])), ...Object.fromEntries(HOME_IDS.map((id) => [id, HOME_ITEMS[id].price])),
-  ...Object.fromEntries(WARDROBE_IDS.map((id) => [id, WARDROBE[id].price])), ...Object.fromEntries(Object.entries(HOUSE_ITEMS).map(([id, it]) => [id, it.price])) };
+  ...Object.fromEntries(WARDROBE_IDS.map((id) => [id, WARDROBE[id].price])), ...Object.fromEntries(Object.entries(HOUSE_ITEMS).map(([id, it]) => [id, it.price])),
+  ...Object.fromEntries(SHOP_ROPES.map((id) => [id, ROPES[id].price])) };
+// 집 잠그기: 마지막으로 '마을에 있다'고 알린 뒤 이만큼(밀리초)까지는 마을에 있다고 본다 (서버 kids__home_open과 같다)
+const HERE_MS = 150000;
 // 열매 1개가 되는 묶음 마릿수 (서버 kids__sell_bundle과 같다)
 function sellBundle(kind, id) {
   if (kind === 'fish') { const f = FISH.find((x) => x.id === id); return f && f.rarity >= 0 ? SELL_BUNDLE.fish[f.rarity] : null; }
@@ -358,7 +362,7 @@ export class DemoBackend {
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true, breeds: true, skip2: true, volley: true, expand: true, houses: true, hide: true, nbr: true, rewards: this.rewards(), jrope: true, jr2: true }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true, breeds: true, skip2: true, volley: true, expand: true, houses: true, hide: true, nbr: true, rewards: this.rewards(), jrope: true, jr2: true, bath: true, hlock: true, ropes: true }; }
   // 쪽지함: 친구별 마지막 쪽지와 안 읽은 수 (최근 30일)
   kids_dm_box({ p_token }) {
     const me = this.session(p_token, 'child');
@@ -733,13 +737,15 @@ export class DemoBackend {
     const pet = String(p_item || '').startsWith('pet_');
     const wear = String(p_item || '').startsWith('av_');
     const house = String(p_item || '').startsWith('hs_');
-    const n = pet || wear || house ? 1 : p_n || 1;
+    const rope = String(p_item || '').startsWith('jr_');
+    const n = pet || wear || house || rope ? 1 : p_n || 1;
     if (!price || n < 1 || n > 5) fail('BAD_ITEM');
     this.db.items = this.db.items || {};
     const bag = this.db.items[me] || (this.db.items[me] = {});
     if (pet && (bag[p_item] || 0) >= 1) fail('HAVE_PET');
     if (wear && (bag[p_item] || 0) >= 1) fail('HAVE_ITEM');
     if (house && (bag[p_item] || 0) >= 1) fail('HAVE_HOUSE');
+    if (rope && (bag[p_item] || 0) >= 1) fail('HAVE_ROPE');
     if ((bag[p_item] || 0) + n > 99) fail('BAG_FULL');
     const c = this.child(me);
     if (c.fruits < price * n) fail('NO_FRUIT');
@@ -950,7 +956,7 @@ export class DemoBackend {
     this.db.homes = this.db.homes || {};
     const pl = this.homePlan(me), sale = this.villageConf().sale;
     return { layout: JSON.parse(JSON.stringify(this.db.homes[me] || [])), items: this.homeItems(me), fruits: this.child(me).fruits, crops: this.cropsOf(me), now: Date.now(),
-      rooms: pl.rooms.slice(), style: JSON.parse(JSON.stringify(pl.style)), look: { ...(pl.look || {}) }, houses: this.housesOf(me), sale,
+      rooms: pl.rooms.slice(), style: JSON.parse(JSON.stringify(pl.style)), look: { ...(pl.look || {}) }, houses: this.housesOf(me), sale, locked: !!(this.db.homeLock || {})[me],
       build: Object.fromEntries(BUILD_IDS.map((k) => [k, salePrice(SPACES[k].price, sale)])), build_base: Object.fromEntries(BUILD_IDS.map((k) => [k, SPACES[k].price])) };
   }
   // 집 넓히기 공사 (서버 kids_home_build와 같다)
@@ -958,7 +964,7 @@ export class DemoBackend {
     const me = this.session(p_token, 'child');
     if (!BUILD_IDS.includes(p_space)) fail('BAD_SPACE');
     const pl = this.homePlan(me);
-    if (pl.rooms.includes(p_space)) fail('BUILT');
+    if (pl.rooms.includes(p_space) || pl.rooms.length >= 5) fail('BUILT');
     const price = salePrice(SPACES[p_space].price, this.villageConf().sale);
     const c = this.child(me);
     if (c.fruits < price) fail('NO_FRUIT');
@@ -1058,8 +1064,8 @@ export class DemoBackend {
     const me = this.session(p_token, 'child');
     this.seedNotes();
     const kids = this.db.children.filter((c) => c.village_name && c.avatar)
-      .map((c) => ({ id: c.id, name: c.village_name, avatar: c.avatar, look: { ...(this.homePlan(c.id).look || {}) }, t: !!c.teacher }));
-    const extra = DEMO_NBR.map((n) => ({ id: n.id, name: n.village_name, avatar: n.avatar, look: { ...n.look }, t: false }));
+      .map((c) => ({ id: c.id, name: c.village_name, avatar: c.avatar, look: { ...(this.homePlan(c.id).look || {}) }, t: !!c.teacher, locked: !this.homeOpen(c.id) }));
+    const extra = DEMO_NBR.map((n) => ({ id: n.id, name: n.village_name, avatar: n.avatar, look: { ...n.look }, t: false, locked: !this.homeOpen(n.id) }));
     return { houses: [...kids, ...extra], unseen: (this.db.notes || []).filter((x) => x.host === me && !x.seen).length };
   }
   // 체험판에 처음 들어오면 예시 이웃이 하늘이와 바다 집에 남긴 인사 (한 번만)
@@ -1104,15 +1110,45 @@ export class DemoBackend {
     if (p_mark) for (const x of mine) x.seen = true;
     return { notes, unseen };
   }
-  // 친구 집 구경 (구경만 한다)
+  // 친구 집 구경 (구경만 한다). 잠가 둔 집은 주인이 마을에 있을 때만 (서버 kids_home_visit과 같다)
   kids_home_visit({ p_token, p_child }) {
-    this.session(p_token, 'child');
+    const me = this.session(p_token, 'child');
     const n = DEMO_NBR.find((x) => x.id === p_child);
-    if (n) return { name: n.village_name, avatar: n.avatar, layout: sampleHome().layout, now: Date.now(), rooms: [], style: {}, look: { ...n.look } };
-    const c = this.db.children.find((x) => x.id === p_child && x.village_name && x.avatar);
-    if (!c) fail('NOT_FOUND');
+    const c = n ? null : this.db.children.find((x) => x.id === p_child && x.village_name && x.avatar);
+    if (!n && !c) fail('NOT_FOUND');
+    if (p_child !== me && !this.homeOpen(p_child)) fail('HOME_LOCKED');
+    const locked = !!(this.db.homeLock || {})[p_child];
+    if (n) return { name: n.village_name, avatar: n.avatar, layout: sampleHome().layout, now: Date.now(), rooms: [], style: {}, look: { ...n.look }, locked };
     const pl = this.homePlan(p_child);
-    return { name: c.village_name, avatar: c.avatar, layout: JSON.parse(JSON.stringify((this.db.homes || {})[p_child] || [])), now: Date.now(), rooms: pl.rooms.slice(), style: JSON.parse(JSON.stringify(pl.style)), look: { ...(pl.look || {}) } };
+    return { name: c.village_name, avatar: c.avatar, layout: JSON.parse(JSON.stringify((this.db.homes || {})[p_child] || [])), now: Date.now(), rooms: pl.rooms.slice(), style: JSON.parse(JSON.stringify(pl.style)), look: { ...(pl.look || {}) }, locked };
+  }
+  // ---------- 집 잠그기 (서버 kids_home_lock, kids_here, kids__home_open과 같다) ----------
+  // 체험판의 예시 이웃 '솔이'(n2)는 집을 잠가 두고 마을에 없다
+  homeOpen(id) {
+    const lock = this.db.homeLock || (this.db.homeLock = { n2: true });
+    return !lock[id] || Date.now() - ((this.db.here || {})[id] || 0) < HERE_MS;
+  }
+  kids_home_lock({ p_token, p_locked }) {
+    const me = this.session(p_token, 'child');
+    if (typeof p_locked !== 'boolean') fail('BAD_LOCK');
+    this.homeOpen(me);
+    this.db.homeLock[me] = p_locked;
+    return { locked: p_locked };
+  }
+  kids_here({ p_token }) {
+    const me = this.session(p_token, 'child');
+    this.db.here = this.db.here || {};
+    this.db.here[me] = Date.now();
+    this.homeOpen(me);
+    return { locked: !!this.db.homeLock[me] };
+  }
+  // ---------- 줄넘기 줄 고르기 (서버 kids_jr_rope와 같다) ----------
+  kids_jr_rope({ p_token, p_rope }) {
+    const c = this.child(this.session(p_token, 'child'));
+    if (!isRope(p_rope)) fail('BAD_ITEM');
+    if (p_rope !== 'basic' && !(((this.db.items || {})[c.id] || {})[p_rope] > 0)) fail('NO_ROPE');
+    c.rope = p_rope === 'basic' ? null : p_rope;
+    return { rope: c.rope || 'basic' };
   }
   kids_home_save({ p_token, p_layout, p_harvest, p_plan = 1 }) {
     const me = this.session(p_token, 'child');
@@ -1222,12 +1258,17 @@ export class DemoBackend {
     c.last_seen_at = nowIso();
     return { ok: true, token: this.newSession('child', c.id) };
   }
-  kids_logout({ p_token }) { delete this.db.sessions[p_token]; return null; }
+  kids_logout({ p_token }) {
+    const ss = this.db.sessions[p_token];
+    if (ss && ss.kind === 'child' && this.db.here) delete this.db.here[ss.id]; // 나가면 바로 '마을에 없음' (잠근 집은 바로 잠긴다)
+    delete this.db.sessions[p_token];
+    return null;
+  }
   kids_me({ p_token }) {
     const c = this.child(this.session(p_token, 'child'));
     c.last_seen_at = nowIso();
     return { id: c.id, login_id: c.login_id, name: c.name, village_name: c.village_name, avatar: c.avatar, fruits: c.fruits, pet: petsOf(c)[0] || null,
-      pets: petsJson(c), teacher: !!c.teacher, is_birthday: !c.teacher && c.birthdate.slice(5) === iso(new Date()).slice(5) };
+      pets: petsJson(c), teacher: !!c.teacher, is_birthday: !c.teacher && c.birthdate.slice(5) === iso(new Date()).slice(5), rope: c.rope || 'basic' };
   }
   kids_save_avatar({ p_token, p_avatar, p_village_name }) {
     const c = this.child(this.session(p_token, 'child'));

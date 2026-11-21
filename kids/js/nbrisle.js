@@ -302,7 +302,7 @@ export function buildNbrIsle(v, { signMesh } = {}) {
   function setHouses(list, auto) {
     const rows = (list || []).slice(0, NB_FILL.length).map((p) => {
       const look = lookOf(p.look);
-      return { id: p.id, name: p.name || '친구', t: !!p.t, look, roof: roofColor(look, p.avatar ? auto(p.avatar) : null) };
+      return { id: p.id, name: p.name || '친구', t: !!p.t, look, roof: roofColor(look, p.avatar ? auto(p.avatar) : null), locked: !!p.locked };
     });
     const nsig = JSON.stringify(rows.map((r) => [r.id, r.name, r.look.s, r.roof]));
     owners.fill(null);

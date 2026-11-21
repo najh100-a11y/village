@@ -32,12 +32,14 @@ function tabOfEntry(e) {
 // 물건이 그 칸에 놓이는 것인지
 function itemInTab(id, t) {
   const it = HOME_ITEMS[id];
-  if (isIndoor(t)) return it.zone === 'room' || (it.zone === 'kitchen' && t === 'kitchen');
+  if (isIndoor(t)) return it.zone === 'room' || (it.zone === 'kitchen' && t === 'kitchen') || (it.zone === 'bath' && t === 'bath');
   if (YARD_PARTS[t]) return it.zone === 'yard';
   return it.zone === t;
 }
 // 방마다 먼저 보이는 물건 묶음
-const TAB_GRP = { room: 'bed', living: 'living', kitchen: 'kitchen', room2: 'bed', room3: 'bed' };
+const TAB_GRP = { room: 'bed', living: 'living', kitchen: 'kitchen', room2: 'bed', room3: 'bed', bath: 'bath' };
+// 그 방에만 놓는 물건 (주방, 화장실)
+const ONLY = { kitchen: '주방', bath: '화장실' };
 const STAGE_TEXT = ['씨앗을 심었어요. 곧 싹이 나요.', '싹이 났어요!', '쑥쑥 자라는 중이에요.'];
 const AGAIN_TEXT = '열매를 땄어요. 다시 열매가 맺히는 중이에요.';
 const newId = () => Math.random().toString(36).slice(2, 10);
@@ -48,7 +50,8 @@ const growOf = (pl) => ({ t: pl && pl.t, g: (pl && pl.g) || undefined, w: (pl &&
 
 export function createHomeUI(o) {
   // o: { village, rpc, getToken, getMe, features, sfx, setActivity, openShop, openMaker, openSheet, modal, message, onSessionLost, setFruits,
-  //      onlineFriends, sendHouseInvite, sendPiano, nbr: { unseen(), myNotes(), leaveNote(guest) } (이웃 마을 인사) }
+  //      onlineFriends, sendHouseInvite, sendPiano, nbr: { unseen(), myNotes(), leaveNote(guest) } (이웃 마을 인사),
+  //      onlineIds(), getPerson(id) (집 잠그기: 주인이 마을에 없으면 잠긴 집에 들어가지 못한다) }
   const v = o.village;
   let st = null; // { layout, items }
   let guest = null; // 친구 집에 놀러 왔을 때 { id, name }
@@ -67,6 +70,7 @@ export function createHomeUI(o) {
     else {
       const n = nb ? nb.unseen() : 0;
       bar.replaceChildren(btn('🛋️ 집 꾸미기', () => startEdit(), 'btn-go'),
+        lockOn() ? btn(st && st.locked ? '🔒 잠금' : '🔓 열림', () => openLock()) : null,
         o.features().farm && o.openBasket ? btn('🧺 바구니', () => o.openBasket()) : null,
         o.features().visit ? btn('👋 친구 부르기', () => openInvite()) : null,
         nb ? h('button', { class: 'btn btn-soft', type: 'button', onclick: () => nb.myNotes() }, '💌 다녀간 친구', n ? h('span', { class: 'nb-badge' }, n > 9 ? '9+' : String(n)) : null) : null,
@@ -90,6 +94,7 @@ export function createHomeUI(o) {
   const placed = (k) => (v.homeSpace ? v.homeSpace.layout.filter((e) => e.k === k).length : 0);
   const owned = (k) => (st && st.items && st.items[k]) || 0;
   const expandOn = () => !!o.features().expand;
+  const lockOn = () => !!o.features().hlock;
   const housesOn = () => !!o.features().houses;
   // 서버가 준 집 모양 (집 넓히기가 아직 서버에 없으면 공사 터를 보이지 않는다)
   // look: 집 모양, auto: 지붕 색이 '옷 색깔'일 때 쓸 집 주인의 옷 색
@@ -183,12 +188,13 @@ export function createHomeUI(o) {
     try { r = await o.rpc('kids_home_visit', { p_token: o.getToken(), p_child: id }); setServerNow(r.now); } catch (e) {
       busy = false;
       if (e.code === 'SESSION') { o.onSessionLost(); return; }
+      if (e.code === 'HOME_LOCKED') { lockedToast(id); return; }
       toast(o.message(e), 2800);
       return;
     }
     busy = false;
     if (v.atHome) await exit(true);
-    guest = { id, name: r.name || '친구' };
+    guest = { id, name: r.name || '친구', locked: !!r.locked };
     v.enterHome(r.layout || [], guest.name, id, true, plan(r, r.avatar ? v.autoRoofOf(r.avatar) : null), back);
     o.setActivity('visit');
     o.sfx.door();
@@ -198,6 +204,65 @@ export function createHomeUI(o) {
     const nb = o.features().nbr && o.nbr;
     toast(`${guest.name}네 집에 놀러 왔어요! 가구에 앉아 보고, 마당과 밭도 구경해요.${nb ? " 나갈 때 '인사 남기기'로 인사 스티커를 남겨 봐요." : ''}`, nb ? 4200 : 3200);
   }
+  // ---------- 집 잠그기: 잠가 두면 내가 마을에 없을 때 친구들이 들어오지 못한다 (서버 kids_home_visit가 막는다) ----------
+  function lockedToast(id) {
+    const p = o.getPerson ? o.getPerson(id) : null, name = (p && (p.name || p.village_name)) || '친구';
+    toast(`🔒 ${name}네 집 문이 잠겨 있어요. ${josa(name, '이가', '가')} 마을에 들어오면 놀러 갈 수 있어요.`, 3600);
+  }
+  let lockBusy = false;
+  function openLock() {
+    if (guest || !st) return;
+    const on = !!st.locked;
+    const pick = (want, label, sub) => h('button', {
+      class: 'lock-opt' + (on === want ? ' on' : ''), type: 'button', 'aria-pressed': String(on === want),
+      onclick: () => setLock(want),
+    }, h('b', {}, label), h('span', {}, sub));
+    o.openSheet('우리 집 문', h('div', { class: 'talk home-lock' },
+      h('p', {}, '문을 잠가 두면 내가 마을에 없을 때 친구들이 우리 집에 들어오지 못해요. 내가 마을에 있을 때는 잠가 두어도 친구들이 놀러 올 수 있어요.'),
+      h('div', { class: 'lock-opts' },
+        pick(true, '🔒 비울 때 잠그기', '내가 마을에 없으면 문이 잠겨요'),
+        pick(false, '🔓 늘 열어 두기', '언제든 친구들이 놀러 와요')),
+      h('p', { class: 'note' }, "'나가기'를 누르고 나가면 바로, 앱을 그냥 닫으면 2~3분쯤 뒤에 문이 잠겨요. 그때 우리 집에 있던 친구도 마을로 돌아가요. 이웃 마을 우체통에 인사를 남기는 것은 잠가 두어도 할 수 있어요."),
+      h('div', { class: 'row' }, h('button', { class: 'btn btn-go', type: 'button', onclick: () => o.modal.close() }, '다 했어요'))), 'talk-sheet');
+  }
+  async function setLock(want) {
+    if (lockBusy || !st || !!st.locked === want) return;
+    lockBusy = true;
+    try {
+      const r = await o.rpc('kids_home_lock', { p_token: o.getToken(), p_locked: want });
+      st.locked = !!r.locked;
+      o.sfx.tick();
+      toast(st.locked ? '🔒 이제 내가 마을에 없을 때는 우리 집 문이 잠겨요.' : '🔓 우리 집 문을 늘 열어 두었어요.', 2800);
+      if (v.atHome && !guest) v.sendHouse({ u: 1 }); // 놀러 와 있는 친구도 알게
+      if (o.modal.isOpen) openLock();
+      drawBar();
+    } catch (e) {
+      if (e.code === 'SESSION') { o.onSessionLost(); return; }
+      toast(o.message(e), 3000);
+    } finally { lockBusy = false; }
+  }
+  // 놀러 간 잠긴 집의 주인이 마을을 나가면: 서버가 문을 잠근 것을 확인하고(30초마다, 4분까지) 마을로 돌아간다
+  let lockWatch = 0;
+  function ownerLeft(id) {
+    if (!guest || guest.id !== id || !guest.locked) return;
+    clearTimeout(lockWatch);
+    let n = 0;
+    const tick = async () => {
+      if (!guest || guest.id !== id || !v.atHome) return;
+      if (o.onlineIds && o.onlineIds().includes(id)) return; // 다시 들어왔다
+      try { await o.rpc('kids_home_visit', { p_token: o.getToken(), p_child: id }); } catch (e) {
+        if (e.code === 'HOME_LOCKED' && guest && guest.id === id) {
+          const name = guest.name;
+          await exit();
+          toast(`🔒 ${josa(name, '이가', '가')} 마을을 나가서 집 문이 잠겼어요. 마을로 돌아왔어요.`, 3600);
+          return;
+        }
+      }
+      if (++n < 8) lockWatch = setTimeout(tick, 30000);
+    };
+    lockWatch = setTimeout(tick, 30000);
+  }
+
   // 친구가 집을 새로 꾸몄을 때 다시 불러온다
   async function refreshGuest() {
     if (!guest || !v.atHome) return;
@@ -205,6 +270,7 @@ export function createHomeUI(o) {
     try {
       const r = await o.rpc('kids_home_visit', { p_token: o.getToken(), p_child: id });
       if (guest && guest.id === id && v.homeSpace) {
+        guest.locked = !!r.locked;
         const H = v.homeSpace;
         const auto = r.avatar ? v.autoRoofOf(r.avatar) : H.lookAuto, look = lookOf(r.look);
         const lookNew = look.s !== H.look.s || look.c !== H.look.c || auto !== H.lookAuto;
@@ -374,9 +440,11 @@ export function createHomeUI(o) {
     const shopTab = isIndoor(tab) ? 'room' : YARD_PARTS[tab] ? 'yard' : tab;
     cards.push(h('button', { class: 'he-item shop', type: 'button', onclick: () => o.openShop(shopTab, TAB_GRP[tab]) }, h('span', { class: 'he-plus' }, '+'), h('b', {}, '더 사기'), h('small', {}, '열매 상점')));
     list.replaceChildren(...cards);
-    // 주방이 없는데 주방 물건을 가지고 있으면 알려 준다
-    const waitKitchen = isIndoor(tab) && !spaceById('kitchen') ? HOME_IDS.filter((id) => HOME_ITEMS[id].zone === 'kitchen' && owned(id) > 0).length : 0;
-    const kitchenNote = waitKitchen ? ` 주방 물건 ${waitKitchen}가지는 주방을 지으면 놓을 수 있어요.` : '';
+    // 주방(화장실)이 없는데 주방(화장실) 물건을 가지고 있으면 알려 준다
+    const kitchenNote = isIndoor(tab) ? Object.entries(ONLY).map(([z, name]) => {
+      const n = spaceById(z) ? 0 : HOME_IDS.filter((id) => HOME_ITEMS[id].zone === z && owned(id) > 0).length;
+      return n ? ` ${name} 물건 ${n}가지는 ${josa(name, '을', '를')} 지으면 놓을 수 있어요.` : '';
+    }).join('') : '';
     if (!ids.length) hint.textContent = tab === 'garden' ? '아직 씨앗이 없어요. 열매 상점에서 씨앗을 사면 밭에 심을 수 있어요.' : `아직 ${tabName(tab)}에 놓을 물건이 없어요. 열매 상점에서 사 올 수 있어요.${kitchenNote}`;
     else if (!mode) hint.textContent = tab === 'garden' ? '씨앗을 고르고 밭의 빈칸을 눌러 심어요. 심은 것을 누르면 옮기거나 뽑을 수 있어요.' : `물건을 고르고 놓을 곳을 눌러요. 놓은 물건을 누르면 옮기거나 돌릴 수 있어요.${kitchenNote}`;
     drawExtra();
@@ -433,7 +501,7 @@ export function createHomeUI(o) {
   function firstFree(k, r = 0) {
     const it = HOME_ITEMS[k];
     const f = footprint(k, r);
-    const rects = itemInTab(k, tab) ? tabRects(tab) : it.zone === 'kitchen' ? tabRects('kitchen') : [];
+    const rects = itemInTab(k, tab) ? tabRects(tab) : ONLY[it.zone] ? tabRects(it.zone) : [];
     let best = null, bd = Infinity;
     for (const R of rects) {
       // 주방은 조리대 앞을 비워 두도록 조리대 뒤 벽 앞 줄부터 채운다
@@ -451,9 +519,10 @@ export function createHomeUI(o) {
   function pick(k) {
     if (owned(k) - placed(k) <= 0) { toast('가진 것을 모두 놓았어요. 놓은 것을 옮기거나, 열매 상점에서 더 살 수 있어요.', 3000); return; }
     cancelMode();
-    if (HOME_ITEMS[k].zone === 'kitchen' && !spaceById('kitchen')) { toast("주방 물건은 주방에만 놓아요. '집 넓히기'에서 주방을 지으면 놓을 수 있어요.", 3400); return; }
+    const only = ONLY[HOME_ITEMS[k].zone];
+    if (only && !spaceById(HOME_ITEMS[k].zone)) { toast(`${only} 물건은 ${only}에만 놓아요. '집 넓히기'에서 ${josa(only, '을', '를')} 지으면 놓을 수 있어요.`, 3400); return; }
     const spot = firstFree(k) || (footprint(k, 0).w !== footprint(k, 0).d ? firstFree(k, 1) : null); // 안 들어가면 돌려서
-    if (!spot) { toast(`${HOME_ITEMS[k].zone === 'kitchen' ? '주방' : tabName(tab)}에 빈자리가 없어요. 다른 물건을 옮기거나 가방에 넣어 봐요.`, 3200); return; }
+    if (!spot) { toast(`${only || tabName(tab)}에 빈자리가 없어요. 다른 물건을 옮기거나 가방에 넣어 봐요.`, 3200); return; }
     mode = { kind: 'place', e: { ...spot, id: newId() }, from: null };
     o.sfx.pop();
     showGhost();
@@ -749,10 +818,15 @@ export function createHomeUI(o) {
     else if (e.k === 'y_slide') { if (!v.sliding) { o.sfx.jump(); v.jump(); v.say('me', '야호!'); } } // 탈 때는 world가 사다리부터 태운다
     else if (e.k === 'y_swing') { o.sfx.jump(); v.jump(); v.say('me', '야호!'); }
     else if (e.k === 'h_bed' || e.k === 'h_bunk') v.say('me', '포근해~');
-    else if (['h_fridge', 'h_sink', 'h_tv', 'h_globe'].includes(e.k)) {
+    else if (['h_fridge', 'h_sink', 'h_tv', 'h_globe', 'h_washbasin', 'h_toilet', 'h_bathtub', 'h_shower', 'h_laundry'].includes(e.k)) {
       const r = v.homeSpace.poke(id);
       if (r === 'fridge') { o.sfx.open(); v.say('me', '시원해!'); setTimeout(() => o.sfx.close(), 2500); }
       else if (r === 'sink') { o.sfx.splash(); v.say('me', '손을 깨끗이 씻어요!'); }
+      else if (r === 'basin') { o.sfx.splash(); v.say('me', '어푸어푸, 세수 끝!'); }
+      else if (r === 'flush') { o.sfx.splash(); setTimeout(() => o.sfx.whoosh(), 350); v.say('me', '쏴아아~'); }
+      else if (r === 'tub') { o.sfx.blub(); setTimeout(() => o.sfx.blub(), 500); v.say('me', v.sitting && v.sitting.home ? '보글보글, 따뜻해~' : '꽥꽥! 고무 오리야 안녕!'); }
+      else if (r === 'shower') { o.sfx.splash(); v.say('me', '샤워 쏴아~'); }
+      else if (r === 'laundry') { o.sfx.whoosh(); v.say('me', '빨래가 빙글빙글!'); }
       else if (r === 'tv-on') { o.sfx.tap(); v.say('me', '구름이 흘러가요~'); }
       else if (r === 'tv-off') o.sfx.tap();
       else if (r === 'globe') { o.sfx.whoosh(); v.say('me', '빙글빙글!'); }
@@ -764,6 +838,7 @@ export function createHomeUI(o) {
     }
     else if (e.k === 'h_fishtank') { o.sfx.blub(); v.say('me', '물고기야 안녕!'); }
     else if (e.k === 'h_fireplace') v.say('me', '따뜻해~');
+    else if (e.k === 'h_towel') v.say('me', '보송보송!');
     else if (e.k === 'h_oven') v.say('me', '따끈따끈!');
     else if (e.k === 'y_birdhouse') o.sfx.tweet();
     else if (e.k === 'y_mailbox') {
@@ -794,9 +869,9 @@ export function createHomeUI(o) {
     });
     o.openSheet('집 넓히기 공사', h('div', { class: 'talk shop build' },
       fruits != null ? h('p', { class: 'shop-fruit' }, `내 열매 🍎 ${fruits}개`) : null,
-      h('p', {}, left.length ? '거실, 주방, 방을 하나씩 지어서 집을 넓혀요. 처음 방을 지으면 복도와 현관이 함께 생겨요.' : '집을 다 넓혔어요! 방마다 꾸미기를 즐겨 봐요.'),
+      h('p', {}, left.length ? (BUILD_IDS.includes('bath') ? '거실, 주방, 방, 화장실을 하나씩 지어서 집을 넓혀요. 화장실 말고 다른 방을 처음 지으면 복도와 현관이 함께 생겨요.' : '거실, 주방, 방을 하나씩 지어서 집을 넓혀요. 처음 방을 지으면 복도와 현관이 함께 생겨요.') : '집을 다 넓혔어요! 방마다 꾸미기를 즐겨 봐요.'),
       h('div', { class: 'shop-list' }, rows),
-      h('p', { class: 'note' }, '방마다 자리가 정해져 있어요. 거실은 내 방 옆, 주방은 복도 건너편, 방 2와 방 3은 뒤쪽이에요. 방마다 복도로 나가는 문이 있어요. 공사비는 열매로 내고, 한 번 지은 방은 그대로 남아요.')), 'talk-sheet');
+      h('p', { class: 'note' }, `방마다 자리가 정해져 있어요. 거실은 내 방 옆, 주방은 복도 건너편, 방 2와 방 3은 뒤쪽이에요. 방마다 복도로 나가는 문이 있어요.${BUILD_IDS.includes('bath') ? ' 화장실은 내 방 뒤에 생기고 내 방에서 들어가요.' : ''} 공사비는 열매로 내고, 한 번 지은 방은 그대로 남아요.`)), 'talk-sheet');
   }
   function askBuild(id, fromEdit) {
     const sp = SPACES[id], price = buildPrice(id);
@@ -859,7 +934,7 @@ export function createHomeUI(o) {
         document.body.classList.remove('home-building');
         if (v.game === ctrl) v.exitGame();
         const sp = SPACES[id];
-        const more = id === 'kitchen' ? ' 주방 조리대를 누르면 요리할 수 있어요.' : '';
+        const more = id === 'kitchen' ? ' 주방 조리대를 누르면 요리할 수 있어요.' : id === 'bath' ? ' 내 방 뒤쪽 문으로 들어가요. 열매 상점에서 변기, 세면대, 욕조를 사서 놓아 봐요.' : '';
         const moved = off.length ? ` 새로 난 문 자리에 있던 물건 ${off.length}개는 가방에 넣어 두었어요.` : '';
         toast(fromEdit ? `${josa(sp.name, '이', '가')} 생겼어요! 새 가구를 놓아 봐요.${more}${moved}` : `${josa(sp.name, '이', '가')} 생겼어요! '집 꾸미기'에서 ${josa(sp.name, '을', '를')} 꾸며 봐요.${more}${moved}`, 4600);
         if (fromEdit) startEdit(id);
@@ -1121,7 +1196,7 @@ export function createHomeUI(o) {
   }
 
   return {
-    enter, exit, reset, onPlant, onHomeItem, onSlide, onShopChanged, startEdit, stopEdit, visit, refreshGuest, openInvite, remotePiano, openBuild, openLook,
+    enter, exit, reset, onPlant, onHomeItem, onSlide, onShopChanged, startEdit, stopEdit, visit, refreshGuest, openInvite, remotePiano, openBuild, openLook, ownerLeft, openLock,
     get editing() { return editing; },
     get guest() { return guest; },
     get looking() { return !!looking; },

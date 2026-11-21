@@ -31,6 +31,8 @@ const REST = {
   y_bench: { seats: [[-0.45, 0.02], [0.45, 0.02]], y: 0.24, front: 0.85 },
   h_piano: { seats: [[0, 0.64]], y: 0.22, front: 1.25, turn: Math.PI },
   y_swing: { seats: [[0, 0.02]], y: 0.33, front: 1.4, swing: true },
+  h_toilet: { seats: [[0, 0.04]], y: 0.2, front: 0.85 },
+  h_bathtub: { seats: [[0, -0.55]], y: -0.14, front: 1.95 }, // 욕조 바닥(0.1)에 앉으면 물(0.5)이 배까지 온다
 };
 const VC = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient() });
 const GATE = { x: 0, z: 9.2 }, CLOSET = { x: -9.45, z: -8.55 };
@@ -554,6 +556,139 @@ export function buildItem(id, glow) {
       box(g, 0.56, 0.04, 0.05, '#B7C3CB', 0, 0.72, 0.37);
       for (let i = 0; i < 4; i++) ball(g, 0.03, '#3B3B45', -0.27 + i * 0.18, 0.83, 0.34, 6);
       break;
+    // 화장실
+    case 'h_toilet': {
+      const WT = '#FFFDF7';
+      box(g, 0.52, 0.5, 0.2, WT, 0, 0.66, -0.36); // 물통
+      box(g, 0.56, 0.05, 0.24, '#E3EEF4', 0, 0.935, -0.36);
+      cyl(g, 0.045, 0.045, 0.03, '#B7C3CB', 0.16, 0.97, -0.36, 8); // 물 내리는 단추
+      cyl(g, 0.17, 0.13, 0.36, WT, 0, 0.18, -0.02, 16); // 받침
+      cyl(g, 0.24, 0.2, 0.06, WT, 0, 0.39, 0.03, 18).scale.z = 1.18;
+      const ring = m(new THREE.TorusGeometry(0.19, 0.045, 8, 20), toon('#BFE3F5'), 0, 0.44, 0.03);
+      ring.rotation.x = Math.PI / 2;
+      ring.scale.y = 1.18;
+      g.add(ring);
+      box(g, 0.42, 0.04, 0.48, '#BFE3F5', 0, 0.72, -0.21).rotation.x = -1.32; // 올려 둔 뚜껑
+      const water = m(new THREE.CylinderGeometry(0.15, 0.15, 0.01, 16), toon('#7FD0EE'), 0, 0.425, 0.03);
+      water.scale.z = 1.18;
+      water.userData.noMerge = true;
+      g.add(water);
+      const swirl = new THREE.Group();
+      for (let i = 0; i < 4; i++) { const b = ball(swirl, 0.035, '#FFFFFF', Math.cos(i * 1.57) * 0.09, 0, Math.sin(i * 1.57) * 0.09, 6); b.userData.noMerge = true; b.castShadow = false; }
+      swirl.position.set(0, 0.435, 0.03);
+      swirl.visible = false;
+      g.add(swirl);
+      anim.flush = { water, swirl };
+      break;
+    }
+    case 'h_washbasin': {
+      cyl(g, 0.08, 0.11, 0.68, '#FFFDF7', 0, 0.34, -0.14, 12);
+      box(g, 0.74, 0.16, 0.5, '#FFFDF7', 0, 0.76, -0.12);
+      box(g, 0.58, 0.012, 0.32, '#AFC4CE', 0, 0.846, -0.08);
+      box(g, 0.7, 1.08, 0.06, '#E8C690', 0, 1.38, -0.44); // 뒤판과 거울
+      box(g, 0.56, 0.62, 0.02, '#CFE6F2', 0, 1.56, -0.405);
+      box(g, 0.07, 0.36, 0.01, '#FFFFFF', -0.14, 1.62, -0.393);
+      box(g, 0.04, 0.26, 0.01, '#FFFFFF', -0.03, 1.66, -0.393);
+      cyl(g, 0.025, 0.025, 0.16, '#B7C3CB', 0, 0.92, -0.32, 8);
+      box(g, 0.04, 0.04, 0.14, '#B7C3CB', 0, 0.99, -0.26);
+      ball(g, 0.035, '#EF6461', -0.13, 0.88, -0.32, 6); ball(g, 0.035, '#5FA9E0', 0.13, 0.88, -0.32, 6);
+      cyl(g, 0.045, 0.04, 0.1, '#F6A2C4', 0.27, 0.89, -0.27, 8); // 칫솔 컵
+      box(g, 0.016, 0.16, 0.016, '#5DB760', 0.28, 0.98, -0.27); box(g, 0.016, 0.16, 0.016, '#F6D55C', 0.255, 0.97, -0.26);
+      box(g, 0.11, 0.04, 0.07, '#FFE08A', -0.27, 0.86, -0.22); // 비누
+      const water = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.13, 6), new THREE.MeshBasicMaterial({ color: '#9FD8F0', transparent: true, opacity: 0.8 }));
+      water.position.set(0, 0.92, -0.2);
+      water.visible = false;
+      water.userData.noMerge = true;
+      g.add(water);
+      anim.water = water;
+      break;
+    }
+    case 'h_bathtub': {
+      // 바닥까지 막힌 욕조: 안에 앉으면 다리는 물속(벽 안)에 가린다
+      const TB = '#FFFDF7', RIM = '#E3EEF4';
+      box(g, 1.8, 0.1, 2.8, TB, 0, 0.05, 0);
+      for (const x of [-0.82, 0.82]) box(g, 0.16, 0.62, 2.8, TB, x, 0.31, 0);
+      for (const z of [-1.32, 1.32]) box(g, 1.8, 0.62, 0.16, TB, 0, 0.31, z);
+      for (const x of [-0.84, 0.84]) box(g, 0.22, 0.06, 2.86, RIM, x, 0.64, 0);
+      for (const z of [-1.34, 1.34]) box(g, 1.86, 0.06, 0.22, RIM, 0, 0.64, z);
+      for (const x of [-0.6, 0.6]) box(g, 0.3, 0.05, 0.03, '#BFE3F5', x, 0.3, 1.415); // 앞면 물결 띠
+      box(g, 1.2, 0.05, 0.03, '#BFE3F5', 0, 0.42, 1.415);
+      box(g, 1.48, 0.02, 2.48, '#9FD8F0', 0, 0.5, 0); // 물
+      for (const [x, z, r] of [[-0.55, -1.0, 0.16], [-0.3, -1.1, 0.12], [0.5, -1.05, 0.15], [0.6, -0.7, 0.11], [-0.6, 0.3, 0.13], [0.55, 0.9, 0.14], [-0.45, 1.0, 0.11], [0.1, 1.08, 0.12]]) ball(g, r, '#FFFFFF', x, 0.52, z, 10).scale.y = 0.6; // 거품
+      cyl(g, 0.03, 0.03, 0.22, '#B7C3CB', 0, 0.78, -1.33, 8); // 수도꼭지
+      box(g, 0.05, 0.05, 0.2, '#B7C3CB', 0, 0.88, -1.24);
+      const duck = new THREE.Group();
+      ball(duck, 0.11, '#FFD54A', 0, 0, 0, 10).scale.set(1, 0.8, 1.25);
+      ball(duck, 0.075, '#FFD54A', 0, 0.11, 0.08, 10);
+      const beak = m(new THREE.ConeGeometry(0.035, 0.07, 6), toon('#F49A4C'), 0, 0.1, 0.17); beak.rotation.x = Math.PI / 2; duck.add(beak);
+      for (const x of [-0.035, 0.035]) ball(duck, 0.014, '#2E2A2A', x, 0.14, 0.14, 5);
+      duck.traverse((o) => { if (o.isMesh) { o.userData.noMerge = true; o.castShadow = false; } });
+      duck.position.set(0.38, 0.55, 0.55);
+      g.add(duck);
+      const bub = new THREE.Group();
+      const bm = new THREE.MeshBasicMaterial({ color: '#FFFFFF', transparent: true, opacity: 0.85, depthWrite: false });
+      for (let i = 0; i < 9; i++) { const b = new THREE.Mesh(new THREE.SphereGeometry(0.05 + (i % 3) * 0.02, 8, 6), bm); b.userData.noMerge = true; bub.add(b); }
+      bub.visible = false;
+      g.add(bub);
+      anim.tub = { duck, bub };
+      break;
+    }
+    case 'h_shower': {
+      box(g, 0.94, 0.08, 0.94, '#E3EEF4', 0, 0.04, 0); // 받침
+      for (let i = 0; i < 3; i++) box(g, 0.7, 0.012, 0.06, '#B7C3CB', 0, 0.086, -0.2 + i * 0.2);
+      box(g, 0.94, 2.1, 0.05, '#CFE6F2', 0, 1.05, -0.445); // 뒤 타일 벽
+      for (let r = 0; r < 6; r++) for (let k = 0; k < 4; k++) if ((r + k) % 2) box(g, 0.22, 0.33, 0.01, '#FFFFFF', -0.345 + k * 0.23, 0.22 + r * 0.34, -0.417);
+      box(g, 0.04, 1.9, 0.86, '#BFE3F5', -0.45, 1.0, 0.0); // 옆 칸막이
+      cyl(g, 0.025, 0.025, 1.6, '#B7C3CB', 0.3, 1.2, -0.39, 8); // 물 올라가는 관
+      box(g, 0.04, 0.04, 0.32, '#B7C3CB', 0.3, 2.0, -0.25);
+      const head = cyl(g, 0.13, 0.09, 0.06, '#B7C3CB', 0.3, 1.97, -0.08, 14);
+      head.rotation.x = 0.3;
+      ball(g, 0.04, '#EF6461', 0.15, 1.15, -0.4, 6); ball(g, 0.04, '#5FA9E0', 0.45, 1.15, -0.4, 6);
+      const drops = new THREE.Group();
+      const dm = new THREE.MeshBasicMaterial({ color: '#9FD8F0', transparent: true, opacity: 0.85 });
+      for (let i = 0; i < 14; i++) { const d = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.16, 4), dm); d.userData.noMerge = true; d.userData.ph = (i * 0.37) % 1; d.userData.dx = Math.cos(i * 2.4) * 0.09; d.userData.dz = Math.sin(i * 2.4) * 0.09; drops.add(d); }
+      drops.position.set(0.3, 0, -0.06);
+      drops.visible = false;
+      g.add(drops);
+      anim.shower = drops;
+      break;
+    }
+    case 'h_laundry': {
+      box(g, 0.8, 0.92, 0.66, '#FFFDF7', 0, 0.46, -0.02);
+      box(g, 0.8, 0.14, 0.04, '#E3EEF4', 0, 0.82, 0.32);
+      for (let i = 0; i < 3; i++) ball(g, 0.03, ['#5FA9E0', '#7CC46A', '#EF6461'][i], -0.25 + i * 0.1, 0.82, 0.35, 6);
+      box(g, 0.14, 0.06, 0.02, '#3B3B45', 0.22, 0.82, 0.345);
+      cyl(g, 0.27, 0.27, 0.04, '#B7C3CB', 0, 0.4, 0.31, 20).rotation.x = Math.PI / 2; // 문 테두리
+      const glass = m(new THREE.CylinderGeometry(0.21, 0.21, 0.02, 20), new THREE.MeshBasicMaterial({ color: '#BFE3F5' }), 0, 0.4, 0.33);
+      glass.rotation.x = Math.PI / 2;
+      glass.userData.noMerge = true;
+      g.add(glass);
+      const drum = new THREE.Group();
+      for (const [a, c] of [[0, '#EF8FA0'], [2.1, '#F6D55C'], [4.2, '#7FD8BE']]) {
+        const b = box(drum, 0.13, 0.08, 0.02, c, Math.cos(a) * 0.1, Math.sin(a) * 0.1, 0);
+        b.rotation.z = a;
+        b.userData.noMerge = true; b.castShadow = false;
+      }
+      drum.position.set(0, 0.4, 0.345);
+      g.add(drum);
+      anim.drum = drum;
+      break;
+    }
+    case 'h_towel':
+      for (const x of [-0.38, 0.38]) { box(g, 0.06, 1.3, 0.06, '#C99862', x, 0.65, -0.3); box(g, 0.08, 0.04, 0.3, '#C99862', x, 0.02, -0.3); }
+      for (const y of [0.9, 1.25]) cyl(g, 0.025, 0.025, 0.8, '#E8C690', 0, y, -0.3, 8).rotation.z = Math.PI / 2;
+      // 수건 둘: 아래 막대에 분홍, 위 막대에 하늘색 (끝에 흰 줄무늬)
+      box(g, 0.6, 0.5, 0.05, '#F6A2C4', -0.02, 0.67, -0.25);
+      for (let i = 0; i < 2; i++) box(g, 0.6, 0.03, 0.055, '#FFFFFF', -0.02, 0.48 + i * 0.05, -0.25);
+      box(g, 0.5, 0.42, 0.05, '#9FD8F0', 0.03, 1.06, -0.35);
+      for (let i = 0; i < 2; i++) box(g, 0.5, 0.025, 0.055, '#FFFFFF', 0.03, 0.9 + i * 0.045, -0.35);
+      break;
+    case 'h_bathmat': {
+      box(g, 1.7, 0.03, 0.8, '#A9DCC4', 0, 0.02, 0);
+      for (const x of [-0.84, 0.84]) for (let k = 0; k < 6; k++) box(g, 0.06, 0.03, 0.06, '#FFFFFF', x, 0.02, -0.33 + k * 0.13); // 술
+      for (const [x, z] of [[-0.55, -0.18], [-0.15, 0.15], [0.25, -0.15], [0.6, 0.2], [-0.5, 0.25], [0.05, -0.25]]) cyl(g, 0.07, 0.07, 0.035, '#FFFFFF', x, 0.03, z, 10);
+      break;
+    }
     // 마당
     case 'y_bench':
       for (const z of [-0.12, 0.06, 0.24]) box(g, 1.8, 0.07, 0.16, W, 0, 0.46, z);
@@ -1280,7 +1415,7 @@ export class HomeSpace {
     const lot = new THREE.Group();
     const left = BUILD_IDS.filter((id) => !this.rooms.includes(id)).map((id) => ({ id, ...PLAN[id] }));
     const areas = [...left];
-    if (!this.rooms.length) areas.push({ id: 'hall', x0: HALL.x0, x1: HALL.x1, z0: HALL.z0, z1: HALL.z1 });
+    if (!hallRect(this.rooms)) areas.push({ id: 'hall', x0: HALL.x0, x1: HALL.x1, z0: HALL.z0, z1: HALL.z1 }); // 복도가 아직 없으면 (화장실만 지었을 때도)
     for (const a of areas) {
       const w = a.x1 - a.x0, d = a.z1 - a.z0, cx = (a.x0 + a.x1) / 2, cz = (a.z0 + a.z1) / 2;
       box(lot, w - 0.1, 0.03, d - 0.1, '#D7C29B', cx, 0.015, cz).castShadow = false;
@@ -1299,13 +1434,14 @@ export class HomeSpace {
     box(lot, 0.46, 0.04, 0.46, '#F49A4C', f0.x0 + 4.4, 0.02, f0.z0 + 1.4);
     mergeColored(lot, VC);
     G.add(lot);
-    // 팻말: 앞줄 자리가 비었으면 그 앞, 뒷줄 자리만 남았으면 현관 옆 (마당에 들어오면 바로 보이게)
+    // 팻말: 앞줄 자리가 비었으면 그 앞, 뒷줄 방 자리가 남았으면 현관 옆, 화장실 자리만 남았으면 내 방 앞 (마당에 들어오면 바로 보이게)
     const front = left.find((s) => s.z1 === HALL.z1);
-    const sx = front ? (front.x0 + front.x1) / 2 : HALL.x0 - 1.45, sz = HALL.z1 + (front ? 0.55 : 1.0);
+    const bathOnly = !front && left.every((s) => s.id === 'bath');
+    const sx = front ? (front.x0 + front.x1) / 2 : bathOnly ? PLAN.room.x0 + 4.2 : HALL.x0 - 1.45, sz = HALL.z1 + (front || bathOnly ? 0.55 : 1.0);
     const sign = new THREE.Group();
     for (const x of [-0.75, 0.75]) box(sign, 0.1, 1.2, 0.1, '#8B5E3C', x, 0.6, 0);
     mergeColored(sign, VC);
-    const sub = front ? '눌러서 방을 지어요' : '집 뒤쪽에 방을 지어요';
+    const sub = front ? '눌러서 방을 지어요' : bathOnly ? '내 방 뒤에 화장실을 지어요' : '집 뒤쪽에 방을 지어요';
     this.lotMats = this.lotMats || {};
     if (!this.lotMats[sub]) this.lotMats[sub] = new THREE.MeshToonMaterial({ map: signTex('집 넓히기 공사 터', sub), gradientMap: toonGradient() });
     const bd = m(new THREE.BoxGeometry(1.9, 0.54, 0.06), [toon('#6B4429'), toon('#6B4429'), toon('#6B4429'), toon('#6B4429'), this.lotMats[sub], toon('#6B4429')], 0, 1.25, 0.06);
@@ -1687,7 +1823,11 @@ export class HomeSpace {
     if (!it || !it.anim) return null;
     const a = it.anim;
     if (a.door) { it.openT = 2.6; return 'fridge'; }
-    if (a.water) { it.waterT = 2.2; return 'sink'; }
+    if (a.water) { it.waterT = 2.2; return it.e.k === 'h_washbasin' ? 'basin' : 'sink'; }
+    if (a.flush) { it.flushT = 2.4; return 'flush'; }
+    if (a.tub) { it.tubT = 3; return 'tub'; }
+    if (a.shower) { it.showerT = 3.5; return 'shower'; }
+    if (a.drum) { it.drumT = 3.5; return 'laundry'; }
     if (a.tv) { it.tvOff = !it.tvOff; a.tv.material = tvMat(!it.tvOff); return it.tvOff ? 'tv-off' : 'tv-on'; }
     if (a.spin) { it.spinT = 2.5; return 'globe'; }
     return null;
@@ -1798,6 +1938,42 @@ export class HomeSpace {
         if (it.waterT > 0) it.waterT -= dt;
         a.water.visible = it.waterT > 0;
         if (a.water.visible) a.water.scale.x = a.water.scale.z = 0.85 + Math.random() * 0.3;
+      }
+      // 화장실: 변기 물 내리기(소용돌이), 욕조(오리가 둥실, 누르면 거품이 올라온다), 샤워기 물줄기, 세탁기 빨래
+      if (a.flush) {
+        if (it.flushT > 0) it.flushT -= dt;
+        const on = it.flushT > 0;
+        a.flush.swirl.visible = on;
+        if (on) {
+          a.flush.swirl.rotation.y += dt * 9;
+          const k = Math.max(0, it.flushT) / 2.4;
+          a.flush.swirl.scale.setScalar(0.4 + k * 0.8);
+          a.flush.water.position.y = 0.425 - Math.sin(k * Math.PI) * 0.03;
+        } else a.flush.water.position.y = 0.425;
+      }
+      if (a.tub) {
+        const d = a.tub.duck, busy = it.tubT > 0;
+        d.position.y = 0.55 + Math.sin(this.t * (busy ? 5 : 1.6) + it.e.x) * (busy ? 0.035 : 0.015);
+        d.rotation.y = Math.sin(this.t * 0.5 + it.e.z) * 0.6 + (busy ? Math.sin(this.t * 4) * 0.3 : 0);
+        if (it.tubT > 0) it.tubT -= dt;
+        a.tub.bub.visible = busy;
+        if (busy) a.tub.bub.children.forEach((b, i) => {
+          const k = ((this.t * 0.6 + i / 9) % 1);
+          b.position.set(Math.sin(i * 2.3) * 0.5 + Math.sin(k * 6 + i) * 0.05, 0.55 + k * 1.1, Math.cos(i * 1.7) * 0.9);
+          b.scale.setScalar(1 - k * 0.5);
+        });
+      }
+      if (a.shower) {
+        if (it.showerT > 0) it.showerT -= dt;
+        a.shower.visible = it.showerT > 0;
+        if (a.shower.visible) a.shower.children.forEach((d) => {
+          const k = ((this.t * 1.8 + d.userData.ph) % 1);
+          d.position.set(d.userData.dx * (1 + k * 2), 1.88 - k * 1.75, d.userData.dz * (1 + k * 2) + k * 0.1);
+        });
+      }
+      if (a.drum) {
+        if (it.drumT > 0) it.drumT -= dt;
+        a.drum.rotation.z -= dt * (it.drumT > 0 ? 9 : 0);
       }
     }
     if (tvTex) tvTex.offset.x = (this.t * 0.02) % 1;

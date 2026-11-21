@@ -1,8 +1,8 @@
-// 진숲 어린이 마을 — 내 집 꾸미기 물건 (방, 마당, 밭)과 집 넓히기(거실, 주방, 방 2, 방 3)
+// 진숲 어린이 마을 — 내 집 꾸미기 물건 (방, 마당, 밭)과 집 넓히기(거실, 주방, 방 2, 방 3, 화장실)
 // 상점, 내 집 화면, 체험판, 서버 SQL이 모두 이 목록을 쓴다. 값을 바꾸면 sql도 함께 바꾼다.
 // w, d: 차지하는 칸 수 (가로, 세로). floor: 바닥에 까는 것(다른 가구를 위에 놓을 수 있다).
-// zone: 'room'은 집 안 어느 방에나(내 방, 거실, 주방, 방 2, 방 3), 'kitchen'은 주방에만, 'yard'는 마당, 'garden'은 밭.
-// grp: 상점과 꾸미기 판에서 묶어 보이는 칸 (bed 방, living 거실, kitchen 주방). v2: 집 넓히기와 함께 생긴 물건
+// zone: 'room'은 집 안 어느 방에나(내 방, 거실, 주방, 방 2, 방 3, 화장실), 'kitchen'은 주방에만, 'bath'는 화장실에만, 'yard'는 마당, 'garden'은 밭.
+// grp: 상점과 꾸미기 판에서 묶어 보이는 칸 (bed 방, living 거실, kitchen 주방, bath 화장실). v2: 집 넓히기와 함께 생긴 물건, bath: 화장실과 함께 생긴 물건
 // 씨앗(s_)은 밭 한 칸에 하나씩 심고, 다 자란 채소를 거두면 없어진다. 꽃은 다 자라면 그대로 핀다.
 
 export const HOME_ITEMS = {
@@ -39,6 +39,14 @@ export const HOME_ITEMS = {
   h_sink: { zone: 'kitchen', grp: 'kitchen', name: '싱크대', desc: '누르면 수도꼭지에서 물이 나와요.', price: 6, w: 2, d: 1, v2: true },
   h_cupboard: { zone: 'kitchen', grp: 'kitchen', name: '그릇장', desc: '접시와 컵을 가지런히 넣어 둔 그릇장이에요.', price: 6, w: 2, d: 1, v2: true },
   h_oven: { zone: 'kitchen', grp: 'kitchen', name: '오븐', desc: '유리창으로 안이 보이는 오븐이에요. 밤이 되면 안에 불이 켜져요.', price: 5, w: 1, d: 1, glow: true, v2: true },
+  // 화장실 (화장실에만. 매트는 어느 방에나). bath: 화장실과 함께 생긴 물건
+  h_toilet: { zone: 'bath', grp: 'bath', name: '변기', desc: '누르면 쏴아 하고 물이 내려가요. 앉을 수도 있어요.', price: 5, w: 1, d: 1, bath: true },
+  h_washbasin: { zone: 'bath', grp: 'bath', name: '세면대', desc: '거울이 달린 세면대예요. 누르면 물이 나와요.', price: 5, w: 1, d: 1, bath: true },
+  h_bathtub: { zone: 'bath', grp: 'bath', name: '욕조', desc: '거품이 보글보글한 욕조예요. 고무 오리가 둥둥 떠 있고, 들어가 앉을 수 있어요.', price: 9, w: 2, d: 3, bath: true },
+  h_shower: { zone: 'bath', grp: 'bath', name: '샤워기', desc: '누르면 샤워기에서 물줄기가 쏟아져요.', price: 7, w: 1, d: 1, bath: true },
+  h_laundry: { zone: 'bath', grp: 'bath', name: '세탁기', desc: '누르면 동그란 창 안에서 빨래가 빙글빙글 돌아요.', price: 6, w: 1, d: 1, bath: true },
+  h_towel: { zone: 'bath', grp: 'bath', name: '수건걸이', desc: '보송보송한 수건 두 장이 걸려 있어요.', price: 2, w: 1, d: 1, bath: true },
+  h_bathmat: { zone: 'room', grp: 'bath', name: '발 매트', desc: '폭신한 물방울 무늬 매트예요. 위에 다른 물건을 놓을 수 있어요.', price: 2, w: 2, d: 1, floor: true, bath: true },
   // 마당
   y_bench: { zone: 'yard', name: '벤치', desc: '마당에서 쉬어 가는 나무 벤치예요.', price: 5, w: 2, d: 1 },
   y_lamp: { zone: 'yard', name: '정원등', desc: '밤이 되면 마당을 환하게 밝혀요.', price: 3, w: 1, d: 1, glow: true },
@@ -58,14 +66,15 @@ export const HOME_ITEMS = {
   s_tulip: { zone: 'garden', name: '튤립 알뿌리', grown: '튤립', kind: 'flower', desc: '이틀이 지나면 예쁜 튤립이 피어요.', price: 2, w: 1, d: 1 },
 };
 export const HOME_IDS = Object.keys(HOME_ITEMS);
-export const ZONE_NAMES = { room: '방', yard: '마당', garden: '밭', kitchen: '주방' };
-export const GROUP_NAMES = { bed: '🛏️ 방', living: '🛋️ 거실', kitchen: '🍳 주방' };
+export const ZONE_NAMES = { room: '방', yard: '마당', garden: '밭', kitchen: '주방', bath: '화장실' };
+export const GROUP_NAMES = { bed: '🛏️ 방', living: '🛋️ 거실', kitchen: '🍳 주방', bath: '🛁 화장실' };
 export const isSeed = (id) => String(id).startsWith('s_');
 
 // ---------- 집 넓히기: 복도 있는 집 (방은 모두 가로 8, 세로 6) ----------
-// 앞줄(z -10~-4)은 동쪽부터 내 방, 거실, 복도, 주방이고, 뒷줄(z -16~-10)은 방 2(거실 뒤), 복도, 방 3(주방 뒤)이다.
+// 앞줄(z -10~-4)은 동쪽부터 내 방, 거실, 복도, 주방이고, 뒷줄(z -16~-10)은 화장실(내 방 뒤), 방 2(거실 뒤), 복도, 방 3(주방 뒤)이다.
 // 복도(너비 2)는 처음 방을 지을 때 앞줄 길이만큼 생기고, 뒷줄 방을 지으면 뒤까지 이어진다. 현관은 복도 앞이다.
 // 방마다 복도 쪽 벽에 문이 있고, 거실과 내 방 사이에도 문이 있다. 내 방은 예전처럼 동쪽 옆문으로 마당에 나간다.
+// 화장실은 복도에 닿지 않고 내 방 뒤 벽의 문으로 드나든다(화장실만 지으면 복도와 현관은 생기지 않는다).
 // (2026-11-16 전에는 지은 차례대로 내 방 왼쪽에 한 줄로 붙었다. 서버에서 그때 놓은 가구를 방과 함께 새 자리로 옮겼다)
 // price는 열매 (선생님 할인을 받는다). 서버 kids__build_price와 같다
 export const SPACES = {
@@ -74,9 +83,18 @@ export const SPACES = {
   kitchen: { name: '주방', icon: '🍳', price: 20, desc: '조리대와 화덕이 함께 생겨서 요리 놀이를 할 수 있어요. 냉장고, 싱크대 같은 주방 물건은 주방에만 놓아요.' },
   room2: { name: '방 2', icon: '🛏️', price: 15, desc: '침대와 책상을 하나 더 둘 수 있는 방이에요.' },
   room3: { name: '방 3', icon: '🛏️', price: 15, desc: '방이 하나 더 있으면 좋겠다 싶을 때 지어요.' },
+  bath: { name: '화장실', icon: '🛁', price: 15, desc: '내 방 뒤에 생기고 내 방에서 문으로 들어가요. 변기, 세면대, 욕조 같은 화장실 물건은 화장실에만 놓아요.' },
 };
+// 지을 수 있는 방 (서버에 화장실이 있으면 setBathOn(true)로 'bath'가 더해진다. 같은 배열을 여러 곳이 함께 본다)
 export const BUILD_IDS = ['living', 'kitchen', 'room2', 'room3'];
 export const INDOOR = ['room', ...BUILD_IDS];
+export function setBathOn(on) {
+  for (const list of [BUILD_IDS, INDOOR]) {
+    const i = list.indexOf('bath');
+    if (on && i < 0) list.push('bath');
+    if (!on && i >= 0) list.splice(i, 1);
+  }
+}
 export const isIndoor = (z) => INDOOR.includes(z);
 export const SLOT_W = 8;
 export const PLAN = {
@@ -85,10 +103,13 @@ export const PLAN = {
   kitchen: { x0: -28, x1: -20, z0: -10, z1: -4 },
   room2: { x0: -18, x1: -10, z0: -16, z1: -10 },
   room3: { x0: -28, x1: -20, z0: -16, z1: -10 },
+  bath: { x0: -10, x1: -2, z0: -16, z1: -10 },
 };
 export const HALL = { x0: -20, x1: -18, z0: -16, mid: -10, z1: -4, door: -19 }; // 복도 (door: 현관 가운데 x)
 export const HALL_STYLE = { w: 'cream', f: 'light' };
+export const BATH_DOOR = -6; // 화장실 문 가운데 x (내 방 뒤 벽 z -10)
 const BACK_ROOMS = ['room2', 'room3'];
+const hallRooms = (R) => R.filter((id) => id !== 'bath'); // 복도에 닿는 방
 // 벽지와 바닥 (서버 kids_home_style과 같은 이름)
 export const WALLS = {
   cream: { name: '크림', c: '#F6E3C2' }, mint: { name: '민트', c: '#CDEBD9' }, sky: { name: '하늘', c: '#CFE6F7' },
@@ -103,7 +124,7 @@ export const FLOORS = {
 };
 export const STYLE_DEFAULT = {
   room: { w: 'cream', f: 'wood' }, living: { w: 'cream', f: 'light' }, kitchen: { w: 'mint', f: 'tile' },
-  room2: { w: 'sky', f: 'wood' }, room3: { w: 'pink', f: 'wood' },
+  room2: { w: 'sky', f: 'wood' }, room3: { w: 'pink', f: 'wood' }, bath: { w: 'sky', f: 'tile' },
 };
 export function styleOf(style, id) {
   const s = (style && style[id]) || {};
@@ -130,17 +151,18 @@ export function cleanRooms(list) {
 export function spaceList(rooms) {
   return [{ id: 'room', ...ROOM }, ...cleanRooms(rooms).map((id) => ({ id, ...PLAN[id] }))];
 }
-// 복도: 방을 하나라도 지었으면 앞줄 길이만큼, 뒷줄 방이 있으면 뒤까지
+// 복도: 복도에 닿는 방을 하나라도 지었으면 앞줄 길이만큼, 뒷줄 방이 있으면 뒤까지 (화장실은 복도가 없어도 된다)
 export function hallRect(rooms) {
-  const r = cleanRooms(rooms);
+  const r = hallRooms(cleanRooms(rooms));
   if (!r.length) return null;
   return { id: 'hall', x0: HALL.x0, x1: HALL.x1, z0: r.some((id) => BACK_ROOMS.includes(id)) ? HALL.z0 : HALL.mid, z1: HALL.z1 };
 }
 // 문: a와 b 사이. wall 'x'는 세로 벽(x = w), 'z'는 가로 벽(z = w), c는 문 가운데. pa는 a 쪽, pb는 b 쪽에 서는 곳
 export function doorList(rooms) {
-  const R = cleanRooms(rooms), has = (id) => R.includes(id);
+  const all = cleanRooms(rooms), R = hallRooms(all), has = (id) => R.includes(id);
   const out = [{ a: 'room', b: 'yard', wall: 'x', w: ROOM.x1, c: -6.5, pa: { x: -2.7, z: -6.5 }, pb: { x: -1.0, z: -6.5 } }];
   if (has('living')) out.push({ a: 'living', b: 'room', wall: 'x', w: ROOM.x0, c: -6.5, pa: { x: ROOM.x0 - 0.75, z: -6.5 }, pb: { x: ROOM.x0 + 0.75, z: -6.5 } });
+  if (all.includes('bath')) out.push({ a: 'bath', b: 'room', wall: 'z', w: ROOM.z0, c: BATH_DOOR, pa: { x: BATH_DOOR, z: ROOM.z0 - 0.75 }, pb: { x: BATH_DOOR, z: ROOM.z0 + 0.75 } });
   if (R.length) out.push({ a: 'hall', b: 'yard', wall: 'z', w: HALL.z1, c: HALL.door, pa: { x: HALL.door, z: HALL.z1 - 0.75 }, pb: { x: HALL.door, z: HALL.z1 + 0.75 } });
   for (const id of R) {
     const s = PLAN[id], east = s.x0 >= HALL.x1, w = east ? HALL.x1 : HALL.x0, c = (s.z0 + s.z1) / 2;
@@ -177,7 +199,8 @@ function reservedFor(rooms) {
     if (d.a === 'room' && d.b === 'yard') continue; // 내 방 옆문은 BASE_RES
     const k = Math.floor(d.c - 0.5);
     if (d.wall === 'x') { for (const z of [k, k + 1]) { res(d.w - 1, z); res(d.w, z); } } // 문 양쪽 두 칸씩
-    else for (const x of [k, k + 1]) { res(x, d.w); res(x, d.w + 1); } // 현관 앞 두 줄
+    else if (d.b === 'yard') for (const x of [k, k + 1]) { res(x, d.w); res(x, d.w + 1); } // 현관 앞 두 줄
+    else for (const x of [k, k + 1]) { res(x, d.w - 1); res(x, d.w); } // 방과 방 사이 가로 벽 문(화장실): 문 앞뒤 한 줄씩
   }
   for (const s of spaceList(rooms).slice(1)) {
     if (s.id === 'kitchen') {

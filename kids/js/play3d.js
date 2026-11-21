@@ -14,6 +14,7 @@ import { createRides } from './rides.js';
 import { createSkipGame, SKIP_STANDS, SKIP_FACE } from './beach.js';
 import { createArkGame, ARK_SEATS } from './ark.js';
 import { createJumpRope, remoteRope } from './jumprope.js';
+import { ROPE_IDS } from './ropes.js';
 import { createLongRope } from './longrope.js';
 import { SEA_Y, SEA_SPOTS, MOOR, BOARD, BOAT_FACE, HARBOR, seatOf, seaRoute, seaBlock, shoreGap, nearSchool } from './sea.js';
 import { onPier, PIER } from './isles.js';
@@ -644,7 +645,8 @@ export function createPlay3D(ctx) {
   function decorateRemote(r, act, hint) {
     const av = r.av;
     // 줄넘기하는 친구: 그 자리에서 줄을 돌리며 폴짝폴짝 뛴다
-    if (act !== 'jrope' && av.jrope) { av.jrope.dispose(); av.jrope = null; }
+    const jrStyle = ROPE_IDS[r.actSeat] || 'basic'; // 친구가 고른 줄 (자리 번호가 줄 차례)
+    if (av.jrope && (act !== 'jrope' || av.jrope.style !== jrStyle)) { av.jrope.dispose(); av.jrope = null; }
     // 긴 줄 함께 넘기: 잔디밭 긴 줄 안 자기 자리에서 줄에 맞춰 뛴다
     if (act !== 'jrteam' && r.pin && r.pin.kind === 'jrteam') v.unpinRemote(r.id);
     if (act === 'jrteam') {
@@ -655,7 +657,7 @@ export function createPlay3D(ctx) {
     if (act === 'jrope') {
       if (r.pin && r.pin.auto) v.unpinRemote(r.id);
       if (av.held) { const o = av.held.obj; av.drop(); if (o.userData.isRod) disposeTree(o); }
-      if (!av.jrope) av.jrope = remoteRope(av);
+      if (!av.jrope) av.jrope = remoteRope(av, jrStyle);
       return;
     }
     if (r.pin && !r.pin.auto) return; // 나와 함께 노는 친구는 놀이가 자리를 정한다
@@ -3289,7 +3291,8 @@ export function createPlay3D(ctx) {
   // 놀이동산 놀이기구
   const rides = createRides({ v, ui, begin, stopAll, portrait, shout: (id) => ctx.shout && ctx.shout(id), setActivity });
   const skip = createSkipGame({ v, ui, begin, stopAll, portrait, rpc, getToken, lost, live, onCelebrate, features: () => (ctx.features ? ctx.features() : {}) });
-  const jrope = createJumpRope({ v, ui, begin, stopAll, portrait, rpc, getToken, lost, live, onCelebrate, features: () => (ctx.features ? ctx.features() : {}) });
+  const jrope = createJumpRope({ v, ui, begin, stopAll, portrait, rpc, getToken, lost, live, onCelebrate, features: () => (ctx.features ? ctx.features() : {}),
+    myRope: () => (ctx.myRope ? ctx.myRope() : 'basic'), pickRope: ctx.pickRope || null, setActivity });
   // 긴 줄 함께 넘기 (도서관 옆 잔디밭)
   const lrope = createLongRope({ v, ui, begin, stopAll, portrait, rpc, getToken, lost, onCelebrate, features: () => (ctx.features ? ctx.features() : {}),
     hub, myId: () => (ctx.myId ? ctx.myId() : null), getMe: ctx.getMe, getPerson: ctx.getPerson, onlineFriends, sendNet: ctx.sendNet, board: jrope.board, toast, setActivity });

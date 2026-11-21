@@ -168,7 +168,7 @@ export function createNbrUI(o) {
       return h('div', { class: 'fl-row' }, face(mine && me.avatar ? me.avatar : p.avatar),
         h('div', { class: 'fl-main' },
           h('b', {}, mine ? `우리 집 (${me.village_name || p.name})` : `${p.name}의 집`, p.t ? h('span', { class: 't-badge' }, '선생님') : null),
-          h('span', {}, online.has(p.id) ? '🟢 지금 마을에 있어요' : '마을에 없어도 놀러 갈 수 있어요')),
+          h('span', {}, online.has(p.id) ? '🟢 지금 마을에 있어요' : p.locked && !mine ? '🔒 문이 잠겨 있어요 (친구가 마을에 오면 열려요)' : '마을에 없어도 놀러 갈 수 있어요')),
         h('div', { class: 'fl-acts' },
           h('button', { class: 'btn btn-go btn-small', type: 'button', onclick: () => { o.modal.close(); if (l) goHouse(lot); } }, mine ? '🏡 들어가기' : '🏠 놀러 가기'),
           l ? h('button', { class: 'btn btn-soft btn-small', type: 'button', onclick: () => { o.modal.close(); v.walkToPoint(l.door.x, l.door.z, Math.atan2(-l.fx, -l.fz)); } }, '📍 집 앞으로') : null));
@@ -193,7 +193,7 @@ export function createNbrUI(o) {
     if (!ow) return '보기';
     const mine = me && ow.id === me.id;
     if (mail) return mine ? '열어 보기' : '인사 남기기';
-    return mine ? '들어가기' : '놀러 가기';
+    return mine ? '들어가기' : ow.locked && !(o.onlineIds && o.onlineIds().includes(ow.id)) ? '🔒 잠겨 있어요' : '놀러 가기';
   }
   return {
     load, onDoor, leaveNote, myNotes, directory, promptAct,

@@ -4,9 +4,11 @@
 // 내 최고 기록, 오늘 내 최고, 오늘의 줄넘기 왕은 서버(kids_jr_save, kids_jr_board)가 센다. 줄넘기로는 열매를 주지 않는다.
 // 2단 뛰기: '2단!'(컴퓨터는 D나 Shift+스페이스바)을 누르면 더 높이 뛰고, 줄이 발밑을 한 번 지나자마자 아주 빠르게 한 바퀴 더 돌아
 // 내려오기 전에 발밑을 또 지난다. 줄이 발밑을 지날 때마다 1번이라 2단 뛰기는 2번으로 센다(같은 기록에 이어서).
-// 친구 화면에서는 줄을 돌리며 폴짝폴짝 뛰는 모습으로 보인다(놀이 소식 'jrope').
+// 친구 화면에서는 줄을 돌리며 폴짝폴짝 뛰는 모습으로 보인다(놀이 소식 'jrope', 자리 번호가 고른 줄의 차례).
+// 줄은 열매 상점에서 여러 가지를 사서(js/ropes.js) 줄넘기 화면의 '줄 고르기'나 상점에서 바꿔 쓴다(서버 kids_jr_rope).
 import * as THREE from './three.module.min.js';
-import { toon } from './avatar.js';
+import { toon, toonGradient } from './avatar.js';
+import { ropeOf, ropeColorAt, ROPE_IDS } from './ropes.js';
 import { h, modal, confetti } from './ui.js';
 import { message } from './api.js';
 import { sfx } from './sound.js';
@@ -23,17 +25,43 @@ const LO2 = (JR2.AIR * Math.asin(CLEAR_H / JR2.H)) / Math.PI; // 뛰고 이만�
 export const WIN2 = [LO2, JR2.AIR - JR2.WHIP - LO2]; // 2단 뛰기로 넘으려면 줄이 발밑을 지나기 이만큼 전에 누른다 (초)
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 const TAU = Math.PI * 2;
-const ROPE_C = '#FF6FA8', HANDLE_C = '#FFD54A';
 
 // ---------- 줄과 손잡이 ----------
+// 줄 재질: 무늬 줄은 꼭짓점 색, 야광 줄은 빛을 받지 않는 재질 (여러 줄이 함께 쓴다)
+let patMat = null;
+const glowMats = new Map();
+function ropeMat(R) {
+  if (R.glow) { if (!glowMats.has(R.rope)) glowMats.set(R.rope, new THREE.MeshBasicMaterial({ color: R.rope })); return glowMats.get(R.rope); }
+  if (R.pat) { if (!patMat) patMat = new THREE.MeshToonMaterial({ vertexColors: true, gradientMap: toonGradient() }); return patMat; }
+  return toon(R.rope);
+}
+// 손잡이 끝 별 (별빛 줄넘기)
+let starGeo = null;
+function starMesh() {
+  if (!starGeo) {
+    const sh = new THREE.Shape();
+    for (let i = 0; i < 10; i++) { const a = (i / 10) * TAU - Math.PI / 2, r = i % 2 ? 0.05 : 0.115; if (i) sh.lineTo(Math.cos(a) * r, Math.sin(a) * r); else sh.moveTo(Math.cos(a) * r, Math.sin(a) * r); }
+    starGeo = new THREE.ExtrudeGeometry(sh, { depth: 0.025, bevelEnabled: false });
+    starGeo.translate(0, 0, -0.0125);
+  }
+  const m = new THREE.Mesh(starGeo, toon('#FFD54A', { emissive: '#6B4A00' }));
+  m.castShadow = true;
+  return m;
+}
+const tmpC = new THREE.Color();
+const ROPES_DOT = ropeOf('basic').rope; // 줄 각도 판의 점 (고른 줄 색으로 바꾼다)
 // theta: 줄이 도는 각도. 0이면 머리 위, π/2면 몸 앞, π면 발밑, 3π/2면 몸 뒤 (앞으로 넘는 줄)
-export function ropeRig(av) {
+// style: 줄 이름 (js/ropes.js, 없으면 기본 줄)
+export function ropeRig(av, style = 'basic') {
+  const R = ropeOf(style);
   const g = new THREE.Group();
-  const mat = toon(ROPE_C), hMat = toon(HANDLE_C);
+  const mat = ropeMat(R), hMat = toon(R.handle);
+  const SEG = R.pat ? 88 : 44, RAD = 0.02 * (R.thick || 1);
   const handles = [0, 1].map((i) => {
     const m = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.034, 0.22, 8), hMat);
     m.castShadow = true;
     m.position.set(0, -0.45, 0.03);
+    if (R.star) { const st = starMesh(); st.position.set(0, -0.15, 0); st.rotation.y = i ? -Math.PI / 2 : Math.PI / 2; m.add(st); } // 줄이 나오는 끝에 별
     av.arms[i].add(m);
     return m;
   });
@@ -76,7 +104,13 @@ export function ropeRig(av) {
       p.z += b * s * depth;
       if (p.y < 0.014) p.y = 0.014; // 땅을 뚫지 않는다
     }
-    const geo = new THREE.TubeGeometry(curve, 44, 0.02, 6, false);
+    const geo = new THREE.TubeGeometry(curve, SEG, RAD, 6, false);
+    if (R.pat) {
+      // 무늬: 줄을 따라 고리마다 색 (TubeGeometry는 고리마다 꼭짓점 7개)
+      const n = geo.attributes.position.count, col = new Float32Array(n * 3), per = n / (SEG + 1);
+      for (let v = 0; v < n; v++) { tmpC.set(ropeColorAt(R, Math.floor(v / per) / SEG)).convertSRGBToLinear(); col[v * 3] = tmpC.r; col[v * 3 + 1] = tmpC.g; col[v * 3 + 2] = tmpC.b; }
+      geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    }
     if (!tube) { tube = new THREE.Mesh(geo, mat); tube.castShadow = true; g.add(tube); } else { tube.geometry.dispose(); tube.geometry = geo; }
   }
   function dispose() {
@@ -99,9 +133,9 @@ function ropeArms(av, theta, hgt) {
   av.legs[0].rotation.x = av.legs[1].rotation.x = -0.22 * k; // 두 발을 모아 살짝 굽힌다
 }
 
-// 친구 화면: 줄을 돌리며 박자에 맞춰 폴짝 (실제 기록과 박자를 맞추지는 않는다)
-export function remoteRope(av) {
-  const rig = ropeRig(av);
+// 친구 화면: 줄을 돌리며 박자에 맞춰 폴짝 (실제 기록과 박자를 맞추지는 않는다). style: 친구가 고른 줄
+export function remoteRope(av, style = 'basic') {
+  const rig = ropeRig(av, style);
   const per = 0.78;
   const pose = (a, dt, t) => {
     const theta = (t / per) * TAU;
@@ -112,7 +146,7 @@ export function remoteRope(av) {
   };
   pose.jrope = true;
   av.pose = pose;
-  return { dispose() { rig.dispose(); if (av.pose === pose) av.pose = null; } };
+  return { style, dispose() { rig.dispose(); if (av.pose === pose) av.pose = null; } };
 }
 
 // 줄 각도 판: 점이 줄, 아래 신발이 발밑, 초록 칸에 점이 있을 때 누르면 알맞다
@@ -123,12 +157,13 @@ export function dialSvg() {
     + '<path class="jr-zone2" d="" stroke="#A98BE8" stroke-width="6" fill="none"/>'
     + '<text x="0" y="6" text-anchor="middle" font-size="18" fill="#B9A98E">👟</text>'
     + '<path d="M0 44 l-5 -7 h10 z" fill="#EF6461"/>'
-    + '<g class="jr-dot"><circle cx="0" cy="-40" r="7" fill="' + ROPE_C + '" stroke="#fff" stroke-width="2.5"/></g></svg>';
+    + '<g class="jr-dot"><circle cx="0" cy="-40" r="7" fill="' + ROPES_DOT + '" stroke="#fff" stroke-width="2.5"/></g></svg>';
 }
 // 각도 a(라디안, 0이 위, 시계 방향)의 원 위 점
 export const onRing = (a, r) => `${(r * Math.sin(a)).toFixed(2)} ${(-r * Math.cos(a)).toFixed(2)}`;
 
-export function createJumpRope({ v, ui, begin, stopAll, portrait, rpc, getToken, lost, live, onCelebrate, features = () => ({}) }) {
+// myRope(): 지금 고른 줄 이름, pickRope(cb): 줄 고르기 창을 열고 고르면 cb(줄 이름), setActivity: 친구들에게 알릴 하는 일과 자리(줄 차례)
+export function createJumpRope({ v, ui, begin, stopAll, portrait, rpc, getToken, lost, live, onCelebrate, features = () => ({}), myRope = () => 'basic', pickRope = null, setActivity = null }) {
   // ---------- 기록판 ----------
   function board() {
     const box = h('div', { class: 'mem' }, h('p', { class: 'empty-big' }, '기록을 꺼내고 있어요…'));
@@ -191,7 +226,8 @@ export function createJumpRope({ v, ui, begin, stopAll, portrait, rpc, getToken,
     const far = portrait() ? 1.08 : 1;
     // 아이 앞 조금 옆에서 본다. 허리 아래를 바라봐서 아이가 화면 가운데 위쪽에 오게 한다 (아래에는 숫자판과 단추가 있다)
     const game = { cam: { pos: P.clone().addScaledVector(F, 8.0 * far).addScaledVector(S, 4.0 * far).setY(P.y + 3.2 * far), look: P.clone().setY(P.y + 0.6) }, camSpeed: 3 };
-    const rig = ropeRig(pl);
+    let style = myRope();
+    let rig = ropeRig(pl, style);
     const REST = Math.PI + Math.PI / 3; // 쉬는 동안 줄은 발뒤꿈치 뒤 땅에
     let st = 'idle', T = 0, perfAt = performance.now(), theta = REST, omega = 0, n = 0, tj = -9, t0 = 0, waitT = 0, failWhy = '', trip = 0;
     let ja = JR.AIR, jh = JR.H, dbl = 0, doubles = 0; // 이번에 뛴 시간과 높이, 2단 뛰기(1 첫 번째 넘기 전, 2 두 번째 넘기 전), 2단 뛰기 수
@@ -205,6 +241,8 @@ export function createJumpRope({ v, ui, begin, stopAll, portrait, rpc, getToken,
     const dial = h('div', { class: 'jr-dial' });
     dial.innerHTML = dialSvg();
     const zone = dial.querySelector('.jr-zone'), zone2 = dial.querySelector('.jr-zone2'), dot = dial.querySelector('.jr-dot');
+    const dotC = dot.querySelector('circle');
+    dotC.setAttribute('fill', ropeOf(style).rope); // 점은 고른 줄 색
     const big = h('b', { class: 'jr-count' }, '0');
     const sub = h('span', { class: 'jr-sub' }, '');
     const panel = h('div', { class: 'jr-panel' }, dial, h('div', { class: 'jr-num' }, big, h('span', { class: 'jr-unit' }, '번'), sub));
@@ -354,7 +392,22 @@ export function createJumpRope({ v, ui, begin, stopAll, portrait, rpc, getToken,
       pl.pose = null;
       pl.body.rotation.x = 0;
     };
-    begin('jrope', '줄넘기', game, [], -1, [['star', '기록판', board]]);
+    // 줄 고르기: 멈춰 있을 때만 바꾼다. 고르면 바로 그 줄로 바꾸고 친구들에게도 알린다
+    const pick = () => {
+      if (st !== 'idle') { ui.say('줄넘기를 멈췄을 때 줄을 바꿀 수 있어요.'); return; }
+      if (!pickRope) return;
+      pickRope((id) => {
+        if (!live(game) || id === style) return;
+        rig.dispose();
+        style = id;
+        rig = ropeRig(pl, style);
+        rig.update(theta);
+        dotC.setAttribute('fill', ropeOf(style).rope);
+        if (setActivity) setActivity('jrope', ROPE_IDS.indexOf(style));
+        ui.say(`${ropeOf(style).name}로 바꿨어요! ‘시작’을 눌러 뛰어 봐요.`);
+      });
+    };
+    begin('jrope', '줄넘기', game, [], Math.max(0, ROPE_IDS.indexOf(style)), [['star', '기록판', board], ...(features().ropes && pickRope ? [['rope', '줄 고르기', pick]] : [])]);
     pl.pose = ropePose;
     window.addEventListener('keydown', kd);
     ui.main.addEventListener('pointerdown', (e) => { if (st === 'turn' || st === 'ready') { e.preventDefault(); hop(); } });

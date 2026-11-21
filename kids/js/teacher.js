@@ -2,7 +2,8 @@
 import { rpc, message, DEMO, store } from './api.js';
 import { h, showImage } from './ui.js';
 import { drawFaceIcon, normalizeAvatar } from './face.js';
-import { HOME_ITEMS, HARVEST, SPACES, BUILD_IDS } from './homeitems.js';
+import { HOME_ITEMS, HARVEST, SPACES } from './homeitems.js';
+import { ROPES, SHOP_ROPES } from './ropes.js';
 import { HOUSE_ITEMS } from './houses-data.js';
 import { WARDROBE } from './wardrobe.js';
 import { PET_ITEMS, PET_IDS } from './pets-data.js';
@@ -415,9 +416,10 @@ function renderVillage() {
   const sl = $('#shopList');
   const ITEM = { fw_spark: '반짝 불꽃', fw_flower: '꽃 불꽃', fw_heart: '하트 불꽃', fw_volley: '10연발 불꽃', ...Object.fromEntries(PET_IDS.map((id) => [id, `애완동물 ${PET_ITEMS[id].name}`])),
     ...Object.fromEntries(Object.entries(HOME_ITEMS).map(([k, it]) => [k, `내 집 ${it.name}`])),
-    ...Object.fromEntries(BUILD_IDS.map((k) => [`home_${k}`, `집 넓히기 공사: ${SPACES[k].name}`])),
+    ...Object.fromEntries(Object.keys(SPACES).filter((k) => k !== 'room').map((k) => [`home_${k}`, `집 넓히기 공사: ${SPACES[k].name}`])),
     ...Object.fromEntries(Object.entries(WARDROBE).map(([k, it]) => [k, `꾸미기 ${it.name}`])),
-    ...Object.fromEntries(Object.entries(HOUSE_ITEMS).map(([k, it]) => [k, `집 모양 ${it.name}`])) };
+    ...Object.fromEntries(Object.entries(HOUSE_ITEMS).map(([k, it]) => [k, `집 모양 ${it.name}`])),
+    ...Object.fromEntries(SHOP_ROPES.map((k) => [k, ROPES[k].name])) };
   const FISH_NAME = Object.fromEntries(FISH.map((f) => [f.id, f.name]));
   // 산 것과 판 것을 시간 차례로 함께 보인다
   const shop = [...(v.shop || []).map((l) => ({ ...l, buy: true })), ...(v.sells || []).map((l) => ({ ...l, sell: true }))]
