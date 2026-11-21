@@ -9,7 +9,7 @@ const MODES = ['all', 'sfx', 'off']; // 음악+효과음 → 효과음만 → �
 const MUSIC_VOL = 0.28;
 const SFX_GAIN = 3.2;
 const FW_GAIN = 0.3; // 불꽃 소리는 원래 커서 덜 키운다
-const SCENE = { village: 1, game: 0.7, quiet: 0.32, login: 0.8, piano: 0 }; // 피아노를 치는 동안은 음악을 멈춘다
+const SCENE = { village: 1, game: 0.7, quiet: 0.32, login: 0.8, piano: 0, arcade: 0 }; // 피아노를 치는 동안, 오락실 방에서는(따로 만든 오락실 음악을 튼다) 배경음악을 멈춘다
 
 let mode = 'all';
 try { const s = localStorage.getItem(KEY); if (MODES.includes(s)) mode = s; } catch (e) { /* 기본값 */ }
@@ -191,6 +191,7 @@ function ready() {
 function tone({ f = 440, f2 = 0, type = 'sine', dur = 0.12, vol = 0.15, delay = 0, attack = 0.006 }) {
   const t = ac.currentTime + delay;
   const o = ac.createOscillator(), g = ac.createGain();
+  g.gain.value = 0.0001; // 시작하는 첫 점에서 크기가 처음 값(1)으로 튀어 '틱' 소리가 나지 않게
   o.type = type;
   o.frequency.setValueAtTime(f, t);
   if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
@@ -211,6 +212,7 @@ function noise({ dur = 0.25, vol = 0.15, freq = 1200, freq2 = 0, q = 1, kind = '
   }
   const t = ac.currentTime + delay;
   const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+  g.gain.value = 0.0001; // 시작하는 첫 점에서 크기가 처음 값(1)으로 튀어 '틱' 소리가 나지 않게
   s.buffer = noiseBuf;
   f.type = kind;
   f.Q.value = q;
@@ -255,6 +257,7 @@ function fxNoise({ dur = 0.3, vol = 0.2, freq = 1200, freq2 = 0, q = 0.8, kind =
   }
   const t = ac.currentTime + delay;
   const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+  g.gain.value = 0.0001; // 시작하는 첫 점에서 크기가 처음 값(1)으로 튀어 '틱' 소리가 나지 않게
   s.buffer = longNoise;
   s.loop = true;
   f.type = kind;
@@ -274,6 +277,7 @@ function fxNoise({ dur = 0.3, vol = 0.2, freq = 1200, freq2 = 0, q = 0.8, kind =
 function fxTone({ f = 440, f2 = 0, type = 'sine', dur = 0.3, vol = 0.1, delay = 0, attack = 0.005, vib = 0, hold = 0 }) {
   const t = ac.currentTime + delay;
   const o = ac.createOscillator(), g = ac.createGain();
+  g.gain.value = 0.0001; // 시작하는 첫 점에서 크기가 처음 값(1)으로 튀어 '틱' 소리가 나지 않게
   o.type = type;
   o.frequency.setValueAtTime(f, t);
   if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
@@ -346,6 +350,7 @@ export function pianoKey(midi, { vel = 1, delay = 0 } = {}) {
     const tc = Math.max(0.35, Math.min(1.6, 1.25 - (midi - 60) * 0.03)); // 사라지는 빠르기 (낮은 음은 길게)
     const peak = 0.062 * Math.max(0.2, Math.min(1, vel)) * (midi < 52 ? 1.15 : midi > 76 ? 0.85 : 1);
     const g = ac.createGain(), lp = ac.createBiquadFilter();
+    g.gain.value = 0.0001;
     lp.type = 'lowpass';
     lp.Q.value = 0.3;
     lp.frequency.setValueAtTime(Math.min(14000, f * 9), t);
@@ -452,3 +457,85 @@ export const sfx = {
   card: play(() => { noise({ dur: 0.08, vol: 0.12, freq: 2600, freq2: 4600, q: 0.9 }); tone({ f: 420, f2: 300, type: 'triangle', dur: 0.05, vol: 0.05, delay: 0.05 }); }),
   clack: play(() => { for (let i = 0; i < 4; i++) { const d = 0.32 + i * rnd(0.05, 0.09); noise({ dur: 0.035, vol: 0.22, freq: rnd(1800, 2800), q: 2, delay: d }); tone({ f: rnd(240, 340), type: 'triangle', dur: 0.06, vol: 0.08, delay: d }); } }),
 };
+
+// ---------- 새벽 동굴 오락실: 옛날 오락실 같은 소리 (네모 물결과 잡음) ----------
+// k: 연속으로 물리친 수에 따라 '뿅' 소리가 조금씩 높아진다 (0~7)
+const semi = (f, n) => f * Math.pow(2, n / 12);
+export const arcadeSfx = {
+  shoot: play(() => tone({ f: rnd(1250, 1400), f2: 620, type: 'square', dur: 0.05, vol: 0.022, attack: 0.002 })),
+  hit: play(() => { tone({ f: 420, f2: 210, type: 'square', dur: 0.045, vol: 0.05, attack: 0.002 }); noise({ dur: 0.035, vol: 0.08, freq: 3200, q: 1.2, kind: 'highpass' }); }),
+  pop: play((k = 0) => {
+    const s = Math.min(7, k) * 2;
+    noise({ dur: 0.16, vol: 0.2, freq: 2400, freq2: 380, q: 0.9 });
+    tone({ f: semi(660, s), f2: semi(1320, s), type: 'square', dur: 0.07, vol: 0.05, attack: 0.002 });
+    tone({ f: semi(1320, s), type: 'triangle', dur: 0.09, vol: 0.06, delay: 0.05 });
+  }),
+  combo: play((m = 2) => { [0, 4, 7, 12].forEach((n, i) => tone({ f: semi(523, n + (m - 2) * 2), type: 'square', dur: 0.06, vol: 0.04, delay: i * 0.045, attack: 0.002 })); }),
+  gem: play(() => { tone({ f: 1568, type: 'square', dur: 0.05, vol: 0.035, attack: 0.002 }); tone({ f: 2093, type: 'square', dur: 0.09, vol: 0.035, delay: 0.05, attack: 0.002 }); }),
+  heart: play(() => { [784, 1047, 1319].forEach((f, i) => tone({ f, type: 'triangle', dur: 0.12, vol: 0.1, delay: i * 0.07 })); }),
+  hurt: play(() => { tone({ f: 260, f2: 70, type: 'sawtooth', dur: 0.28, vol: 0.09, attack: 0.003 }); noise({ dur: 0.22, vol: 0.16, freq: 900, freq2: 200, q: 0.7, kind: 'lowpass' }); }),
+  power: play(() => { [0, 4, 7, 12, 16, 19, 24].forEach((n, i) => tone({ f: semi(523, n), type: 'square', dur: 0.07, vol: 0.04, delay: i * 0.05, attack: 0.002 })); }),
+  bomb: play(() => {
+    tone({ f: 220, f2: 1760, type: 'sine', dur: 0.55, vol: 0.12, attack: 0.02 });
+    noise({ dur: 0.6, vol: 0.12, freq: 500, freq2: 5000, q: 0.6 });
+    [1047, 1319, 1568, 2093].forEach((f, i) => tone({ f, type: 'triangle', dur: 0.7, vol: 0.06, delay: 0.25 + i * 0.03 }));
+  }),
+  warn: play(() => { tone({ f: 990, type: 'square', dur: 0.04, vol: 0.03, attack: 0.002 }); tone({ f: 990, type: 'square', dur: 0.04, vol: 0.03, delay: 0.09, attack: 0.002 }); }),
+  zap: play(() => tone({ f: 520, f2: 260, type: 'triangle', dur: 0.1, vol: 0.05 })),
+  spawn: play(() => noise({ dur: 0.25, vol: 0.05, freq: 300, freq2: 900, q: 2 })),
+  wave: play(() => { tone({ f: 784, type: 'square', dur: 0.09, vol: 0.045, attack: 0.002 }); tone({ f: 1047, type: 'square', dur: 0.16, vol: 0.045, delay: 0.1, attack: 0.002 }); }),
+  bossIn: play(() => {
+    tone({ f: 110, f2: 55, type: 'sawtooth', dur: 1.1, vol: 0.09, attack: 0.05 });
+    noise({ dur: 1.2, vol: 0.12, freq: 220, freq2: 90, q: 0.8, kind: 'lowpass' });
+    [392, 370, 349, 330].forEach((f, i) => tone({ f, type: 'square', dur: 0.16, vol: 0.035, delay: 0.25 + i * 0.18, attack: 0.002 }));
+  }),
+  bossHit: play(() => { tone({ f: 190, f2: 140, type: 'square', dur: 0.05, vol: 0.05, attack: 0.002 }); noise({ dur: 0.04, vol: 0.06, freq: 1800, q: 1 }); }),
+  bossDown: play(() => {
+    for (let i = 0; i < 7; i++) { noise({ dur: 0.3, vol: 0.2, freq: rnd(900, 2200), freq2: 200, q: 0.8, delay: i * 0.14 }); tone({ f: rnd(90, 140), f2: 50, type: 'triangle', dur: 0.25, vol: 0.12, delay: i * 0.14 }); }
+    [523, 659, 784, 1047, 1319].forEach((f, i) => tone({ f, type: 'square', dur: 0.2, vol: 0.045, delay: 1.1 + i * 0.09, attack: 0.002 }));
+    tone({ f: 2093, type: 'triangle', dur: 0.8, vol: 0.06, delay: 1.55 });
+  }),
+  win: play(() => { [523, 659, 784, 1047].forEach((f, i) => { tone({ f, type: 'square', dur: 0.16, vol: 0.04, delay: i * 0.11, attack: 0.002 }); tone({ f: f / 2, type: 'triangle', dur: 0.18, vol: 0.08, delay: i * 0.11 }); }); tone({ f: 1568, type: 'square', dur: 0.4, vol: 0.04, delay: 0.46, attack: 0.002 }); }),
+  over: play(() => { [784, 659, 523, 392].forEach((f, i) => tone({ f, type: 'triangle', dur: 0.24, vol: 0.1, delay: i * 0.2 })); tone({ f: 196, f2: 130, type: 'square', dur: 0.6, vol: 0.03, delay: 0.8, attack: 0.002 }); }),
+};
+
+// ---------- 오락실 음악: 이 앱을 위해 새로 지은 짧은 곡 (가단조, 140bpm, 여덟 마디를 되풀이) ----------
+// 한 칸은 8분음표. 숫자는 MIDI 음 번호, '-'는 앞 음을 늘이고 '.'는 쉰다. 배경음악을 끈 모드(효과음만, 모두 끔)에서는 울리지 않는다.
+const CHIP_LEAD = [
+  '76 81 - 79 76 - 74 76', '72 - 74 - 77 - 76 74', '76 79 - 76 72 - 74 76', '74 - 71 - 67 - . .',
+  '69 72 76 81 - 79 76 -', '77 - 76 74 72 - 74 -', '76 - 79 - 84 - 83 79', '81 - - - 79 - . .',
+].join(' ').split(' ');
+const CHIP_BASS = [45, 41, 48, 43, 45, 41, 48, 43]; // 마디마다 근음 (Am F C G)
+const CHIP_STEP = 60 / 140 / 2;
+let chipTimer = null, chipNext = 0, chipI = 0;
+const midiF = (n) => 440 * Math.pow(2, (n - 69) / 12);
+function chipNote(i, at) {
+  const d = Math.max(0, at - ac.currentTime);
+  const tok = CHIP_LEAD[i % CHIP_LEAD.length];
+  if (tok !== '-' && tok !== '.') {
+    let len = 1;
+    while (CHIP_LEAD[(i + len) % CHIP_LEAD.length] === '-' && len < 6) len++;
+    tone({ f: midiF(+tok), type: 'square', dur: CHIP_STEP * len * 0.92, vol: 0.014, delay: d, attack: 0.004 });
+  }
+  const bar = Math.floor(i / 8) % 8, root = CHIP_BASS[bar];
+  tone({ f: midiF(root + (i % 2 ? 12 : 0)), type: 'triangle', dur: CHIP_STEP * 0.85, vol: 0.036, delay: d, attack: 0.004 });
+  noise({ dur: 0.035, vol: i % 2 ? 0.02 : 0.012, freq: 7000, q: 0.8, kind: 'highpass', delay: d });
+  if (i % 4 === 0) tone({ f: 130, f2: 48, type: 'sine', dur: 0.14, vol: 0.07, delay: d, attack: 0.002 });
+  if (i % 4 === 2) noise({ dur: 0.1, vol: 0.035, freq: 1800, q: 0.7, delay: d });
+}
+function chipPump() {
+  if (!ac || ac.state !== 'running' || !musicOn() || document.hidden) { chipNext = 0; return; }
+  if (!chipNext || chipNext < ac.currentTime) chipNext = ac.currentTime + 0.06;
+  while (chipNext < ac.currentTime + 0.18) {
+    try { chipNote(chipI, chipNext); } catch (e) { /* 소리는 없어도 괜찮다 */ }
+    chipI = (chipI + 1) % CHIP_LEAD.length;
+    chipNext += CHIP_STEP;
+  }
+}
+export function startChip() {
+  if (chipTimer) return;
+  chipI = 0; chipNext = 0;
+  chipTimer = setInterval(chipPump, 50);
+  chipPump();
+}
+export function stopChip() { clearInterval(chipTimer); chipTimer = null; chipNext = 0; }

@@ -30,6 +30,7 @@ export const FIGHT_VERSE = { text: '우리의 씨름은 혈과 육에 대한 것
 export const STAND_VERSE = { text: '그러므로 하나님의 전신갑주를 취하라 이는 악한 날에 너희가 능히 대적하고 모든 일을 행한 후에 서기 위함이라', ref: '엡 6:13' };
 export const WIN_VERSE = { text: '…세상에서는 너희가 환난을 당하나 담대하라 내가 세상을 이기었노라', ref: '요 16:33' };
 export const FLEE_VERSE = { text: '그런즉 너희는 하나님께 순복할찌어다 마귀를 대적하라 그리하면 너희를 피하리라', ref: '약 4:7' };
+export const GREATER_VERSE = { text: '자녀들아 너희는 하나님께 속하였고 또 저희를 이기었나니 이는 너희 안에 계신 이가 세상에 있는 이보다 크심이라', ref: '요일 4:4' };
 
 // ---------- 시험 (방 하나에 시험 하나. 갑주마다 하나, 마지막은 새벽의 방) ----------
 // how: 하는 법 (방에 들어가면 보인다), verse: 방 앞에 보이는 말씀
@@ -53,6 +54,9 @@ export const TRIALS = {
   sword: { armor: 'sword', name: '말씀으로 물리치기', place: '거짓말 그림자 굴',
     how: '그림자가 거짓말을 하며 다가와요. 그 거짓말에 맞는 말씀 카드를 골라 성령의 검으로 물리쳐요.',
     verse: FLEE_VERSE },
+  arcade: { armor: 'sword', name: '그림자 떼 물리치기', place: '그림자 소굴', arcade: true,
+    how: '화면을 누른 채 밀면 움직여요(방향키도 돼요). 말씀의 빛은 가까운 그림자에게 저절로 나가요. 그림자와 어두운 구슬을 피하고 빛 조각을 모아요. 기도 단추를 누르면 기도의 빛이 퍼져요. 마지막에 큰 그림자가 나와요!',
+    verse: GREATER_VERSE },
   dawn: { armor: null, name: '끝까지 서기', place: '새벽의 방',
     how: "어둠의 물결이 밀려와요. 물결이 발 앞 초록 칸에 왔을 때 '방패로 서기!'를 눌러요. 물결 사이에 기도하면 새벽이 더 빨리 와요.",
     verse: STAND_VERSE },
@@ -60,23 +64,31 @@ export const TRIALS = {
 export const TRIAL_IDS = Object.keys(TRIALS);
 
 // ---------- 동굴 (차례대로 열린다. 친구와 함께 할 때는 방장이 연 동굴까지 들어간다) ----------
-// rooms: [시험, 단계(1~3)] 차례, 마지막에 새벽의 방이 붙는다. fruit: 깨면 받는 열매(하루 상한 안에서)
+// rooms: [시험, 단계(1~3)] 차례, 마지막에 새벽의 방(단계 dawn)이 붙는다. fruit: 깨면 받는 열매(하루 상한 안에서)
+// 앞 동굴을 깨면 다음 동굴이 열린다. 뒤에 더한 동굴(d8, d9)은 차례 사이에 끼워 넣었다 (이미 깬 동굴은 그대로 열려 있다)
 export const DUNGEONS = [
-  { id: 'd1', name: '첫걸음 동굴', icon: '🕯️', fruit: 1, rooms: [['belt', 1], ['shield', 1]], desc: '진리의 허리띠와 믿음의 방패를 처음 써 봐요.' },
-  { id: 'd2', name: '속삭임 굴', icon: '🌫️', fruit: 1, rooms: [['sword', 1], ['helmet', 1]], desc: '거짓말과 의심이 속삭이는 굴이에요. 말씀과 소망으로 이겨요.' },
-  { id: 'd3', name: '얼룩 골짜기', icon: '🌙', fruit: 1, rooms: [['breast', 1], ['shoes', 1]], desc: '참소가 쏟아지는 골짜기와 어두운 징검다리를 건너요.' },
-  { id: 'd4', name: '불화살 협곡', icon: '🔥', fruit: 2, rooms: [['shield', 2], ['sword', 2], ['belt', 2]], desc: '불화살이 더 빨라져요. 방패와 검을 함께 써요.' },
-  { id: 'd5', name: '안개 미로', icon: '🌀', fruit: 2, rooms: [['belt', 2], ['helmet', 2], ['shoes', 2]], desc: '안개 속 갈림길과 의심 방울, 긴 징검다리가 기다려요.' },
-  { id: 'd6', name: '깊은 어둠', icon: '🌑', fruit: 2, rooms: [['breast', 2], ['shield', 3], ['sword', 3]], desc: '가장 깊은 어둠이에요. 예수님의 의를 입고 끝까지 서요.' },
-  { id: 'd7', name: '새벽 봉우리', icon: '🌅', fruit: 3, rooms: [['belt', 3], ['breast', 3], ['shoes', 3], ['shield', 3], ['helmet', 3], ['sword', 3]], desc: '여섯 갑주를 모두 쓰는 마지막 동굴이에요. 정상에서 새벽을 맞아요.' },
+  { id: 'd1', name: '첫걸음 동굴', icon: '🕯️', fruit: 1, dawn: 1, rooms: [['belt', 1], ['shield', 1]], desc: '진리의 허리띠와 믿음의 방패를 처음 써 봐요.' },
+  { id: 'd8', name: '그림자 떼 굴', icon: '👾', fruit: 1, dawn: 1, rooms: [['helmet', 1], ['arcade', 1]], desc: '그림자 떼가 몰려와요! 오락실처럼 뛰어다니며 말씀의 빛으로 물리쳐요.' },
+  { id: 'd2', name: '속삭임 굴', icon: '🌫️', fruit: 1, dawn: 1, rooms: [['sword', 1], ['helmet', 1]], desc: '거짓말과 의심이 속삭이는 굴이에요. 말씀과 소망으로 이겨요.' },
+  { id: 'd3', name: '얼룩 골짜기', icon: '🌙', fruit: 1, dawn: 1, rooms: [['breast', 1], ['shoes', 1]], desc: '참소가 쏟아지는 골짜기와 어두운 징검다리를 건너요.' },
+  { id: 'd4', name: '불화살 협곡', icon: '🔥', fruit: 2, dawn: 2, rooms: [['shield', 2], ['sword', 2], ['belt', 2]], desc: '불화살이 더 빨라져요. 방패와 검을 함께 써요.' },
+  { id: 'd5', name: '안개 미로', icon: '🌀', fruit: 2, dawn: 2, rooms: [['belt', 2], ['helmet', 2], ['shoes', 2]], desc: '안개 속 갈림길과 의심 방울, 긴 징검다리가 기다려요.' },
+  { id: 'd6', name: '깊은 어둠', icon: '🌑', fruit: 2, dawn: 2, rooms: [['breast', 2], ['shield', 3], ['sword', 3]], desc: '가장 깊은 어둠이에요. 예수님의 의를 입고 끝까지 서요.' },
+  { id: 'd9', name: '큰 그림자 성', icon: '🏰', fruit: 2, dawn: 2, rooms: [['arcade', 2], ['sword', 3], ['arcade', 3]], desc: '큰 그림자가 둘이나 기다리는 성이에요. 우리 안에 계신 분이 더 크셔요!' },
+  { id: 'd7', name: '새벽 봉우리', icon: '🌅', fruit: 3, dawn: 3, rooms: [['belt', 3], ['breast', 3], ['shoes', 3], ['shield', 3], ['helmet', 3], ['sword', 3]], desc: '여섯 갑주를 모두 쓰는 마지막 동굴이에요. 정상에서 새벽을 맞아요.' },
 ];
+// 갑주의 방에서 고르는 '도전 모드': 혼자서 끝없이 오는 그림자 물결을 막는다 (점수는 이번 주 기록판에)
+// 물결 5개를 넘기면 열매 1개, 10개를 넘기면 2개 (동굴 열매와 함께 하루 5개까지, 서버 kids_arcade_end와 같다)
+export const CHALLENGE = { id: 'arcade', name: '그림자 떼 도전', icon: '🕹️', place: '끝없는 그림자 소굴',
+  how: '그림자 물결이 끝없이 와요. 다섯 번째 물결마다 큰 그림자가 나와요. 하트를 다 잃으면 끝나요. 기도의 빛은 15초에 한 번 쓸 수 있어요.',
+  fruit: [[10, 2], [5, 1]], verse: GREATER_VERSE };
+export const challengeFruit = (cleared) => { for (const [n, f] of CHALLENGE.fruit) if (cleared >= n) return f; return 0; };
 export const dungeonById = (id) => DUNGEONS.find((d) => d.id === id) || null;
 export const DG_DAY = 5; // 하루에 동굴에서 받는 열매 상한 (서버와 같다)
 export const DG_MAX_PARTY = 4;
 // 동굴 하나의 방 목록 (마지막에 새벽의 방, 단계는 동굴 차례에 따라)
 export function roomsOf(d) {
-  const i = DUNGEONS.indexOf(d);
-  return [...d.rooms.map(([t, lv]) => ({ t, lv })), { t: 'dawn', lv: i < 3 ? 1 : i < 6 ? 2 : 3 }];
+  return [...d.rooms.map(([t, lv]) => ({ t, lv })), { t: 'dawn', lv: d.dawn || 1 }];
 }
 
 // ---------- 참말 길: 참말과 거짓말 (ref는 참말의 근거) ----------

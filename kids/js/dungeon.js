@@ -12,7 +12,7 @@ import { h, modal, toast, josa, confetti } from './ui.js';
 import { message, store } from './api.js';
 import { sfx } from './sound.js';
 import { friendPicker } from './play.js';
-import { ARMOR, PRAYER, ENTRY_PRAYER, KEY_VERSE, FIGHT_VERSE, STAND_VERSE, WIN_VERSE, TRIALS, DUNGEONS, DG_DAY, DG_MAX_PARTY, roomsOf, dungeonById, armorById } from './dungeon-data.js';
+import { ARMOR, PRAYER, ENTRY_PRAYER, KEY_VERSE, FIGHT_VERSE, STAND_VERSE, WIN_VERSE, TRIALS, DUNGEONS, DG_DAY, DG_MAX_PARTY, CHALLENGE, challengeFruit, roomsOf, dungeonById, armorById } from './dungeon-data.js';
 import { buildCave, dressAvatar, armorDisplay, pedestal, makeSparks, makeBibleStand, rngOf, disposeObj } from './dungeon-scene.js';
 import { makeTrial } from './dungeon-trials.js';
 
@@ -65,6 +65,7 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
   let cave = null, sparks = null;
   let R = null; // 동굴 안에 있을 때의 모든 것
   let book = { clears: {}, best: {}, today: 0, cap: DG_DAY };
+  let abook = { best: 0, week_best: 0, best_wave: 0, week: [], all: [], loaded: false }; // 도전 모드 기록
   const remotes = new Map();
   const keys = new Set();
   const me = { av: null, dress: null, act: '', actT: 0, task: null, fallen: false, moving: false, tag: null };
@@ -297,10 +298,27 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
     } catch (e) { if (lost(e)) return; }
     if (!R) return;
     if (R.host && !R.picked) { R.picked = true; R.dg = suggest(); }
-    if (R.host && !unlocked(DUNGEONS.findIndex((d) => d.id === R.dg))) R.dg = DUNGEONS[0].id;
+    if (R.host && R.dg !== CHALLENGE.id && !unlocked(DUNGEONS.findIndex((d) => d.id === R.dg))) R.dg = DUNGEONS[0].id;
+    if (R.host && R.dg === CHALLENGE.id && !challengeOpen()) R.dg = suggest();
     if (R.host) sendRoster(); else drawLobby();
   }
-  const unlocked = (i) => i === 0 || (i > 0 && i < DUNGEONS.length && (book.clears[DUNGEONS[i - 1].id] || 0) > 0);
+  // 앞 동굴을 깼거나, 이 동굴을 깬 적이 있으면 열려 있다 (나중에 사이에 끼워 넣은 동굴 때문에 이미 깬 동굴이 닫히지 않게)
+  const cleared = (id) => (book.clears[id] || 0) > 0;
+  const unlocked = (i) => i === 0 || (i > 0 && i < DUNGEONS.length && (cleared(DUNGEONS[i - 1].id) || cleared(DUNGEONS[i].id)));
+  // 도전 모드는 그림자 떼 굴(오락실 방이 처음 나오는 동굴)을 깨면 열린다
+  const challengeOpen = () => cleared('d8');
+  function normArcade(r) {
+    const a = { best: 0, week_best: 0, best_wave: 0, week: [], all: [], loaded: true };
+    if (r && typeof r === 'object') {
+      for (const k of ['best', 'week_best', 'best_wave']) if (Number.isFinite(r[k])) a[k] = r[k];
+      for (const k of ['week', 'all']) if (Array.isArray(r[k])) a[k] = r[k].filter((x) => x && typeof x.name === 'string');
+    }
+    return a;
+  }
+  async function loadArcade() {
+    try { abook = normArcade(await rpc('kids_arcade_book', { p_token: getToken() })); } catch (e) { if (lost(e)) return; abook.loaded = true; }
+    if (R && R.phase === 'lobby') drawLobby();
+  }
   // 아직 안 깬 동굴 가운데 가장 앞 (모두 깼으면 마지막)
   function suggest() {
     for (let i = 0; i < DUNGEONS.length; i++) if (unlocked(i) && !(book.clears[DUNGEONS[i].id] > 0)) return DUNGEONS[i].id;
@@ -313,6 +331,7 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
     if (!features().dungeon) { toast('새벽 동굴은 곧 열려요! 조금만 기다려 줘요.', 2600); return; }
     open({ room: hub ? hub.openRoom('dgn') : null, host: true });
     loadBook();
+    loadArcade();
   }
   // 친구가 부른 동굴에 들어간다 (초대 카드에서 '좋아!')
   function join(session) {
@@ -423,32 +442,74 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
         h('p', { class: 'dg-verse' }, PRAYER.verse, h('cite', {}, PRAYER.ref))));
       return;
     }
-    // 동굴 고르기
-    const d = dungeonById(R.dg) || DUNGEONS[0];
-    const di = DUNGEONS.indexOf(d);
+    // 동굴 고르기 (맨 앞은 도전 모드)
+    const isCh = R.dg === CHALLENGE.id;
+    const d = isCh ? null : dungeonById(R.dg) || DUNGEONS[0];
+    const di = d ? DUNGEONS.indexOf(d) : -1;
     let main, wait = '';
     if (R.host) {
       const notReady = R.slots.filter((id) => id && !R.ready.has(id));
       if (notReady.length) wait = `${notReady.map((id) => nameOf(id)).join(', ')} 준비하는 중…`;
-      main = { label: notReady.length ? '기다리는 중' : '들어가기!', disabled: !!notReady.length || !unlocked(di), pulse: !notReady.length, onClick: () => startRun() };
+      if (isCh) main = { label: party ? '혼자 할 때만' : '도전!', disabled: party || !challengeOpen() || !R.prayed, pulse: !party, onClick: () => startRun() };
+      else main = { label: notReady.length ? '기다리는 중' : '들어가기!', disabled: !!notReady.length || !unlocked(di), pulse: !notReady.length, onClick: () => startRun() };
     } else main = { label: '방장을 기다려요', disabled: true, pulse: false, onClick: () => {} };
-    ui.say(R.host ? (party ? '동굴을 고르고 모두 준비되면 들어가요!' : '들어갈 동굴을 골라요. 동굴을 깨면 다음 동굴이 열려요.') : `${nameOf(R.slots[0])} 방장이 동굴을 고르고 있어요.`, '새벽 동굴 · 갑주의 방');
+    ui.say(R.host ? (isCh ? '도전 모드예요. 그림자 물결을 얼마나 오래 막을 수 있을까요?' : party ? '동굴을 고르고 모두 준비되면 들어가요!' : '들어갈 동굴을 골라요. 동굴을 깨면 다음 동굴이 열려요.') : `${nameOf(R.slots[0])} 방장이 동굴을 고르고 있어요.`, '새벽 동굴 · 갑주의 방');
     ui.setMain(main.label, main);
-    const list = h('div', { class: 'dg-list', role: 'listbox', 'aria-label': '동굴 고르기' }, DUNGEONS.map((x, i) => {
+    const chOpen = challengeOpen();
+    const chBtn = h('button', {
+      class: 'dg-pick dg-arc' + (isCh ? ' on' : '') + (chOpen ? '' : ' locked'), type: 'button', role: 'option', 'aria-selected': String(isCh),
+      disabled: !R.host || !chOpen, onclick: () => { R.dg = CHALLENGE.id; sfx.tap(); sendRoster(); if (!abook.loaded) loadArcade(); },
+    }, h('span', { class: 'dg-ic', 'aria-hidden': 'true' }, chOpen ? CHALLENGE.icon : '🔒'), h('b', {}, '도전 모드'), h('small', {}, abook.best ? `최고 ${abook.best.toLocaleString('ko-KR')}` : '끝없는 물결'));
+    const list = h('div', { class: 'dg-list', role: 'listbox', 'aria-label': '동굴 고르기' }, chBtn, DUNGEONS.map((x, i) => {
       const open = unlocked(i), n = book.clears[x.id] || 0;
       return h('button', {
         class: 'dg-pick' + (x.id === R.dg ? ' on' : '') + (open ? '' : ' locked') + (n ? ' done' : ''), type: 'button', role: 'option', 'aria-selected': String(x.id === R.dg),
         disabled: !R.host || !open, onclick: () => { R.dg = x.id; sfx.tap(); sendRoster(); },
       }, h('span', { class: 'dg-ic', 'aria-hidden': 'true' }, open ? x.icon : '🔒'), h('b', {}, x.name), h('small', {}, `🍎${x.fruit}${n ? ` · ✓${n}` : ''}`));
     }));
-    const rooms = roomsOf(d).map((rm) => { const t = TRIALS[rm.t]; const a = t.armor ? armorById(t.armor) : null; return h('span', { class: 'dg-room' }, `${a ? a.icon : '🌅'} ${t.name}`); });
     const roster = party ? h('div', { class: 'lr-roster dg-roster' }, R.slots.filter(Boolean).map((id, i) => chip(id, i === 0 ? ' 👑' : '', R.ready.has(id) ? ' ✓' : ' …'))) : null;
+    if (isCh) {
+      ui.setPanel(hud, h('div', { class: 'dg-picker' }, list, ...challengeInfo(party), wait ? h('p', { class: 'dg-hint' }, wait) : null), roster);
+      return;
+    }
+    const rooms = roomsOf(d).map((rm) => { const t = TRIALS[rm.t]; const a = t.armor ? armorById(t.armor) : null; return h('span', { class: 'dg-room' }, `${t.arcade ? '👾' : a ? a.icon : '🌅'} ${t.name}`); });
     ui.setPanel(hud, h('div', { class: 'dg-picker' }, list,
       h('p', { class: 'dg-desc' }, `${d.icon} ${d.name}: ${d.desc}`),
       h('div', { class: 'dg-rooms' }, rooms),
       !unlocked(di) ? h('p', { class: 'dg-hint' }, '앞 동굴을 깨면 열려요.') : null,
       wait ? h('p', { class: 'dg-hint' }, wait) : null), roster);
     // 처음 들어온 아이는 아직 안 깬 첫 동굴을 고른 채로
+  }
+  // 도전 모드 설명과 이번 주 기록판 (세 줄만, 더 보기는 창으로)
+  function challengeInfo(party) {
+    const fmt = (n) => Math.round(n || 0).toLocaleString('ko-KR');
+    const rows = (abook.week || []).slice(0, 3).map((r, i) => h('div', { class: 'dg-brow' + (r.me ? ' me' : '') }, h('b', {}, `${i + 1}`), h('span', {}, r.name, r.teacher ? ' (선생님)' : '', r.me ? ' (나)' : ''), h('em', {}, `${fmt(r.score)}점`)));
+    return [
+      h('p', { class: 'dg-desc' }, `${CHALLENGE.icon} ${CHALLENGE.name}: 혼자서 끝없이 오는 그림자 물결을 막아요. 물결 5개를 넘기면 🍎1개, 10개를 넘기면 🍎2개를 받아요(동굴 열매와 함께 하루 ${book.cap}개까지).`),
+      !challengeOpen() ? h('p', { class: 'dg-hint' }, '👾 그림자 떼 굴을 깨면 열려요.') : party ? h('p', { class: 'dg-hint' }, '도전 모드는 혼자 할 때만 할 수 있어요.') : null,
+      h('div', { class: 'dg-board' }, h('div', { class: 'dg-board-h' }, h('span', {}, '🏆 이번 주 기록'), h('small', {}, `내 최고 ${fmt(abook.best)}점 · 이번 주 ${fmt(abook.week_best)}점`)),
+        rows.length ? rows : h('p', { class: 'dg-hint' }, abook.loaded ? '이번 주는 아직 기록이 없어요. 첫 기록을 세워 봐요!' : '기록을 꺼내는 중…'),
+        h('button', { class: 'dg-more', type: 'button', onclick: () => openArcadeBoard() }, '기록판 더 보기')),
+    ];
+  }
+  function openArcadeBoard() {
+    const fmt = (n) => Math.round(n || 0).toLocaleString('ko-KR');
+    const rows = (list) => list.map((t, i) => {
+      const cv = h('canvas', { width: 64, height: 64, class: 'fl-face', 'aria-hidden': 'true' });
+      drawFaceIcon(cv, normalizeAvatar(t.avatar));
+      return h('div', { class: 'fl-row' + (t.me ? ' me' : '') }, h('b', { class: 'rank' }, `${i + 1}`), cv,
+        h('div', { class: 'fl-main' }, h('b', {}, t.name, t.teacher ? h('span', { class: 't-badge' }, '선생님') : null, t.me ? ' (나)' : ''), h('span', {}, `${fmt(t.score)}점 · 물결 ${t.wave || 0}개`)));
+    });
+    const box = h('div', { class: 'mem' });
+    const draw = () => box.replaceChildren(
+      h('div', { class: 'sub-head' }, h('h3', {}, '이번 주 도전 기록'), h('p', {}, '일요일마다 새로 시작해요')),
+      abook.week.length ? h('div', { class: 'fl-list' }, rows(abook.week)) : h('p', { class: 'fb-empty' }, '이번 주는 아직 기록이 없어요.'),
+      h('div', { class: 'sub-head' }, h('h3', {}, '최고 기록'), h('p', {}, '지금까지 가장 높은 점수')),
+      abook.all.length ? h('div', { class: 'fl-list' }, rows(abook.all)) : h('p', { class: 'fb-empty' }, '아직 기록이 없어요.'),
+      h('p', { class: 'note' }, `내 최고 ${fmt(abook.best)}점 (물결 ${abook.best_wave}개) · 이번 주 ${fmt(abook.week_best)}점`));
+    draw();
+    modal.open('그림자 떼 도전 기록판', box, { cls: 'game-sheet' });
+    rpc('kids_arcade_book', { p_token: getToken() }).then((r) => { abook = normArcade(r); draw(); if (R && R.phase === 'lobby') drawLobby(); }).catch((e) => { lost(e); });
   }
   function chip(id, pre, post) {
     const cv = h('canvas', { width: 40, height: 40, class: 'lr-face', 'aria-hidden': 'true' });
@@ -560,6 +621,7 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
   // ---------- 동굴 탐험 ----------
   function startRun() {
     if (!R || !R.host || R.phase !== 'lobby' || !R.prayed || !allReady()) return;
+    if (R.dg === CHALLENGE.id) { if (partyCount() === 1 && challengeOpen()) startChallenge(); return; }
     const i = DUNGEONS.findIndex((d) => d.id === R.dg);
     if (!unlocked(i)) return;
     const seed = Math.floor(Math.random() * 1e9);
@@ -579,6 +641,17 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
     sfx.open();
     enterRoom(0);
   }
+  // 도전 모드: 방 하나(끝없는 오락실)만 있는 탐험
+  function startChallenge(auto = false) {
+    R.run = { d: CHALLENGE, rooms: [{ t: 'arcade', lv: 1, endless: true }], i: -1, seed: Math.floor(Math.random() * 1e9), t0: performance.now(), cleared: new Set(), challenge: true };
+    R.ready = new Set();
+    R.falls = 0;
+    R.phase = 'moving';
+    if (btn.friends) btn.friends.style.display = 'none';
+    if (btn.book) btn.book.style.display = 'none';
+    sfx.open();
+    enterRoom(0, auto);
+  }
   function endTrial() {
     if (R && R.trial) { try { R.trial.stop(); } catch (e) { console.error(e); } }
     if (R) R.trial = null;
@@ -586,7 +659,7 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
     if (me.dress) { me.dress.setRobe(false); me.dress.st.guardTo = 0; }
     document.body.classList.remove('pad-game');
   }
-  function enterRoom(i) {
+  function enterRoom(i, autoStart = false) {
     fade(() => {
       if (!R || !R.run) return;
       endTrial();
@@ -607,6 +680,7 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
       setCam(room.t === 'shoes' ? [0, 12.8, 10.6] : [0, 10.2, 13.4], room.t === 'shoes' ? [0, 0, -1.0] : [0, 0.6, -1.4]);
       drawIntro();
       sendP(true);
+      if (autoStart) startTrial();
     });
   }
   function trialCtx(room, i) {
@@ -619,8 +693,13 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
       say: (t) => ui.say(t),
       banner: (b, s, ms) => ui.banner(b, s, ms),
       body: (...els) => { R.body = els; if (!R.over) drawPlayPanel(); },
-      hurt: (why) => hurt(why),
+      hurt: (why, quiet) => hurt(why, quiet),
       heal: () => heal(),
+      endless: !!room.endless, keys,
+      hearts: () => (R ? R.hearts : 0),
+      pray: () => onPrayBtn(),
+      paused: () => !!modal.isOpen,
+      skip: (on) => { if (game) game.skipRender = !!on; },
       clear: () => roomCleared(),
       alive: () => !!R && R.phase === 'play' && !me.fallen,
       label, unlabel, place: (el, pos, y) => ui.place(el, pos, y), flash: flashLabel,
@@ -642,6 +721,7 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
   function hudEl() {
     const n = R.run.rooms.length, room = R.run.rooms[R.run.i];
     const hearts = h('span', { class: 'dg-hearts', 'aria-label': `하트 ${R.hearts}개` }, '❤️'.repeat(Math.max(0, R.hearts)) + '🤍'.repeat(Math.max(0, 3 - R.hearts)));
+    if (R.run.challenge) return h('div', { class: 'dg-hud' }, hearts, h('span', {}, `${CHALLENGE.icon} 도전 모드`));
     return h('div', { class: 'dg-hud' }, hearts, h('span', {}, `방 ${R.run.i + 1}/${n} · ${TRIALS[room.t].name}`));
   }
   function drawPlayPanel() {
@@ -649,13 +729,26 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
     ui.setPanel(hudEl(), ...(R.over ? [R.over] : R.body || []));
   }
   function drawIntro() {
+    if (R.run.challenge) {
+      const best = abook.best || 0;
+      ui.say(`${CHALLENGE.place} · ${CHALLENGE.name}`, `${CHALLENGE.icon} 도전 모드`);
+      ui.banner('도전 모드', best ? `내 최고 ${best.toLocaleString('ko-KR')}점` : '첫 기록을 세워 봐요!', 1600);
+      R.over = h('div', { class: 'dg-card intro' }, h('div', { class: 'dg-card-h' }, `${CHALLENGE.icon} ${CHALLENGE.name}`),
+        h('p', { class: 'dg-how' }, CHALLENGE.how), h('p', { class: 'dg-how' }, TRIALS.arcade.how),
+        h('p', { class: 'dg-verse' }, CHALLENGE.verse.text, h('cite', {}, CHALLENGE.verse.ref)));
+      drawPlayPanel();
+      if (btn.pray) btn.pray.style.display = 'none';
+      ui.setMain('시작!', { pulse: true, onClick: () => startTrial() });
+      return;
+    }
     const room = R.run.rooms[R.run.i], tr = TRIALS[room.t];
     const a = tr.armor ? armorById(tr.armor) : null;
     const n = R.run.rooms.length;
     ui.say(`${tr.place} · ${tr.name}`, `${R.run.d.icon} ${R.run.d.name}`);
-    ui.banner(`방 ${R.run.i + 1}/${n}`, `${a ? `${a.icon} ${a.name}` : '🌅 새벽의 방'} · ${tr.name}`, 1800);
+    ui.banner(`방 ${R.run.i + 1}/${n}`, `${tr.arcade ? '👾 오락실 방' : a ? `${a.icon} ${a.name}` : '🌅 새벽의 방'} · ${tr.name}`, 1800);
     const card = h('div', { class: 'dg-card intro' },
-      h('div', { class: 'dg-card-h' }, a ? `${a.icon} ${a.name}` : '🌅 새벽의 방', h('small', {}, `${'⭐'.repeat(room.lv)}`)),
+      h('div', { class: 'dg-card-h' }, tr.arcade ? `👾 ${tr.name}` : a ? `${a.icon} ${a.name}` : '🌅 새벽의 방', h('small', {}, `${'⭐'.repeat(room.lv)}`)),
+      tr.arcade ? h('p', { class: 'dg-mean' }, `${a.icon} ${a.name}: 하나님의 말씀은 어둠을 비추는 빛이에요. 거짓말, 두려움, 참소, 의심의 그림자를 말씀의 빛으로 물리쳐요.`) : null,
       h('p', { class: 'dg-how' }, tr.how),
       h('p', { class: 'dg-verse' }, tr.verse.text, h('cite', {}, tr.verse.ref)),
       tr.robe ? h('p', { class: 'dg-mean' }, '나의 의가 아니라 그리스도의 의를 입어요. 예수님의 의가 나의 의가 되어요. ', h('span', { class: 'dg-verse-in' }, tr.robe.text, h('cite', {}, tr.robe.ref))) : null);
@@ -678,12 +771,12 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
     sendP(true);
   }
   // ---------- 하트, 쓰러짐, 기도 ----------
-  function hurt(why) {
+  function hurt(why, quiet = false) {
     if (!R || R.phase !== 'play' || me.fallen || R.inv > 0) return false;
     R.hearts = Math.max(0, R.hearts - 1);
     R.inv = 0.9;
     hurtFlash();
-    sfx.bonk();
+    if (!quiet) sfx.bonk();
     if (why) ui.say(why);
     if (R.hearts <= 0) fall();
     drawPlayPanel();
@@ -697,6 +790,7 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
     sendP(true);
   }
   function fall() {
+    if (R.run && R.run.challenge) { challengeOver(); return; }
     me.fallen = true;
     me.task = null;
     R.falls++;
@@ -754,12 +848,14 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
       return;
     }
     if (R.prayCd > 0) return;
-    R.prayCd = R.run && R.run.rooms[R.run.i].t === 'dawn' ? 4 : 10;
+    const ch = !!(R.run && R.run.challenge);
+    R.prayCd = R.run && R.run.rooms[R.run.i].t === 'dawn' ? 4 : ch ? 15 : 10;
     act('pray', 0.9);
     const p = me.av.root.position;
     sparks.burst(V(p.x, 1.4, p.z), '#FFF3B0', 12, 0.6, 1.2);
     sfx.ding();
-    if (R.hearts < 3) { heal(); ui.say('기도했더니 힘이 났어요! (하트 하나)'); } else ui.say('기도했어요. 하나님이 함께하셔요!');
+    // 도전 모드에서는 기도해도 하트는 늘지 않는다 (기도의 빛만)
+    if (R.hearts < 3 && !ch) { heal(); ui.say('기도했더니 힘이 났어요! (하트 하나)'); } else ui.say('기도했어요. 하나님이 함께하셔요!');
     R.trial.onPray();
     sendP(true);
   }
@@ -870,7 +966,7 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
       h('p', { class: 'dg-verse' }, WIN_VERSE.text, h('cite', {}, WIN_VERSE.ref)));
     drawPlayPanel();
     ui.setMain('…', { disabled: true });
-    const before = { ...book.clears };
+    const di0 = DUNGEONS.indexOf(d), nextWasOpen = di0 + 1 < DUNGEONS.length && unlocked(di0 + 1), chWasOpen = challengeOpen();
     let r = null, err = '';
     try { r = await rpc('kids_dungeon_clear', { p_token: getToken(), p_dg: d.id, p_ms: ms, p_party: partyCount() }); }
     catch (e) { if (lost(e)) return; err = message(e); }
@@ -885,11 +981,58 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
       const lines = [];
       if (got > 0) { lines.push(`🍎 열매 ${got}개를 받았어요! (오늘 동굴 열매 ${book.today}/${book.cap})`); sfx.fruit(); }
       else lines.push(`오늘 받을 수 있는 동굴 열매(${book.cap}개)를 다 받았어요. 내일 또 와요!`);
-      const di = DUNGEONS.indexOf(d);
-      if (!(before[d.id] > 0) && di + 1 < DUNGEONS.length) lines.push(`🔓 새 동굴이 열렸어요: ${DUNGEONS[di + 1].icon} ${DUNGEONS[di + 1].name}`);
+      if (!nextWasOpen && di0 + 1 < DUNGEONS.length && unlocked(di0 + 1)) lines.push(`🔓 새 동굴이 열렸어요: ${DUNGEONS[di0 + 1].icon} ${DUNGEONS[di0 + 1].name}`);
+      if (!chWasOpen && challengeOpen()) lines.push(`🔓 도전 모드가 열렸어요: ${CHALLENGE.icon} ${CHALLENGE.name}`);
       res.textContent = lines.join('\n');
     } else res.textContent = err || '기록을 저장하지 못했어요.';
     ui.setMain('갑주의 방', { pulse: true, onClick: () => backToLobby() });
+  }
+  // ---------- 도전 모드가 끝났을 때 (하트를 다 잃었을 때) ----------
+  async function challengeOver() {
+    if (!R || !R.run || !R.run.challenge || R.phase !== 'play') return;
+    R.phase = 'done';
+    const info = R.trial ? R.trial.info() : {};
+    if (R.trial && R.trial.finish) R.trial.finish();
+    const score = Math.max(0, Math.round(info.score || 0)), waves = Math.max(0, info.cleared | 0), ms = Math.max(0, info.ms | 0);
+    const fmt = (n) => Math.round(n || 0).toLocaleString('ko-KR');
+    if (btn.pray) btn.pray.style.display = 'none';
+    ui.say(waves ? `물결 ${waves}개를 이겼어요! 다시 해 볼까요?` : '그림자가 많았어요. 다시 해 볼까요?');
+    const res = h('p', { class: 'dg-result' }, '기록을 저장하는 중…');
+    R.over = h('div', { class: 'dg-card win' },
+      h('div', { class: 'dg-card-h' }, `${CHALLENGE.icon} ${CHALLENGE.name}`, h('small', {}, fmtTime(ms))),
+      h('p', { class: 'dg-score' }, `점수 ${fmt(score)}`, h('small', {}, `물결 ${waves}개`)), res,
+      h('div', { class: 'row' }, h('button', { class: 'btn btn-soft dg-back', type: 'button', onclick: () => backToLobby() }, '갑주의 방'), h('button', { class: 'btn btn-soft dg-back', type: 'button', onclick: () => openArcadeBoard() }, '🏆 기록판')),
+      h('p', { class: 'dg-verse' }, CHALLENGE.verse.text, h('cite', {}, CHALLENGE.verse.ref)));
+    drawPlayPanel();
+    ui.setMain('…', { disabled: true });
+    const oldBest = abook.best || 0;
+    let r = null, err = '';
+    try { r = await rpc('kids_arcade_end', { p_token: getToken(), p_score: score, p_wave: waves, p_ms: ms }); }
+    catch (e) { if (lost(e)) return; err = message(e); }
+    if (!R || R.phase !== 'done' || !R.run || !R.run.challenge) return;
+    const lines = [];
+    if (r) {
+      if (Number.isFinite(r.fruits) && setFruits) setFruits(r.fruits);
+      if (Number.isFinite(r.today)) book.today = r.today;
+      if (Number.isFinite(r.cap)) book.cap = r.cap;
+      if (Number.isFinite(r.best)) abook.best = r.best;
+      if (Number.isFinite(r.week_best)) abook.week_best = r.week_best;
+      if (Number.isFinite(r.best_wave)) abook.best_wave = r.best_wave;
+      if (score > oldBest && score > 0) lines.push(oldBest > 0 ? `🎉 내 최고 점수예요! (전에는 ${fmt(oldBest)}점)` : '🎉 첫 기록을 세웠어요!');
+      // 이번 판이 내 이번 주 최고일 때만 순위를 알린다 (기록판에는 아이마다 가장 높은 점수 한 줄)
+      if (Number.isFinite(r.rank) && r.rank > 0 && r.rank <= 10 && score > 0 && score >= (r.week_best || 0)) lines.push(`🏆 이번 주 기록판 ${r.rank}등이에요!`);
+      const got = r.got | 0;
+      if (got > 0) { lines.push(`🍎 열매 ${got}개를 받았어요! (오늘 동굴 열매 ${book.today}/${book.cap})`); sfx.fruit(); }
+      else if (challengeFruit(waves) > 0) lines.push(`오늘 받을 수 있는 동굴 열매(${book.cap}개)를 다 받았어요.`);
+      else lines.push('물결 5개를 넘기면 열매를 받아요. 힘내요!');
+      loadArcade();
+    } else lines.push(err || '기록을 저장하지 못했어요.');
+    res.textContent = lines.join('\n');
+    ui.setMain('다시 하기', { pulse: true, onClick: () => againChallenge() });
+  }
+  function againChallenge() {
+    if (!R || R.phase !== 'done' || !R.run || !R.run.challenge) return;
+    startChallenge(true);
   }
   function fmtTime(ms) { const s = Math.round(ms / 1000); return `${Math.floor(s / 60)}분 ${String(s % 60).padStart(2, '0')}초`; }
   function backToLobby() {
@@ -901,8 +1044,9 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
       buildLobby();
       if (R.host) { for (const b of R.bots) R.ready.add(b); }
       markReady();
-      if (R.host && !unlocked(DUNGEONS.findIndex((x) => x.id === R.dg))) R.dg = DUNGEONS[0].id;
-      if (R.host && (book.clears[R.dg] || 0) > 0) { const s = suggest(); if (!(book.clears[s] > 0)) R.dg = s; }
+      if (R.host && R.dg !== CHALLENGE.id && !unlocked(DUNGEONS.findIndex((x) => x.id === R.dg))) R.dg = DUNGEONS[0].id;
+      if (R.host && R.dg !== CHALLENGE.id && (book.clears[R.dg] || 0) > 0) { const s = suggest(); if (!(book.clears[s] > 0)) R.dg = s; }
+      if (R.dg === CHALLENGE.id) loadArcade();
       sendRoster();
       drawLobby();
       sendP(true);
@@ -927,7 +1071,7 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
       clearTimeout(R.lostT);
       R.slots = sl;
       R.ready = new Set(Array.isArray(m.rd) ? m.rd.filter((x) => typeof x === 'string') : []);
-      if (typeof m.dg === 'string' && dungeonById(m.dg)) R.dg = m.dg;
+      if (typeof m.dg === 'string' && (dungeonById(m.dg) || m.dg === CHALLENGE.id)) R.dg = m.dg;
       if (R.room.setMembers) R.room.setMembers(sl);
       syncRemotes();
       if (R.phase === 'lobby') { for (const r of remotes.values()) homeRemote(r); drawLobby(); }
@@ -1065,8 +1209,9 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
   function askExit() {
     if (!R) return;
     if (R.phase === 'lobby' || R.phase === 'done') { stopAll(); return; }
-    modal.open('동굴에서 나갈까요?', h('div', { class: 'talk' },
-      h('p', {}, '지금 나가면 이 동굴은 처음부터 다시 해야 해요.'),
+    const ch = !!(R.run && R.run.challenge);
+    modal.open(ch ? '도전을 그만할까요?' : '동굴에서 나갈까요?', h('div', { class: 'talk' },
+      h('p', {}, ch ? '지금 나가면 이번 점수는 기록되지 않아요.' : '지금 나가면 이 동굴은 처음부터 다시 해야 해요.'),
       h('div', { class: 'row' },
         h('button', { class: 'btn btn-soft', type: 'button', onclick: () => modal.close() }, '계속할래요'),
         h('button', { class: 'btn btn-go', type: 'button', onclick: () => { modal.close(); stopAll(); } }, '나갈래요'))), { cls: 'talk-sheet' });
@@ -1127,6 +1272,10 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
       moveTo: (x, z) => { if (me.av) place(x, z, me.av.root.rotation.y); },
       dawn: (n) => { if (R && R.phase === 'play') addDawn(n); },
       unlockAll: () => { for (const d of DUNGEONS) book.clears[d.id] = Math.max(1, book.clears[d.id] || 0); drawLobby(); },
+      challenge: () => { if (R && R.host) { R.dg = CHALLENGE.id; sendRoster(); drawLobby(); } },
+      again: () => againChallenge(),
+      lobby: () => backToLobby(),
+      abook: () => abook,
     },
   };
 }

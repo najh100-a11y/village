@@ -7,6 +7,7 @@ import * as THREE from './three.module.min.js';
 import { h } from './ui.js';
 import { sfx, pianoKey } from './sound.js';
 import { TRUTHS, LIES, SWORD_VERSES, DOUBTS, PROMISES, ACCUSE } from './dungeon-data.js';
+import { trialArcade } from './arcade.js';
 import { makeDoor, makeStone, makeShadow, bobShadow, makeArrow, makeBubble, makeLamb, makeLightPool, makeBlob, makeWarn, makeWave, disposeObj, glowMat } from './dungeon-scene.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -725,7 +726,8 @@ function trialDawn(T) {
   };
 }
 
-const MAKERS = { belt: trialBelt, breast: trialBreast, shoes: trialShoes, shield: trialShield, helmet: trialHelmet, sword: trialSword, dawn: trialDawn };
+// 그림자 떼 물리치기(오락실 방)는 arcade.js에 따로 있다
+const MAKERS = { belt: trialBelt, breast: trialBreast, shoes: trialShoes, shield: trialShield, helmet: trialHelmet, sword: trialSword, dawn: trialDawn, arcade: trialArcade };
 export function makeTrial(kind, T) {
   const make = MAKERS[kind];
   if (!make) throw new Error(`no trial ${kind}`);

@@ -362,7 +362,7 @@ export class DemoBackend {
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true, breeds: true, skip2: true, volley: true, expand: true, houses: true, hide: true, nbr: true, rewards: this.rewards(), jrope: true, jr2: true, bath: true, hlock: true, ropes: true, dungeon: true }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true, breeds: true, skip2: true, volley: true, expand: true, houses: true, hide: true, nbr: true, rewards: this.rewards(), jrope: true, jr2: true, bath: true, hlock: true, ropes: true, dungeon: true, arcade: true }; }
   // 쪽지함: 친구별 마지막 쪽지와 안 읽은 수 (최근 30일)
   kids_dm_box({ p_token }) {
     const me = this.session(p_token, 'child');
@@ -536,14 +536,19 @@ export class DemoBackend {
   }
   // ---------- 새벽 동굴 (서버 kids_dungeon_book, kids_dungeon_clear와 같다) ----------
   // 동굴마다 받는 열매와 가장 짧은 시간 (방 하나에 10초): 서버 kids__dg_info와 같다
-  dgInfo(dg) { return { d1: [1, 3], d2: [1, 3], d3: [1, 3], d4: [2, 4], d5: [2, 4], d6: [2, 4], d7: [3, 7] }[dg] || null; }
+  dgInfo(dg) { return { d1: [1, 3], d8: [1, 3], d2: [1, 3], d3: [1, 3], d4: [2, 4], d5: [2, 4], d6: [2, 4], d9: [2, 4], d7: [3, 7] }[dg] || null; }
+  // 오늘 동굴에서 받은 열매 (동굴 탐험과 도전 모드를 함께 센다)
+  dgToday(me) {
+    const t0 = startOfToday();
+    const sum = (list) => (list || []).filter((x) => x.child === me && x.at >= t0).reduce((s, x) => s + x.got, 0);
+    return sum(this.db.dungeon) + sum(this.arcRuns());
+  }
   kids_dungeon_book({ p_token }) {
     const me = this.session(p_token, 'child');
     const mine = (this.db.dungeon || []).filter((x) => x.child === me);
     const by = new Map();
     for (const x of mine) { const r = by.get(x.dg) || { dg: x.dg, clears: 0, best_ms: null }; r.clears++; if (r.best_ms == null || x.ms < r.best_ms) r.best_ms = x.ms; by.set(x.dg, r); }
-    const t0 = startOfToday();
-    return { rows: [...by.values()], today: mine.filter((x) => x.at >= t0).reduce((s, x) => s + x.got, 0), cap: 5 };
+    return { rows: [...by.values()], today: this.dgToday(me), cap: 5 };
   }
   kids_dungeon_clear({ p_token, p_dg, p_ms, p_party = 1 }) {
     const me = this.session(p_token, 'child');
@@ -556,13 +561,67 @@ export class DemoBackend {
     if (last && Date.now() - Date.parse(last) < 20000) fail('TOO_FAST');
     const t0 = startOfToday(), todays = mine.filter((x) => x.at >= t0);
     if (todays.length >= 60) fail('DG_DAY');
-    const today = todays.reduce((s, x) => s + x.got, 0);
+    const today = this.dgToday(me);
     const got = Math.max(0, Math.min(info[0], 5 - today));
     const c = this.child(me);
     c.fruits += got;
     this.db.dungeon.push({ child: me, dg: p_dg, ms: p_ms, party: p_party, got, at: nowIso() });
     const rows = this.db.dungeon.filter((x) => x.child === me && x.dg === p_dg);
     return { got, fruits: c.fruits, today: today + got, cap: 5, clears: rows.length, best_ms: Math.min(...rows.map((x) => x.ms)), first: rows.length === 1 };
+  }
+  // ---------- 새벽 동굴 도전 모드 (서버 kids_arcade_end, kids_arcade_book과 같다) ----------
+  // 체험판이 처음이면 예시 친구 바다의 이번 주 기록을 넣어 둔다 (기록판이 비어 보이지 않게)
+  arcRuns() {
+    if (!this.db.arcade) {
+      this.db.arcade = this.db.children.some((c) => c.id === 'c3')
+        ? [{ child: 'c3', score: 5400, wave: 6, ms: 150000, got: 0, week: weekOf(iso(new Date())), at: nowIso(40) }] : [];
+    }
+    return this.db.arcade;
+  }
+  // 아이마다 가장 높은 점수 (같으면 먼저 세운 기록) 열 명까지
+  arcRows(me, week) {
+    const best = new Map();
+    for (const x of this.arcRuns()) {
+      if (x.score <= 0 || (week && x.week !== week)) continue;
+      const b = best.get(x.child);
+      if (!b || x.score > b.score || (x.score === b.score && x.at < b.at)) best.set(x.child, x);
+    }
+    return [...best.values()].map((x) => ({ x, c: this.db.children.find((k) => k.id === x.child) }))
+      .filter(({ c }) => c && c.village_name)
+      .sort((a, b) => b.x.score - a.x.score || a.x.at.localeCompare(b.x.at))
+      .map(({ x, c }) => ({ name: c.village_name, avatar: c.avatar, score: x.score, wave: x.wave, me: c.id === me, teacher: !!c.teacher }));
+  }
+  arcBest(me, week) { return Math.max(0, ...this.arcRuns().filter((x) => x.child === me && (!week || x.week === week)).map((x) => x.score)); }
+  kids_arcade_book({ p_token }) {
+    const me = this.session(p_token, 'child');
+    const wk = weekOf(iso(new Date()));
+    const mine = this.arcRuns().filter((x) => x.child === me);
+    return { best: this.arcBest(me), week_best: this.arcBest(me, wk), best_wave: Math.max(0, ...mine.map((x) => x.wave)),
+      week: this.arcRows(me, wk).slice(0, 10), all: this.arcRows(me, null).slice(0, 10), today: this.dgToday(me), cap: 5 };
+  }
+  // p_wave: 이긴 물결 수. 5개 넘으면 열매 1, 10개 넘으면 2 (동굴 열매와 함께 하루 5개까지)
+  kids_arcade_end({ p_token, p_score, p_wave, p_ms }) {
+    const me = this.session(p_token, 'child');
+    if (!Number.isInteger(p_score) || !Number.isInteger(p_wave) || !Number.isInteger(p_ms) || p_wave < 0 || p_wave > 500 || p_ms < 0 || p_ms > 4 * 3600000
+      || p_ms < p_wave * 4000 || p_score < 0 || p_score > (p_wave + 1) * 40000 + p_ms) fail('BAD_ARC');
+    this.gate(me);
+    const list = this.arcRuns();
+    const mine = list.filter((x) => x.child === me);
+    const last = mine.map((x) => x.at).sort().pop();
+    if (last && Date.now() - Date.parse(last) < 5000) fail('TOO_FAST');
+    const t0 = startOfToday();
+    if (mine.filter((x) => x.at >= t0).length >= 100) fail('ARC_DAY');
+    const today = this.dgToday(me);
+    const want = p_wave >= 10 ? 2 : p_wave >= 5 ? 1 : 0;
+    const got = Math.max(0, Math.min(want, 5 - today));
+    const c = this.child(me);
+    c.fruits += got;
+    const wk = weekOf(iso(new Date()));
+    list.push({ child: me, score: p_score, wave: p_wave, ms: p_ms, got, week: wk, at: nowIso() });
+    const rows = this.arcRows(me, wk);
+    const ri = rows.findIndex((r) => r.me);
+    return { got, fruits: c.fruits, today: today + got, cap: 5, best: this.arcBest(me), week_best: this.arcBest(me, wk),
+      best_wave: Math.max(0, ...list.filter((x) => x.child === me).map((x) => x.wave)), rank: p_score > 0 && ri >= 0 ? ri + 1 : null };
   }
   // ---------- 물수제비 (서버 kids_skip_throw와 같다) ----------
   skipTop(me) {

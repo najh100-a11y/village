@@ -3650,7 +3650,8 @@ export class Village {
     const sm = this.renderer.shadowMap;
     if ((this.mapS || 0) > 0.9) { this.shadowTick = ((this.shadowTick || 0) + 1) % 4; sm.autoUpdate = false; sm.needsUpdate = this.shadowTick === 0; }
     else sm.autoUpdate = true;
-    // 따로 된 장면이 있는 놀이(새벽 동굴)는 그 장면을 그린다
+    // 따로 된 장면이 있는 놀이(새벽 동굴)는 그 장면을 그린다. 화면을 다 덮는 2D 놀이(동굴 오락실)를 하는 동안에는 그리지 않는다
+    if (this.mode === 'game' && this.game && this.game.skipRender) return;
     this.renderer.render(this.mode === 'game' && this.game && this.game.scene ? this.game.scene : this.activeScene(), this.camera);
   }
 
