@@ -6,7 +6,7 @@ import { mergeStatic, Instancer } from './merge.js';
 import { Park, RIDE_IDS, resetLimbs } from './park.js';
 import { Critters, Follower, PET_ITEMS, CARE_SEC } from './critters.js';
 import { WeatherFx } from './weatherfx.js';
-import { Pool, inPool, SWIM_Y, swimPose, STROKES, LOUNGER } from './pool.js';
+import { Pool, inPool, SWIM_Y, swimPose, STROKES, LOUNGER, TUBES, TUBE_Y, tubePose, setTube } from './pool.js';
 import { clampWalk, makeBridge, BRIDGES, WORLD_CENTER, WORLD_HALF, route, PARK_ISLE, pierPoint } from './isles.js';
 import { POOL } from './pool.js';
 // 줌: 1이 처음 시점. 마을은 1.6, 놀이기구는 2.0을 넘으면 지도 보기로 바뀌기 시작해 MAP_ZOOM에서 섬 전체가 보인다
@@ -2300,7 +2300,8 @@ export class Village {
       this.park.decorate(r, act, r.actSeat);
       return;
     }
-    if (act === 'swim') av.stroke = STROKES[r.actSeat] || 'free'; // 친구가 고른 영법
+    // 친구가 고른 영법 (자리 번호 3부터는 튜브와 그 모양)
+    if (act === 'swim') { if (r.actSeat >= 3 && r.actSeat < 3 + TUBES.length) { av.stroke = 'tube'; av.tubeD = r.actSeat - 3; } else av.stroke = STROKES[r.actSeat] || 'free'; }
     if (act === 'bench') {
       if (r.pin && r.pin.kind === 'bench' && r.pin.seat === r.actSeat) return;
       if (this.decorateRemote) this.decorateRemote(r, '');
@@ -2943,6 +2944,8 @@ export class Village {
       const p = o.userData.pick;
       if (p.type === 'building') { this.walkTo(p.id); return true; }
       if (p.type === 'mypet') { this.petFollower(p.owner, p.item); return true; }
+      // 애완동물 집에서 쉬는 동물: 누르면 깨어나 깡충 (걸어가지 않는다)
+      if (p.type === 'restpet') { const info = H.pokeRest(p.item); if (info && this.on.onRestPet) this.on.onRestPet(info); return true; }
       if (p.type === 'homeitem' && H.slidePath && H.slidePath(p.id)) {
         const foot = H.slidePath(p.id).foot.setY(0);
         this.target = { pos: foot, action: () => { this.startSlide(p.id); if (this.on.onHomeItem) this.on.onHomeItem(p.id); } };
@@ -3927,7 +3930,7 @@ export class Village {
     let moving = false;
     if (len > 0.001) {
       const run = this.isRunning();
-      const speed = inPool(p.x, p.z) ? (run ? 4.6 : 3.2) : (run ? RUN_SPEED : WALK_SPEED); // 물속에서는 천천히
+      const speed = inPool(p.x, p.z) ? (this.stroke === 'tube' ? (run ? 3.6 : 2.6) : run ? 4.6 : 3.2) : (run ? RUN_SPEED : WALK_SPEED); // 물속에서는 천천히 (튜브는 더 천천히)
       const before = p.clone();
       p.x += (dx / len) * speed * dt;
       p.z += (dz / len) * speed * dt;
@@ -3989,8 +3992,11 @@ export class Village {
     return { x: p.x - Math.sin(yw) * d, z: p.z - Math.cos(yw) * d };
   }
 
-  // 영법 고르기: 'free' 자유형, 'back' 배영, 'fly' 접영
-  setStroke(s) { this.stroke = STROKES.includes(s) ? s : 'free'; }
+  // 영법 고르기: 'free' 자유형, 'back' 배영, 'fly' 접영, 'tube' 튜브 (d: 튜브 모양 번호)
+  setStroke(s, d = 0) {
+    this.stroke = STROKES.includes(s) || s === 'tube' ? s : 'free';
+    this.tubeD = Number.isInteger(d) && d >= 0 && d < TUBES.length ? d : 0;
+  }
   // 수영장: 물에 들어가면 머리와 어깨만 나오게 낮추고 헤엄친다 (나와 친구 모두). st에 swim, rip을 기억한다
   swimTick(av, pos, moving, dt, st) {
     if (!this.pool) return;
@@ -4001,17 +4007,49 @@ export class Village {
         this.pool.splash(pos.x, pos.z);
         if (st === this && this.on.onSplash) this.on.onSplash();
         if (!av.pose) av.pose = swimPose;
-      } else if (av.pose === swimPose) { av.pose = null; resetLimbs(av); }
+      } else if (av.pose === swimPose || av.pose === tubePose) { av.pose = null; resetLimbs(av); setTube(av, null); }
       if (st !== this) this.drawRemoteTag(st);
       else if (this.on.onSwim) this.on.onSwim(sw);
     }
-    if (st === this) av.stroke = this.stroke;
+    if (st === this) { av.stroke = this.stroke; av.tubeD = this.tubeD; }
     av.swimMoving = moving;
-    pos.y += ((sw ? SWIM_Y : 0) - pos.y) * Math.min(1, dt * 6);
+    // 튜브: 물에 있을 때만 붙이고, 자세도 튜브에 앉은 모습으로 바꾼다
+    const tube = sw && av.stroke === 'tube';
+    setTube(av, tube ? av.tubeD | 0 : null);
+    if (sw && (av.pose === swimPose || av.pose === tubePose)) {
+      const want = tube ? tubePose : swimPose;
+      if (av.pose !== want) { av.pose = want; resetLimbs(av); }
+    }
+    const wy = sw ? (tube ? TUBE_Y + Math.sin(this.time * 2.1 + (st === this ? 0 : 1.7)) * 0.03 : SWIM_Y) : 0;
+    pos.y += (wy - pos.y) * Math.min(1, dt * 6);
     if (Math.abs(pos.y) < 0.002) pos.y = 0;
+    if (tube && st === this) this.tubeBump(pos, dt);
     if (sw) {
       st.rip = (st.rip || 0) - dt;
       if (st.rip <= 0) { this.pool.ripple(pos.x, pos.z, moving ? 1 : 0.7); st.rip = moving ? 0.35 : 1.2; }
+    }
+  }
+  // 튜브끼리 부딪히기: 친구 튜브에 닿으면 서로 밀려나며 통 튄다 (내 화면에서는 내가 밀려난다)
+  tubeBump(pos, dt) {
+    this.bumpCd = Math.max(0, (this.bumpCd || 0) - dt);
+    if (!this.remotes) return;
+    for (const r of this.remotes.values()) {
+      const av = r.av;
+      if (!av || !av._tube || r.inHouse || this.atHome) continue;
+      const q = av.root.position, dx = pos.x - q.x, dz = pos.z - q.z, d = Math.hypot(dx, dz), m = 1.2;
+      if (d < 0.01 || d >= m) continue;
+      const k = (m - d) / d;
+      pos.x += dx * k * 0.8;
+      pos.z += dz * k * 0.8;
+      if (!inPool(pos.x, pos.z, 0.3)) { pos.x -= dx * k * 0.8; pos.z -= dz * k * 0.8; }
+      if (this.bumpCd <= 0) {
+        this.bumpCd = 0.7;
+        const me = this.player && this.player._tube;
+        if (me) me.bump = 1;
+        av._tube.bump = 1;
+        if (this.pool) this.pool.splash((pos.x + q.x) / 2, (pos.z + q.z) / 2);
+        if (this.on.onTubeBump) this.on.onTubeBump();
+      }
     }
   }
 }

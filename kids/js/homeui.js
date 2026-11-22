@@ -10,6 +10,7 @@ import {
 } from './homeitems.js';
 import { h, toast, josa, confetti } from './ui.js';
 import { openPiano } from './piano.js';
+import { PET_ITEMS } from './pets-data.js';
 import { pianoKey, setScene, sceneNow } from './sound.js';
 
 // 꾸미기 판의 칸: 지은 방들(내 방, 거실, 주방, 방 2, 방 3), 앞마당, 옆마당, 밭
@@ -138,6 +139,9 @@ export function createHomeUI(o) {
     guest = null;
     st.rooms = cleanRooms(st.rooms);
     v.enterHome(st.layout || [], me ? me.village_name : '', me ? me.id : null, false, plan(st, v.homeAutoRoof), back);
+    // 집에서 쉬는 내 동물 (가진 동물 가운데 데리고 다니지 않는 동물이 애완동물 집에서 쉰다)
+    ownedPets = [...new Set([...(Array.isArray(st.rest_pets) ? st.rest_pets.map((p) => p && p.item) : []), ...(o.myPets ? o.myPets() : [])])].filter(Boolean);
+    refreshRest();
     if (housesOn()) v.setHomeLook(st.look); // 마을의 우리 집도 서버에 있는 모양으로
     tidyLayout();
     o.setActivity('home');
@@ -196,6 +200,7 @@ export function createHomeUI(o) {
     if (v.atHome) await exit(true);
     guest = { id, name: r.name || '친구', locked: !!r.locked };
     v.enterHome(r.layout || [], guest.name, id, true, plan(r, r.avatar ? v.autoRoofOf(r.avatar) : null), back);
+    if (v.homeSpace) v.homeSpace.setRestPets(Array.isArray(r.rest_pets) ? r.rest_pets : []); // 친구가 집에 두고 다니는 동물
     o.setActivity('visit');
     o.sfx.door();
     document.body.classList.add('at-home');
@@ -203,6 +208,21 @@ export function createHomeUI(o) {
     bar.hidden = false;
     const nb = o.features().nbr && o.nbr;
     toast(`${guest.name}네 집에 놀러 왔어요! 가구에 앉아 보고, 마당과 밭도 구경해요.${nb ? " 나갈 때 '인사 남기기'로 인사 스티커를 남겨 봐요." : ''}`, nb ? 4200 : 3200);
+  }
+  // ---------- 애완동물 집에서 쉬는 동물 ----------
+  let ownedPets = [];
+  function refreshRest() {
+    if (!v.atHome || guest || !v.homeSpace) return;
+    const out = o.myPets ? o.myPets() : [];
+    v.homeSpace.setRestPets(ownedPets.filter((it) => !out.includes(it)).map((item) => ({ item, name: o.petName ? o.petName(item) : '' })));
+  }
+  // 쉬는 동물을 눌렀을 때
+  function onRestPet(info) {
+    if (!info) return;
+    if (o.petSound) o.petSound(info.kind);
+    const nm = info.name || (PET_ITEMS[info.item] ? PET_ITEMS[info.item].name : '애완동물');
+    const whose = guest ? `${guest.name}네 ` : '';
+    toast(`${whose}${josa(nm, '이가', '가')} ${info.house ? `${info.house}에서 ` : ''}쉬다가 깼어요! 💕`, 2400);
   }
   // ---------- 집 잠그기: 잠가 두면 내가 마을에 없을 때 친구들이 들어오지 못한다 (서버 kids_home_visit가 막는다) ----------
   function lockedToast(id) {
@@ -1197,6 +1217,9 @@ export function createHomeUI(o) {
 
   return {
     enter, exit, reset, onPlant, onHomeItem, onSlide, onShopChanged, startEdit, stopEdit, visit, refreshGuest, openInvite, remotePiano, openBuild, openLook, ownerLeft, openLock,
+    onRestPet,
+    // 데리고 다니는 동물이 바뀌었을 때 (새로 산 동물도 우리 집 동물에 더한다)
+    refreshRest(items) { if (Array.isArray(items)) ownedPets = [...new Set([...ownedPets, ...items])]; refreshRest(); },
     get editing() { return editing; },
     get guest() { return guest; },
     get looking() { return !!looking; },

@@ -27,6 +27,7 @@ import { createHideGame } from './hide.js';
 import { HOUSE_STYLES, HOUSE_IDS, HOUSE_ITEMS, houseItem, isFreeHouse } from './houses-data.js';
 import { REWARD, setRewards } from './economy.js';
 import { initSound, startMusic, stopMusic, setScene, sfx, cycleSound, soundMode, setRain } from './sound.js';
+import { TUBES } from './pool.js';
 import { createWeather, KINDS as WX_KINDS, KIND_IDS as WX_IDS, iconOf as wxIcon, WEATHER_CREDIT } from './weather.js';
 import { h, modal, toast, confetti, josa } from './ui.js';
 import { drawFaceIcon, normalizeAvatar, defaultAvatar } from './face.js';
@@ -120,6 +121,7 @@ async function boot() {
       else if (what === 'empty') toast('이 나무 열매는 다 땄어요. 조금 있으면 다시 열려요!', 2600);
     },
     onPet: (r) => { if (r.busy) return; petSound(r.kind); if (r.mine) showPetBar(r.item); },
+    onRestPet: (info) => homeUI && homeUI.onRestPet(info),
     onPetCare: (e) => onPetCare(e),
     onThunder: () => sfx.thunder(),
     onBug: (i, kind) => onBug(i, kind),
@@ -132,6 +134,7 @@ async function boot() {
     onBoom: (kind, c) => sfx.firework(kind, fwVol(c)),
     onFwLaunch: (item, x, z) => sfx.fwLaunch(fwVol({ x, z })),
     onSplash: () => sfx.splash(),
+    onTubeBump: () => sfx.boing(),
     onSwim: (on) => onSwim(on),
     onPlant: (id) => homeUI && homeUI.onPlant(id),
     onHomeItem: (id) => homeUI && homeUI.onHomeItem(id),
@@ -217,6 +220,7 @@ async function boot() {
     onShopData: (r) => { shopData = r; },
     nbr: { unseen: () => (nbr ? nbr.unseen() : 0), myNotes: () => nbr && nbr.myNotes(), leaveNote: (g) => nbr && nbr.leaveNote(g), refresh: () => nbr && nbr.load(true) },
     onlineIds: () => [...online], getPerson: (id) => state.people.get(id),
+    myPets: () => myPets(), petName: (id) => petName(id), petSound: (k) => petSound(k),
   });
   // 이웃 마을: 아이들 집이 모두 모인 섬 (주인이 없어도 놀러 가고, 다녀간 인사를 남긴다)
   nbr = createNbrUI({
@@ -1014,40 +1018,55 @@ async function refreshWall() {
   try { village.setArtWall(await rpc('kids_art_wall', { p_token: token() })); } catch (e) { /* 다음에 */ }
 }
 
-// ---------- 수영: 물에 들어가면 영법(자유형·배영·접영)을 고른다 ----------
-const STROKE_LIST = [['free', '🏊', '자유형'], ['back', '🙃', '배영'], ['fly', '🦋', '접영']];
-let stroke = 'free', swimming = false, strokeTold = false, lieTold = false;
+// ---------- 수영: 물에 들어가면 영법(자유형·배영·접영)이나 튜브를 고른다 ----------
+// 튜브는 공짜이고 모양(줄무늬, 도넛, 오리, 수박)을 고를 수 있다. '튜브'를 한 번 더 누르면 다음 모양으로 바뀐다
+const STROKE_LIST = [['free', '🏊', '자유형'], ['back', '🙃', '배영'], ['fly', '🦋', '접영'], ['tube', '🛟', '튜브']];
+let stroke = 'free', tubeD = 0, swimming = false, strokeTold = false, lieTold = false, tubeTold = false;
 try { const s0 = store.get('stroke'); if (STROKE_LIST.some(([k]) => k === s0)) stroke = s0; } catch (e) { /* 기본 자유형 */ }
+try { const t0 = Number(store.get('tube')); if (Number.isInteger(t0) && t0 >= 0 && t0 < TUBES.length) tubeD = t0; } catch (e) { /* 첫 모양 */ }
 let swimBar = null;
-function strokeIdx() { return STROKE_LIST.findIndex(([k]) => k === stroke); }
+function strokeIdx() { return stroke === 'tube' ? 3 + tubeD : STROKE_LIST.findIndex(([k]) => k === stroke); } // 친구에게 보내는 자리 번호
 function drawSwimBar() {
   if (!swimBar) {
     swimBar = h('div', { class: 'swim-bar', hidden: true, role: 'group', 'aria-label': '헤엄치는 방법 고르기' },
       ...STROKE_LIST.map(([k, ic, name]) => h('button', { type: 'button', 'data-k': k, onclick: () => pickStroke(k) }, h('span', { 'aria-hidden': 'true' }, ic), ` ${name}`)));
     document.body.append(swimBar);
   }
-  for (const b of swimBar.querySelectorAll('button')) b.setAttribute('aria-pressed', b.dataset.k === stroke ? 'true' : 'false');
+  for (const b of swimBar.querySelectorAll('button')) {
+    b.setAttribute('aria-pressed', b.dataset.k === stroke ? 'true' : 'false');
+    if (b.dataset.k === 'tube') {
+      const tb = TUBES[tubeD];
+      b.firstChild.textContent = stroke === 'tube' ? tb.icon : '🛟';
+      b.setAttribute('aria-label', stroke === 'tube' ? `${tb.name} (누르면 다른 모양)` : '튜브 타기');
+    }
+  }
   swimBar.hidden = !swimming;
   document.body.classList.toggle('swimming', swimming); // 아래쪽 안내 글이 단추에 가리지 않게
 }
 function pickStroke(k) {
-  if (k === stroke) return;
+  if (k === stroke && k !== 'tube') return;
+  if (k === 'tube' && stroke === 'tube') tubeD = (tubeD + 1) % TUBES.length; // 튜브를 타고 있으면 다음 모양
   stroke = k;
-  try { store.set('stroke', k); } catch (e) { /* 저장 못 해도 이번에는 된다 */ }
-  village.setStroke(k);
+  try { store.set('stroke', k); store.set('tube', tubeD); } catch (e) { /* 저장 못 해도 이번에는 된다 */ }
+  village.setStroke(k, tubeD);
   sfx.pop();
   drawSwimBar();
   if (swimming) setActivity('swim', strokeIdx());
+  if (k === 'tube') {
+    toast(`${TUBES[tubeD].icon} ${josa(TUBES[tubeD].name, '을', '를')} 탔어요!${tubeTold ? '' : ' 튜브를 한 번 더 누르면 모양이 바뀌어요.'}`, 2400);
+    tubeTold = true;
+    return;
+  }
   const [, , name] = STROKE_LIST[strokeIdx()];
   toast(`${josa(name, '으로', '로')} 헤엄쳐요!`, 1800);
 }
 function onSwim(on) {
   swimming = on;
-  village.setStroke(stroke);
+  village.setStroke(stroke, tubeD);
   drawSwimBar();
   if (on) {
     setActivity('swim', strokeIdx());
-    if (!strokeTold) { strokeTold = true; toast('아래 단추로 자유형, 배영, 접영을 골라 헤엄쳐 봐요!', 3000); }
+    if (!strokeTold) { strokeTold = true; toast('아래 단추로 자유형, 배영, 접영을 고르거나 튜브를 타 봐요!', 3000); }
   } else if (myAct === 'swim') setActivity('');
 }
 
@@ -1503,6 +1522,7 @@ function petBack(back) {
   else modal.close();
 }
 function redrawPetViews() {
+  if (homeUI && homeUI.refreshRest) homeUI.refreshRest(myPets()); // 우리 집 애완동물 집에서 쉬는 동물도 바뀐다
   const body = document.querySelector('#modalBody .talk.shop');
   if (body && shopData) drawShop(body, shopData);
   const bag = document.querySelector('#modalBody .talk.bag');
@@ -1519,6 +1539,7 @@ async function buyPet(id) {
     setPetNames(r.pet_names);
     sfx.success();
     petBusy = false;
+    if (homeUI && homeUI.refreshRest) homeUI.refreshRest([id]); // 새 동물도 우리 집 동물 (집에서 쉬면 애완동물 집에 온다)
     let home = false;
     if (state.features.pets3) {
       // 함께 다니는 동물이 세 마리보다 적으면 바로 따라다닌다
@@ -1719,6 +1740,9 @@ function showNews() {
     news.push(['rewards1116', `새 소식! 말씀 활동 열매가 ${up ? '늘었어요' : '바뀌었어요'}. 묵상은 하루 ${REWARD.qt}개, 암송 연습은 구절마다 ${REWARD.memory}개(하루 ${REWARD.verses}구절까지), 필사는 ${REWARD.copy}개이고 공책 사진을 올리면 그 주 필사 열매가 모두 ${REWARD.photo}개예요. 선생님 도장은 ${REWARD.stamp}개예요.`]);
   }
   if (state.features.bugs) news.push(['bugs25', '새 소식! 마을에 곤충이 14가지 더 왔어요. 노랑나비, 네발나비, 꽃등에, 꼬리박각시, 방아깨비, 귀뚜라미(밤), 홍줄노린재, 길앞잡이, 풍뎅이, 알락하늘소, 흰점박이꽃무지, 밀잠자리, 실잠자리, 소금쟁이(연못)를 잡아 곤충 도감을 채워 봐요.']);
+  news.push(['tube', '새 소식! 수영장에서 튜브를 타요. 물에 들어가 아래 \'튜브\'를 누르고, 한 번 더 누르면 도넛, 오리, 수박 튜브로 바뀌어요. 친구 튜브와 부딪히면 통 튀어요!']);
+  if (state.features.arcade) news.push(['arcade2', "새 소식! 새벽 동굴 오락실에서 물결을 이길 때마다 갑주 기술(빛 칼, 도는 방패, 진리의 빛줄기 등)을 하나씩 골라요. 의심 구름, 거짓 가면, 두려움 거인, 참소하는 그림자도 새로 나타났어요."]);
+  if (state.features.pethouse) news.push(['pethouse', "새 소식! 열매 상점에 애완동물 집(강아지 집, 캣타워, 토끼장, 새장, 병아리 둥지, 동물 쿠션)이 생겼어요. 집에 놓으면 데리고 다니지 않는 동물이 와서 쉬어요."]);
   if (state.features.arcade) news.push(['arcade', "새 소식! 새벽 동굴에 오락실 방이 생겼어요. '그림자 떼 굴'에서는 화면을 누른 채 밀며 뛰어다니고, 말씀의 빛으로 그림자 떼와 큰 그림자를 물리쳐요. 그림자 떼 굴을 깨면 갑주의 방에서 '도전 모드'(하루 10번까지)로 끝없는 물결에 도전하고 이번 주 기록판에 오를 수 있어요."]);
   if (state.features.dungeon) news.push(['dungeon', "새 소식! 마을 섬 북서쪽에 '새벽 동굴'이 생겼어요. 갑주의 방에서 하나님의 전신갑주를 입고 기도한 뒤 들어가요. 거짓말, 참소, 불화살, 의심 같은 어둠을 말씀과 믿음으로 이기고 끝까지 서면 새벽이 와요. 친구와 넷까지 함께 갈 수 있고, 동굴을 깨면 열매를 받아요(하루 5개까지)."]);
   if (state.features.bath && state.features.expand) news.push(['bath', "새 소식! 집 넓히기에서 화장실을 지을 수 있어요(내 방 뒤). 열매 상점 '집 안' 칸의 화장실에서 변기, 세면대, 욕조, 샤워기, 세탁기를 사서 꾸며 봐요. 욕조에 들어가 앉을 수도 있어요."]);
@@ -1824,17 +1848,20 @@ function petShopRows(shop, items, body) {
 // 집 안 칸: 서버에 집 넓히기가 있으면 방·거실·주방 작은 칸으로 나눈다 (없으면 예전 방 가구만)
 function homeShopRows(shop, items, body) {
   const bathOn = !!state.features.bath;
-  const indoor = HOME_IDS.filter((id) => ['room', 'kitchen', 'bath'].includes(HOME_ITEMS[id].zone) && (bathOn || !HOME_ITEMS[id].bath));
+  const petOn = !!state.features.pethouse;
+  const indoor = HOME_IDS.filter((id) => ['room', 'kitchen', 'bath'].includes(HOME_ITEMS[id].zone) && (bathOn || !HOME_ITEMS[id].bath) && (petOn || !HOME_ITEMS[id].pethouse));
   if (!state.features.expand) return indoor.filter((id) => !HOME_ITEMS[id].v2 && !HOME_ITEMS[id].bath).map((id) => homeRow(id, items[id] || 0, shop));
-  if (homeGrp === 'bath' && !bathOn) homeGrp = 'bed';
-  const chips = h('div', { class: 'pet-groups', role: 'tablist', 'aria-label': '가구 종류' }, Object.entries(GROUP_NAMES).filter(([k]) => k !== 'bath' || bathOn).map(([k, label]) => {
+  if ((homeGrp === 'bath' && !bathOn) || (homeGrp === 'pet' && !petOn)) homeGrp = 'bed';
+  const chips = h('div', { class: 'pet-groups', role: 'tablist', 'aria-label': '가구 종류' }, Object.entries(GROUP_NAMES).filter(([k]) => (k !== 'bath' || bathOn) && (k !== 'pet' || petOn)).map(([k, label]) => {
     const n = indoor.filter((id) => HOME_ITEMS[id].grp === k && items[id] > 0).length;
     return h('button', { class: 'pet-group', type: 'button', role: 'tab', 'aria-selected': String(homeGrp === k), onclick: () => { homeGrp = k; drawShop(body, shop); } },
       label, n ? h('small', {}, ` ${n}`) : null);
   }));
   const note = homeGrp === 'kitchen' ? '식탁은 어느 방에나 놓을 수 있고, 냉장고·싱크대·그릇장·오븐은 주방에만 놓아요. 주방은 내 집 공사 터에서 지어요.'
     : homeGrp === 'bath' ? '변기, 세면대, 욕조, 샤워기, 세탁기, 수건걸이는 화장실에만 놓고, 발 매트는 어느 방에나 깔 수 있어요. 화장실은 내 집 공사 터에서 지어요(내 방 뒤).'
-      : homeGrp === 'living' ? '거실 가구는 거실이 아니어도 집 안 어느 방에나 놓을 수 있어요.' : '방 가구는 내 방과 새로 지은 방, 거실, 주방 어디에나 놓을 수 있어요.';
+      : homeGrp === 'living' ? '거실 가구는 거실이 아니어도 집 안 어느 방에나 놓을 수 있어요.'
+        : homeGrp === 'pet' ? '데리고 다니지 않는(집에서 쉬는) 애완동물이 맞는 집에 와서 쉬어요. 캣타워는 고양이, 새장은 앵무새, 동물 쿠션은 강아지·고양이·토끼·병아리 누구나. 강아지 집, 토끼장, 병아리 둥지는 마당 칸에 있어요.'
+          : '방 가구는 내 방과 새로 지은 방, 거실, 주방 어디에나 놓을 수 있어요.';
   return [chips, h('p', { class: 'pet-group-note' }, note), ...indoor.filter((id) => HOME_ITEMS[id].grp === homeGrp).map((id) => homeRow(id, items[id] || 0, shop))];
 }
 // 집 모양 칸: 오두막·벽돌집은 누구나, 나머지는 산다. 고르기는 내 집에서 (사기 전에 미리 보기)
@@ -1895,7 +1922,7 @@ function drawShop(body, shop) {
   else if (shopTab === 'room') rows = homeShopRows(shop, items, body);
   else if (shopTab === 'house') rows = houseShopRows(shop, items);
   else if (shopTab === 'rope') rows = ROPE_IDS.map((id) => ropeRow(id, shop, 'shop'));
-  else rows = HOME_IDS.filter((id) => HOME_ITEMS[id].zone === shopTab).map((id) => homeRow(id, items[id] || 0, shop));
+  else rows = HOME_IDS.filter((id) => HOME_ITEMS[id].zone === shopTab && (f.pethouse || !HOME_ITEMS[id].pethouse)).map((id) => homeRow(id, items[id] || 0, shop));
   const sale = shop.sale > 0 && !['sell', 'gift'].includes(shopTab) ? h('p', { class: 'shop-sale' }, `🎉 지금 선생님이 모든 물건을 ${shop.sale}% 할인해 주고 있어요!`) : null;
   body.replaceChildren(...[
     h('p', { class: 'shop-fruit' }, `내 열매 🍎 ${shop.fruits}개`),

@@ -3,12 +3,15 @@
 // 화면 아무 곳이나 누른 채 밀면(키보드는 방향키) 갑주를 입은 아이가 뛰어다니고, 말씀의 빛이 가까운 그림자에게 저절로 나간다.
 // 그림자는 거짓말, 두려움, 참소, 의심이다(엡 6:12). 사람이 아니라 빛으로 물리칠 어둠이다.
 // 빛 조각을 모으면 빛이 세지고, '기도' 단추를 누르면 기도의 빛이 퍼진다. 마지막에 나오는 큰 그림자를 물리치면 방을 통과한다.
+// 물결을 이길 때마다 갑주 기술(SKILLS) 세 가지 가운데 하나를 골라 쌓는다(기술마다 3단계까지).
+// 큰 그림자는 다섯 가지(BOSS_KINDS)이고 저마다 공격이 다르다. 동굴 방은 단계마다, 도전 모드는 다섯 물결마다 돌아가며 나온다.
 // "너희 안에 계신 이가 세상에 있는 이보다 크심이라"(요일 4:4)
 // 그림은 작은 판(짧은 쪽 200점쯤)에 점그림으로 그린 뒤 크게 늘린다(옛날 오락실처럼). 점수, 하트, 글자는 화면 크기로 또렷하게 그린다.
 // T(동굴이 주는 도구)에서 쓰는 것: lv, endless, rng, keys, hearts, hurt, heal, alive, clear, pray, skip, me, props, sparks.
 import * as THREE from './three.module.min.js';
 import { arcadeSfx as A, startChip, stopChip, setScene, sceneNow } from './sound.js';
 import { makeShadow, bobShadow } from './dungeon-scene.js';
+import { ARMOR } from './dungeon-data.js';
 
 const TAU = Math.PI * 2;
 const NORTH = Math.PI;
@@ -35,10 +38,36 @@ const ROOM_WAVES = {
   3: [{ wisp: 6, dasher: 2 }, { split: 3, shooter: 2 }, { dasher: 4, wisp: 4 }, { shooter: 3, split: 2, wisp: 3 }, { wisp: 5, dasher: 3, shooter: 2 }],
 };
 const BOSS_HP = { 1: 30, 2: 44, 3: 60 };
-const BOSS_NAME = '큰 그림자';
-// 도전 모드 n번째 물결 (다섯 번째마다 큰 그림자)
+// 큰 그림자 다섯 가지. hpK: 힘 배수, tip: 나올 때 알려 주는 말, down: 물리쳤을 때
+export const BOSS_KINDS = {
+  shadow: { name: '큰 그림자', r: 16, hpK: 1, tip: '빛을 쏘며 끝까지 피해요!', down: '큰 그림자가 물러갔어요!' },
+  doubt: { name: '의심 구름', r: 15, hpK: 1, tip: '구름에서 떨어지는 구슬을 피해요! 맞으면 구름이 나뉘어요', down: '의심 구름이 걷혔어요!' },
+  mask: { name: '거짓 가면', r: 14, hpK: 0.9, tip: '가짜 가면에 속지 말아요! 진짜는 바닥에 그림자가 있어요', down: '거짓 가면이 깨졌어요!' },
+  giant: { name: '두려움 거인', r: 19, hpK: 1.3, tip: '쿵! 퍼지는 구슬 고리의 빈틈으로 피해요!', down: '두려움 거인이 물러갔어요!' },
+  accuser: { name: '참소하는 그림자', r: 16, hpK: 1.15, tip: '빙글빙글 쏟아지는 구슬 사이로 피해요!', down: '참소하는 그림자가 쫓겨났어요!' },
+};
+const ROOM_BOSSES = { 1: ['shadow', 'doubt'], 2: ['giant', 'mask'], 3: ['accuser'] };
+const ENDLESS_BOSSES = ['shadow', 'doubt', 'mask', 'giant', 'accuser'];
+const ACCUSE_WORDS = ['넌 못 해!', '또 틀렸지?', '넌 안 돼!', '포기해!'];
+// 갑주 기술: 물결을 이길 때마다 셋 가운데 하나를 고른다. lv: 단계마다 카드에 쓰는 설명 (1단계부터)
+const ARM = Object.fromEntries(ARMOR.map((a) => [a.id, a]));
+export const SKILLS = {
+  sword: { armor: 'sword', icon: '⚔️', name: '빛 칼', lv: ['내 둘레를 빛 칼로 휘둘러 그림자와 구슬을 베어요', '빛 칼이 더 넓게, 더 자주 휘둘러져요', '빛 칼이 아주 넓게, 아주 자주 휘둘러져요'] },
+  shield: { armor: 'shield', icon: '🛡️', name: '도는 방패', lv: ['방패가 내 둘레를 돌며 어두운 구슬을 막아요', '방패가 둘이 돼요', '방패가 셋이 돼요'] },
+  shoes: { armor: 'shoes', icon: '👟', name: '빠른 발', lv: ['더 빨리 달려요', '달린 자리에 빛 발자국이 남아 그림자를 막아요', '더 빨라지고 빛 발자국이 오래 남아요'] },
+  belt: { armor: 'belt', icon: '🎗️', name: '진리의 빛줄기', lv: ['빛줄기가 그림자를 줄줄이 이어 쳐요. 가짜 가면도 드러나요', '빛줄기가 더 많이, 더 자주 이어져요', '빛줄기가 아주 많이, 아주 자주 이어져요'] },
+  helmet: { armor: 'helmet', icon: '⛑️', name: '사방 빛', lv: ['가끔 내 둘레 사방으로 빛이 퍼져 나가요', '사방 빛이 더 많이, 더 자주 나가요', '사방 빛이 아주 많이, 아주 자주 나가요'] },
+  breast: { armor: 'breast', icon: '✝️', name: '지켜 주는 의', lv: ['그림자에게 맞아도 한 번은 지켜 줘요 (시간이 지나면 다시 차요)', '더 빨리 다시 차요', '아주 빨리 다시 차요'] },
+  light: { armor: 'sword', icon: '✨', name: '말씀의 빛 더하기', lv: ['말씀의 빛이 더 빨리 나가요', '빛이 그림자를 뚫고 하나 더 맞혀요', '빛이 두 줄로 나가요'] },
+};
+const SKILL_IDS = Object.keys(SKILLS);
+const SWORD_R = [0, 20, 24, 28], SWORD_GAP = [0, 1.5, 1.2, 0.9];
+const BELT_N = [0, 3, 4, 6], BELT_GAP = [0, 2.2, 1.8, 1.4];
+const HELM_N = [0, 8, 10, 12], HELM_GAP = [0, 3.0, 2.4, 1.8];
+const GUARD_GAP = [0, 14, 11, 8], SHOE_K = [1, 1.15, 1.25, 1.35], FIRE_GAP = [0.25, 0.22, 0.19, 0.16];
+// 도전 모드 n번째 물결 (다섯 번째마다 큰 그림자, 다섯 가지가 차례로)
 function endlessWave(n, r) {
-  if (n % 5 === 0) return { boss: true, hp: 26 + n * 4, blv: Math.min(3, 1 + Math.floor(n / 10)) };
+  if (n % 5 === 0) return { boss: true, hp: 26 + n * 4, blv: Math.min(3, 1 + Math.floor(n / 10)), kind: ENDLESS_BOSSES[(n / 5 - 1) % ENDLESS_BOSSES.length] };
   const total = Math.min(22, 4 + n);
   const kinds = ['wisp'];
   if (n >= 2) kinds.push('dasher');
@@ -68,6 +97,7 @@ const SPLIT = ['...kkkkkk...', '.kkppppppkk.', 'kppppppppppk', 'kpWWppppWWpk', '
 const MINI = ['..kkk..', '.kpppk.', 'kpWpWpk', 'kpppppk', 'kpmmmpk', '.kpppk.', '.k.k.k.'];
 const HEART = ['.RR.RR.', 'RORRRRR', 'RRRRRRR', '.RRRRR.', '..RRR..', '...R...'];
 const GEM = ['..o..', '.oOo.', 'oOOOo', '.oOo.', '..o..'];
+const SHIELD = ['.kkk.', 'kbbbk', 'kbwbk', 'kbbbk', '.kbk.', '..k..'];
 const SHP = (p, m, W, e = '#120A22') => ({ k: '#0A0614', p, m, W, e });
 const FOE_PAL = {
   wisp: SHP('#3E2C72', '#1E1540', '#F3EAFB'),
@@ -118,6 +148,7 @@ function sprites() {
     heart: paint(HEART, { R: '#F0506A', O: '#FFC2CC' }),
     heartOff: paint(HEART, { R: '#4A3D6E', O: '#5A4D80' }),
     gem: paint(GEM, { o: '#FFC93A', O: '#FFF8D6' }),
+    shield: paint(SHIELD, { k: '#0A0614', b: '#5BB8F5', w: '#FFFFFF' }),
   };
   SPR.heroW = whiteOf(SPR.hero[0]);
   SPR.heroG = whiteOf(SPR.hero[0], '#6A5E8E');
@@ -173,6 +204,10 @@ export function trialArcade(T) {
     foes: [], shots: [], orbs: [], items: [], parts: [], pops: [], portals: [], boss: null, bomb: null, bombId: 0,
     score: 0, combo: 0, comboT: 0, mult: 1, gauge: 0, power: 0, fireT: 0.4, stop: 0, shake: 0, flash: 0, flashCol: '#fff',
     banner: null, hint: 5.5, seen: new Set(), endT: 0, end: '', lastBossHit: 0, kills: 0,
+    // 갑주 기술 단계와 기술마다 남은 시간, 기술이 그리는 것들
+    sk: Object.fromEntries(SKILL_IDS.map((k) => [k, 0])), skT: { sword: 0.4, belt: 0.8, helmet: 1.2, breast: 0 }, guard: false,
+    shAng: 0, shBossT: 0, prints: [], printT: 0, slash: null, chains: [], pick: null, pickT: 0, pickEl: null, blockT: 0,
+    decoys: [], words: [], tips: [],
   };
 
   // ---------- 동굴 안(3D) 모습: 시작 전에는 그림자 셋이 떠 있다 ----------
@@ -317,8 +352,10 @@ export function trialArcade(T) {
     window.removeEventListener('resize', onResize);
     cv = null;
     probe = null;
+    closePick();
   }
   function stop() {
+    closePick();
     exitOverlay(true);
     popGhosts(true);
   }
@@ -338,13 +375,17 @@ export function trialArcade(T) {
   // ---------- 물결 ----------
   function nextWave() {
     S.wave++;
-    const spec = endless ? endlessWave(S.wave, T.rng) : S.wave <= roomWaves.length ? roomWaves[S.wave - 1] : { boss: true, hp: BOSS_HP[lv], blv: lv };
+    let spec = endless ? endlessWave(S.wave, T.rng) : S.wave <= roomWaves.length ? roomWaves[S.wave - 1] : null;
+    if (spec && spec.boss && S.forceBoss) spec = { ...spec, kind: S.forceBoss };
+    if (!spec) { const ks = ROOM_BOSSES[lv]; spec = { boss: true, hp: BOSS_HP[lv], blv: lv, kind: S.forceBoss || ks[Math.floor(T.rng() * ks.length)] }; }
     S.spec = spec;
     if (endless) { S.mul = 1 + Math.min(0.6, (S.wave - 1) * 0.03); S.maxAlive = Math.min(12, 6 + Math.floor(S.wave / 3)); }
     S.phase = 'between';
     S.betweenT = S.wave === 1 ? 1.8 : 1.5;
     if (spec.boss) {
-      banner(BOSS_NAME + '가 나타났어요!', '빛을 쏘며 끝까지 피해요!', 1.8);
+      const K = BOSS_KINDS[spec.kind] || BOSS_KINDS.shadow;
+      banner(`${K.name}${ga(K.name)} 나타났어요!`, K.tip, 2.0);
+      S.betweenT = 2.0;
       return;
     }
     const kinds = Object.keys(spec);
@@ -368,15 +409,82 @@ export function trialArcade(T) {
     if (!endless && S.spec.boss) { win(); return; }
     // 물결 사이에 남은 빛 조각은 저절로 모인다
     for (const it of S.items) it.pull = true;
+    // 갑주 기술 고르기 (조금 뒤에 카드가 나온다. 더 고를 기술이 없으면 바로 다음 물결)
+    if (SKILL_IDS.some((k) => S.sk[k] < 3)) { S.phase = 'prepick'; S.pickT = 0.8; return; }
     nextWave();
   }
   function win() {
+    const K = BOSS_KINDS[S.lastBoss] || BOSS_KINDS.shadow;
     S.phase = 'won';
     S.end = 'won';
-    S.endT = 3.0;
+    S.endT = 3.2;
     A.win();
-    banner('어둠이 물러갔어요!', '너희 안에 계신 이가 세상에 있는 이보다 크심이라 (요일 4:4)', 3.0);
+    banner(K.down, '너희 안에 계신 이가 세상에 있는 이보다 크심이라 (요일 4:4)', 3.2);
   }
+
+  // ---------- 갑주 기술 고르기 (카드 세 장) ----------
+  function openPick() {
+    const can = SKILL_IDS.filter((k) => S.sk[k] < 3);
+    // 아직 없는 기술을 조금 더 자주 보여 준다
+    const pool = can.map((k) => ({ k, w: (S.sk[k] ? 1 : 1.6) * Math.random() })).sort((a, b) => b.w - a.w).slice(0, 3).map((x) => x.k);
+    S.phase = 'pick';
+    S.pick = pool;
+    joy.id = null;
+    A.wave();
+    const el = document.createElement('div');
+    el.className = 'arc-pick';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', '갑주 기술 고르기');
+    const head = document.createElement('p');
+    head.className = 'arc-pick-h';
+    head.textContent = '갑주 기술을 하나 골라요';
+    const row = document.createElement('div');
+    row.className = 'arc-cards';
+    pool.forEach((k, i) => {
+      const K = SKILLS[k], a = ARM[K.armor], lvNow = S.sk[k];
+      const bt = document.createElement('button');
+      bt.type = 'button';
+      bt.className = 'arc-card';
+      bt.disabled = true;
+      bt.innerHTML = '';
+      const add = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; e.textContent = txt; bt.append(e); return e; };
+      add('span', 'ic', K.icon).setAttribute('aria-hidden', 'true');
+      add('b', 'nm', K.name);
+      add('span', 'lv', lvNow ? `${lvNow}단계 → ${lvNow + 1}단계` : '새 기술!');
+      add('span', 'ds', K.lv[lvNow]);
+      // 갑주 이름과 말씀 (구절이 이름과 거의 같으면 이름만)
+      add('span', 'vs', a.verse.length > a.name.length + 3 ? `${a.name} · ‘${a.verse}’ (${a.ref})` : `${a.name} (${a.ref})`);
+      add('span', 'key', `${i + 1}`).setAttribute('aria-hidden', 'true');
+      bt.addEventListener('click', () => choose(k));
+      row.append(bt);
+    });
+    el.append(head, row);
+    document.body.append(el);
+    S.pickEl = el;
+    // 화면을 누르고 있던 손가락으로 잘못 고르지 않게 잠깐 뒤에 누를 수 있다
+    setTimeout(() => { if (S.pickEl === el) for (const bt of el.querySelectorAll('button')) bt.disabled = false; }, 450);
+  }
+  function closePick() {
+    if (S.pickEl) { S.pickEl.remove(); S.pickEl = null; }
+  }
+  function choose(k) {
+    if (S.phase !== 'pick' || !S.pick || !S.pick.includes(k) || S.sk[k] >= 3) return;
+    S.sk[k]++;
+    if (k === 'breast' && S.sk.breast === 1) S.guard = true;
+    if (k === 'sword') S.skT.sword = 0.2;
+    if (k === 'belt') S.skT.belt = 0.4;
+    if (k === 'helmet') S.skT.helmet = 0.6;
+    S.pick = null;
+    closePick();
+    A.power();
+    burst(S.hero.x, S.hero.y, '#FFF3B0', 14, 60, 0.5);
+    nextWave();
+    tip(S.hero.x, S.hero.y - 14, `${SKILLS[k].icon} ${SKILLS[k].name} ${S.sk[k]}단계!`, '#FFE58A', 1.6);
+  }
+  // 이름 뒤 '이/가' (받침이 있으면 '이')
+  function ga(w) { const c = w.charCodeAt(w.length - 1) - 0xAC00; return c >= 0 && c < 11172 && c % 28 ? '이' : '가'; }
+  // 판 위에 또렷한 글자로 잠깐 떠오르는 말
+  function tip(x, y, txt, col = '#FFF8E7', life = 1.1, px = 15) { S.tips.push({ x, y, txt, col, life, max: life, px }); if (S.tips.length > 8) S.tips.shift(); }
 
   // ---------- 만들기 ----------
   function spotAwayFromHero(min) {
@@ -402,10 +510,116 @@ export function trialArcade(T) {
   }
   function spawnBoss(spec) {
     S.phase = 'boss';
-    const hp = spec.hp;
-    S.boss = { x: S.W / 2, y: -24, hp, max: hp, t: 0, st: 'enter', stT: 1.7, atkT: 2.0, flash: 0, r: 16, pat: 0, blv: spec.blv || 1, dx: 0, dy: 0, bombed: -1, hx: S.W / 2, hy: S.H * 0.27 };
+    const kind = BOSS_KINDS[spec.kind] ? spec.kind : 'shadow', K = BOSS_KINDS[kind];
+    const hp = Math.round(spec.hp * K.hpK);
+    const homeY = kind === 'giant' ? S.H * 0.3 : kind === 'doubt' ? S.H * 0.22 : S.H * 0.27;
+    S.boss = { kind, name: K.name, x: S.W / 2, y: -26, hp, max: hp, t: 0, st: 'enter', stT: 1.7, atkT: 2.0, flash: 0, r: K.r, pat: 0, blv: spec.blv || 1, dx: 0, dy: 0, bombed: -1, homeY, alpha: 1, split: 0 };
+    S.lastBoss = kind;
+    S.seen.add('boss_' + kind);
     A.bossIn();
     S.shake = 4;
+  }
+  const bossHittable = (B) => B.st !== 'enter' && B.st !== 'down' && B.st !== 'fade';
+  // 가짜 가면을 맞히면 펑 하고 사라진다
+  function popDecoy(dc) {
+    const i = S.decoys.indexOf(dc);
+    if (i < 0) return;
+    S.decoys.splice(i, 1);
+    burst(dc.x, dc.y, '#EDE4FF', 12, 60, 0.45);
+    tip(dc.x, dc.y - 12, '가짜!', '#F6C2CF', 0.9, 14);
+    S.score += 50;
+    A.pop(2);
+  }
+
+  // ---------- 갑주 기술 ----------
+  function skills(dt) {
+    const h = S.hero, sk = S.sk;
+    // 빛 칼: 가까이 그림자나 구슬이 있으면 휘두른다
+    if (sk.sword) {
+      S.skT.sword -= dt;
+      const R = SWORD_R[sk.sword];
+      if (S.skT.sword <= 0) {
+        const near = S.foes.some((f) => Math.hypot(f.x - h.x, f.y - h.y) < R + f.r) || S.orbs.some((o) => Math.hypot(o.x - h.x, o.y - h.y) < R)
+          || S.decoys.some((d) => Math.hypot(d.x - h.x, d.y - h.y) < R + 6) || (S.boss && bossHittable(S.boss) && Math.hypot(S.boss.x - h.x, S.boss.y - h.y) < R + S.boss.r);
+        if (near) {
+          S.skT.sword = SWORD_GAP[sk.sword];
+          S.slash = { t: 0, R, a0: Math.random() * TAU };
+          for (const f of [...S.foes]) { const d = Math.hypot(f.x - h.x, f.y - h.y) || 1; if (d < R + f.r) hitFoe(f, 2, (f.x - h.x) / d, (f.y - h.y) / d); }
+          for (const dc of [...S.decoys]) if (Math.hypot(dc.x - h.x, dc.y - h.y) < R + 6) popDecoy(dc);
+          for (let i = S.orbs.length - 1; i >= 0; i--) { const o = S.orbs[i]; if (Math.hypot(o.x - h.x, o.y - h.y) < R) { burst(o.x, o.y, '#FFF3B0', 3, 30, 0.25); S.orbs.splice(i, 1); } }
+          if (S.boss && bossHittable(S.boss) && Math.hypot(S.boss.x - h.x, S.boss.y - h.y) < R + S.boss.r) hitBoss(2);
+          A.slash();
+        }
+      }
+    }
+    if (S.slash) { S.slash.t += dt; if (S.slash.t > 0.22) S.slash = null; }
+    // 도는 방패: 구슬을 막고, 닿은 그림자를 친다
+    if (sk.shield) {
+      S.shAng += dt * 3.4;
+      S.shBossT = Math.max(0, S.shBossT - dt);
+      S.blockT = Math.max(0, S.blockT - dt);
+      for (let k = 0; k < sk.shield; k++) {
+        const a = S.shAng + (k * TAU) / sk.shield, sx = h.x + Math.cos(a) * 17, sy = h.y + Math.sin(a) * 17;
+        for (let i = S.orbs.length - 1; i >= 0; i--) { const o = S.orbs[i]; if (Math.hypot(o.x - sx, o.y - sy) < 5.5) { burst(o.x, o.y, '#BFE6FF', 4, 35, 0.3); S.orbs.splice(i, 1); if (!S.blockT) { A.block(); S.blockT = 0.08; } } }
+        for (const f of [...S.foes]) { if (!(f.shT > 0) && Math.hypot(f.x - sx, f.y - sy) < f.r + 4) { f.shT = 0.5; hitFoe(f, 1, Math.cos(a), Math.sin(a)); } }
+        for (const dc of [...S.decoys]) if (Math.hypot(dc.x - sx, dc.y - sy) < 9) popDecoy(dc);
+        const B = S.boss;
+        if (B && !S.shBossT && bossHittable(B) && Math.hypot(B.x - sx, B.y - sy) < B.r + 4) { S.shBossT = 0.45; hitBoss(1); }
+      }
+    }
+    // 빠른 발: 2단계부터 달린 자리에 빛 발자국
+    if (sk.shoes >= 2) {
+      S.printT -= dt;
+      if (S.printT <= 0 && Math.hypot(h.vx, h.vy) > 20) { S.printT = 0.09; const life = sk.shoes >= 3 ? 1.8 : 1.1; S.prints.push({ x: h.x + rnd(-1, 1), y: h.y + 6, life, max: life }); if (S.prints.length > 40) S.prints.shift(); }
+    }
+    for (let i = S.prints.length - 1; i >= 0; i--) {
+      const pr = S.prints[i];
+      pr.life -= dt;
+      if (pr.life <= 0) { S.prints.splice(i, 1); continue; }
+      for (const f of [...S.foes]) if (!(f.prT > 0) && Math.hypot(f.x - pr.x, f.y - pr.y) < f.r + 3) { f.prT = 0.45; hitFoe(f, 1, 0, 0); }
+    }
+    // 진리의 빛줄기: 가까운 그림자에서 시작해 줄줄이 이어 친다
+    if (sk.belt) {
+      S.skT.belt -= dt;
+      if (S.skT.belt <= 0) {
+        const first = nearestTarget(150);
+        if (first) {
+          S.skT.belt = BELT_GAP[sk.belt];
+          const pts = [[h.x, h.y]], hitList = [first];
+          let cur = first;
+          while (hitList.length < BELT_N[sk.belt]) {
+            let nx = null, nd = 58;
+            for (const f of S.foes) { if (hitList.includes(f)) continue; const d = Math.hypot(f.x - cur.x, f.y - cur.y); if (d < nd) { nd = d; nx = f; } }
+            for (const dc of S.decoys) { if (hitList.includes(dc)) continue; const d = Math.hypot(dc.x - cur.x, dc.y - cur.y); if (d < nd) { nd = d; nx = dc; } }
+            if (!nx) break;
+            hitList.push(nx);
+            cur = nx;
+          }
+          for (const t of hitList) {
+            pts.push([t.x, t.y]);
+            if (t === S.boss) hitBoss(2);
+            else if (S.decoys.includes(t)) popDecoy(t);
+            else hitFoe(t, 2, 0, 0);
+          }
+          S.chains.push({ pts, life: 0.22 });
+          A.chain();
+        } else S.skT.belt = 0.2;
+      }
+    }
+    for (let i = S.chains.length - 1; i >= 0; i--) { S.chains[i].life -= dt; if (S.chains[i].life <= 0) S.chains.splice(i, 1); }
+    // 사방 빛
+    if (sk.helmet) {
+      S.skT.helmet -= dt;
+      if (S.skT.helmet <= 0 && (S.foes.length || S.decoys.length || (S.boss && bossHittable(S.boss)))) {
+        S.skT.helmet = HELM_GAP[sk.helmet];
+        const n = HELM_N[sk.helmet], off = Math.random() * TAU;
+        for (let i = 0; i < n; i++) { const a = off + (i / n) * TAU; S.shots.push({ x: h.x, y: h.y - 2, vx: Math.cos(a) * SHOT_SPEED * 0.85, vy: Math.sin(a) * SHOT_SPEED * 0.85, life: 0.9, pierce: 0, last: null }); }
+        burst(h.x, h.y - 6, '#E6EEF2', 8, 40, 0.3);
+        A.radial();
+      }
+    }
+    // 지켜 주는 의: 다시 차기
+    if (sk.breast && !S.guard) { S.skT.breast -= dt; if (S.skT.breast <= 0) { S.guard = true; tip(h.x, h.y - 14, '✝️ 다시 지켜 줘요', '#FFE58A', 1.0, 13); } }
   }
 
   // ---------- 맞히기, 물리치기 ----------
@@ -455,7 +669,17 @@ export function trialArcade(T) {
   }
   function hurtHero(sx, sy, why) {
     const h = S.hero;
-    if (h.inv > 0 || !T.alive()) return;
+    if (h.inv > 0 || !T.alive() || S.god) return;
+    // 의의 흉배: 한 번은 지켜 준다
+    if (S.guard) {
+      S.guard = false;
+      S.skT.breast = GUARD_GAP[S.sk.breast];
+      h.inv = 1.0;
+      burst(h.x, h.y, '#FFE58A', 16, 70, 0.5);
+      tip(h.x, h.y - 14, '지켜 줬어요!', '#FFE58A');
+      A.guard();
+      return;
+    }
     if (!T.hurt(why, true)) { h.inv = 0.3; return; }
     h.inv = 1.4;
     const dx = h.x - sx, dy = h.y - sy, d = Math.hypot(dx, dy) || 1;
@@ -473,7 +697,7 @@ export function trialArcade(T) {
 
   // ---------- 기도의 빛 (기도 단추, 다시 일어날 때) ----------
   function onPray() {
-    if (!overlay || S.phase === 'ready' || S.phase === 'over' || S.phase === 'won') return;
+    if (!overlay || S.phase === 'ready' || S.phase === 'over' || S.phase === 'won' || S.phase === 'pick') return;
     S.bombId++;
     S.bomb = { t: 0, id: S.bombId, x: S.hero.x, y: S.hero.y };
     for (const o of S.orbs) burst(o.x, o.y, '#FFF3B0', 3, 30, 0.3);
@@ -487,6 +711,11 @@ export function trialArcade(T) {
   }
   function onKey(code) {
     if (!overlay) return false;
+    if (S.phase === 'pick') {
+      const i = { Digit1: 0, Digit2: 1, Digit3: 2, Numpad1: 0, Numpad2: 1, Numpad3: 2 }[code];
+      if (i != null && S.pick && S.pick[i] && S.pickEl && !S.pickEl.querySelector('button').disabled) choose(S.pick[i]);
+      return code === 'Space' || code === 'Enter' || i != null;
+    }
     if (code === 'Space' || code === 'Enter') { if (T.alive()) { T.pray(); return true; } }
     return false;
   }
@@ -504,7 +733,7 @@ export function trialArcade(T) {
     // 창(나갈까요? 같은 것)이 떠 있는 동안은 멈춘다
     if (T.paused && T.paused()) { joy.id = null; render(frozen); return; }
     if (S.stop > 0) S.stop -= dt;
-    else if (!frozen && S.phase !== 'over') sim(dt);
+    else if (!frozen && S.phase !== 'over' && S.phase !== 'pick') sim(dt);
     if (!frozen) fx(dt);
     if (S.end) {
       S.endT -= dt;
@@ -529,6 +758,7 @@ export function trialArcade(T) {
     }
     for (let i = S.pops.length - 1; i >= 0; i--) { const p = S.pops[i]; p.life -= dt; p.y -= dt * 16; if (p.life <= 0) S.pops.splice(i, 1); }
     if (S.comboPop) { S.comboPop.life -= dt; if (S.comboPop.life <= 0) S.comboPop = null; }
+    for (let i = S.tips.length - 1; i >= 0; i--) { S.tips[i].life -= dt; if (S.tips[i].life <= 0) S.tips.splice(i, 1); }
     S.shake *= Math.exp(-dt * 10);
     if (S.shake < 0.2) S.shake = 0;
     S.flash = Math.max(0, S.flash - dt);
@@ -538,7 +768,8 @@ export function trialArcade(T) {
     const h = S.hero;
     // 움직이기
     const d = steerDir();
-    const tx = d.x * HERO_SPEED * d.m, ty = d.y * HERO_SPEED * d.m;
+    const hs = HERO_SPEED * SHOE_K[S.sk.shoes];
+    const tx = d.x * hs * d.m, ty = d.y * hs * d.m;
     const k = 1 - Math.exp(-dt * 16);
     h.vx += (tx - h.vx) * k;
     h.vy += (ty - h.vy) * k;
@@ -554,6 +785,7 @@ export function trialArcade(T) {
     if (S.comboT <= 0 && S.combo) { S.combo = 0; S.mult = 1; }
 
     // 물결 진행
+    if (S.phase === 'prepick') { S.pickT -= dt; if (S.pickT <= 0) openPick(); }
     if (S.phase === 'between') { S.betweenT -= dt; if (S.betweenT <= 0) startWave(); }
     else if (S.phase === 'fight') {
       S.spawnT -= dt;
@@ -577,9 +809,14 @@ export function trialArcade(T) {
       if (tg) {
         const a = Math.atan2(tg.y - h.y, tg.x - h.x);
         const n = S.power > 0 ? [-0.22, 0, 0.22] : [0];
-        for (const o of n) S.shots.push({ x: h.x + Math.cos(a) * 5, y: h.y - 2 + Math.sin(a) * 5, vx: Math.cos(a + o) * SHOT_SPEED, vy: Math.sin(a + o) * SHOT_SPEED, life: 1.0 });
+        // 말씀의 빛 더하기: 2단계부터 하나 더 뚫고, 3단계는 두 줄
+        const lanes = S.sk.light >= 3 ? [-2.5, 2.5] : [0], pierce = S.sk.light >= 2 ? 1 : 0;
+        for (const o of n) for (const ln of lanes) {
+          const px = -Math.sin(a) * ln, py = Math.cos(a) * ln;
+          S.shots.push({ x: h.x + Math.cos(a) * 5 + px, y: h.y - 2 + Math.sin(a) * 5 + py, vx: Math.cos(a + o) * SHOT_SPEED, vy: Math.sin(a + o) * SHOT_SPEED, life: 1.0, pierce, last: null });
+        }
         A.shoot();
-        S.fireT = S.power > 0 ? 0.17 : 0.25;
+        S.fireT = S.power > 0 ? Math.min(0.17, FIRE_GAP[S.sk.light]) : FIRE_GAP[S.sk.light];
       } else S.fireT = 0.06;
     }
     for (let i = S.shots.length - 1; i >= 0; i--) {
@@ -589,14 +826,27 @@ export function trialArcade(T) {
       s.y += s.vy * dt;
       if (s.life <= 0 || s.x < WALL || s.y < WALL || s.x > S.W - WALL || s.y > S.H - WALL) { if (s.life > 0) burst(s.x, s.y, '#FFE58A', 2, 25, 0.2); S.shots.splice(i, 1); continue; }
       const dx = s.vx / SHOT_SPEED, dy = s.vy / SHOT_SPEED;
-      let hit = false;
-      for (const f of S.foes) { if (Math.hypot(f.x - s.x, f.y - s.y) < f.r + 2) { hitFoe(f, 1, dx, dy); hit = true; break; } }
-      if (!hit && S.boss && S.boss.st !== 'enter' && S.boss.st !== 'down' && Math.hypot(S.boss.x - s.x, S.boss.y - s.y) < S.boss.r + 2) { hitBoss(1); hit = true; }
-      if (hit) S.shots.splice(i, 1);
+      let hit = null;
+      for (const f of S.foes) { if (f !== s.last && Math.hypot(f.x - s.x, f.y - s.y) < f.r + 2) { hit = f; hitFoe(f, 1, dx, dy); break; } }
+      if (!hit) for (const dc of S.decoys) { if (Math.hypot(dc.x - s.x, dc.y - s.y) < 11) { hit = dc; popDecoy(dc); break; } }
+      if (!hit && S.boss && S.boss !== s.last && bossHittable(S.boss) && Math.hypot(S.boss.x - s.x, S.boss.y - s.y) < S.boss.r + 2) { hit = S.boss; hitBoss(1); }
+      if (hit) { if (s.pierce > 0 && hit !== S.boss) { s.pierce--; s.last = hit; } else S.shots.splice(i, 1); }
     }
     // 그림자
     for (const f of S.foes) moveFoe(f, dt);
     separate();
+    // 거짓 가면의 가짜 가면
+    for (let i = S.decoys.length - 1; i >= 0; i--) {
+      const dc = S.decoys[i];
+      dc.t += dt;
+      dc.life -= dt;
+      dc.x += Math.cos(dc.t * 1.3 + dc.ph) * 10 * dt;
+      dc.y += Math.sin(dc.t * 1.7 + dc.ph) * 6 * dt;
+      dc.fireT -= dt;
+      if (dc.fireT <= 0 && S.phase === 'boss') { const a = Math.atan2(h.y - dc.y, h.x - dc.x); S.orbs.push({ x: dc.x, y: dc.y, vx: Math.cos(a) * 50 * S.mul, vy: Math.sin(a) * 50 * S.mul, t: 0 }); dc.fireT = rnd(1.8, 2.6); }
+      if (dc.life <= 0 || !S.boss) { burst(dc.x, dc.y, '#B9A6E8', 8, 40, 0.4); S.decoys.splice(i, 1); }
+    }
+    skills(dt);
     // 어두운 구슬
     for (let i = S.orbs.length - 1; i >= 0; i--) {
       const o = S.orbs[i];
@@ -616,7 +866,8 @@ export function trialArcade(T) {
       B.t += dt;
       const R = (B.t / 0.55) * Math.hypot(S.W, S.H);
       for (const f of [...S.foes]) if (f.bombed !== B.id && Math.hypot(f.x - B.x, f.y - B.y) < R) { f.bombed = B.id; hitFoe(f, 3, 0, 0); }
-      if (S.boss && S.boss.bombed !== B.id && S.boss.st !== 'enter' && S.boss.st !== 'down' && Math.hypot(S.boss.x - B.x, S.boss.y - B.y) < R) { S.boss.bombed = B.id; hitBoss(4); }
+      if (S.boss && S.boss.bombed !== B.id && bossHittable(S.boss) && Math.hypot(S.boss.x - B.x, S.boss.y - B.y) < R) { S.boss.bombed = B.id; hitBoss(4); }
+      for (const dc of [...S.decoys]) if (Math.hypot(dc.x - B.x, dc.y - B.y) < R) popDecoy(dc);
       if (B.t > 0.6) S.bomb = null;
     }
     // 빛 조각, 하트
@@ -657,14 +908,17 @@ export function trialArcade(T) {
     const h = S.hero;
     let best = null, bd = range;
     for (const f of S.foes) { const d = Math.hypot(f.x - h.x, f.y - h.y); if (d < bd) { bd = d; best = f; } }
+    for (const dc of S.decoys) { const d = Math.hypot(dc.x - h.x, dc.y - h.y) - 6; if (d < bd) { bd = d; best = dc; } }
     const B = S.boss;
-    if (B && B.st !== 'enter' && B.st !== 'down') { const d = Math.hypot(B.x - h.x, B.y - h.y) - B.r; if (d < bd) best = B; }
+    if (B && bossHittable(B)) { const d = Math.hypot(B.x - h.x, B.y - h.y) - B.r; if (d < bd) best = B; }
     return best;
   }
   function moveFoe(f, dt) {
     const F = FOES[f.kind], h = S.hero, spd = F.spd * S.mul;
     f.t += dt;
     f.flash = Math.max(0, f.flash - dt);
+    if (f.shT > 0) f.shT -= dt;
+    if (f.prT > 0) f.prT -= dt;
     const dx = h.x - f.x, dy = h.y - f.y, d = Math.hypot(dx, dy) || 1, ux = dx / d, uy = dy / d;
     if (f.kind === 'wisp' || f.kind === 'mini' || f.kind === 'split') {
       const wob = Math.sin(f.t * 3) * 0.5;
@@ -714,14 +968,30 @@ export function trialArcade(T) {
   }
   function hitBoss(dmg) {
     const B = S.boss;
+    if (!B || !bossHittable(B)) return;
     B.hp -= dmg;
     B.flash = 0.07;
     burst(B.x + rnd(-6, 6), B.y + rnd(-6, 6), '#FFF3B0', 3, 50, 0.3);
     if (S.t - S.lastBossHit > 0.07) { A.bossHit(); S.lastBossHit = S.t; }
+    // 의심 구름: 힘이 2/3, 1/3 아래로 내려가면 의심 그림자를 떨어뜨리며 작아진다
+    if (B.kind === 'doubt' && B.hp > 0) {
+      const want = B.hp < B.max / 3 ? 2 : B.hp < (B.max * 2) / 3 ? 1 : 0;
+      while (B.split < want) {
+        B.split++;
+        B.r -= 2;
+        for (const sd of [-1, 1]) { const f = addFoe('split', clamp(B.x + sd * 12, WALL + 8, S.W - WALL - 8), clamp(B.y + 10, WALL + 8, S.H - WALL - 8)); f.vx = sd * 50; }
+        burst(B.x, B.y, '#8FB8C0', 18, 80, 0.6);
+        tip(B.x, B.y - 22, '구름이 나뉘었어요!', '#CDEFF5', 1.1, 14);
+        S.shake = Math.max(S.shake, 3);
+      }
+    }
     if (B.hp <= 0) {
       B.hp = 0;
       B.st = 'down';
       B.stT = 1.7;
+      B.alpha = 1;
+      B.spiral = null;
+      B.rain = null;
       S.orbs.length = 0;
       S.portals.length = 0;
       const pts = (endless ? 2000 + S.wave * 200 : 2000 + lv * 1000) * S.mult;
@@ -729,18 +999,18 @@ export function trialArcade(T) {
       popText(B.x, B.y - 18, `+${pts}`, '#FFF8D6');
       A.bossDown();
       S.shake = 6;
-      // 남은 작은 그림자도 함께 흩어진다
+      // 남은 작은 그림자와 가짜 가면도 함께 흩어진다
       for (const f of [...S.foes]) kill(f);
+      for (const dc of [...S.decoys]) popDecoy(dc);
     }
   }
   function moveBoss(B, dt) {
     const h = S.hero;
     B.t += dt;
     B.flash = Math.max(0, B.flash - dt);
-    const pathX = S.W / 2 + Math.sin(B.t * 0.55) * Math.max(0, S.W / 2 - 38), pathY = S.H * 0.27 + Math.sin(B.t * 1.1) * Math.min(20, S.H * 0.08);
     if (B.st === 'enter') {
       B.stT -= dt;
-      B.y += (S.H * 0.27 - B.y) * Math.min(1, dt * 2.2);
+      B.y += (B.homeY - B.y) * Math.min(1, dt * 2.2);
       if (B.stT <= 0) { B.st = 'move'; B.t = 0; }
       return;
     }
@@ -752,18 +1022,29 @@ export function trialArcade(T) {
         S.flash = 0.45;
         S.flashCol = '#FFF8D6';
         for (let i = 0; i < 10; i++) addItem('gem', B.x + rnd(-8, 8), B.y + rnd(-8, 8));
-        if (endless) addItem('heart', B.x, B.y);
+        if (endless) { addItem('heart', B.x, B.y); tip(B.x, B.y - 20, BOSS_KINDS[B.kind].down, '#FFF3B0', 1.6, 16); }
         for (const it of S.items) it.pull = true;
         S.boss = null;
         waveDone();
       }
       return;
     }
+    const mx = Math.max(0, S.W / 2 - 38);
     if (B.st === 'move') {
-      B.x += (pathX - B.x) * Math.min(1, dt * 2.5);
-      B.y += (pathY - B.y) * Math.min(1, dt * 2.5);
+      if (B.kind === 'giant') {
+        // 두려움 거인은 쿵쿵 걸어서 다가온다
+        const dx = h.x - B.x, dy = h.y - B.y, d = Math.hypot(dx, dy) || 1, sp = (12 + B.blv * 2) * S.mul;
+        if (d > B.r + 18) { B.x += (dx / d) * sp * dt; B.y += (dy / d) * sp * dt; }
+        B.x = clamp(B.x, WALL + B.r, S.W - WALL - B.r);
+        B.y = clamp(B.y, WALL + B.r, S.H - WALL - B.r);
+      } else {
+        const sp = B.kind === 'doubt' ? 0.7 : B.kind === 'accuser' ? 0.4 : 0.55;
+        const pathX = S.W / 2 + Math.sin(B.t * sp) * mx, pathY = B.homeY + Math.sin(B.t * 1.1) * Math.min(B.kind === 'doubt' ? 8 : 20, S.H * 0.08);
+        B.x += (pathX - B.x) * Math.min(1, dt * 2.5);
+        B.y += (pathY - B.y) * Math.min(1, dt * 2.5);
+      }
       B.atkT -= dt;
-      if (B.atkT <= 0) attack(B);
+      if (B.atkT <= 0 && !B.spiral && !B.rain) attack(B);
     } else if (B.st === 'aim') {
       B.stT -= dt;
       const dx = h.x - B.x, dy = h.y - B.y, d = Math.hypot(dx, dy) || 1;
@@ -777,14 +1058,74 @@ export function trialArcade(T) {
       B.x = clamp(B.x, WALL + B.r, S.W - WALL - B.r);
       B.y = clamp(B.y, WALL + B.r, S.H - WALL - B.r);
       if (B.stT <= 0 || out) { B.st = 'move'; S.shake = Math.max(S.shake, out ? 3 : 1); }
+    } else if (B.st === 'stompAim') {
+      B.stT -= dt;
+      if (B.stT <= 0) { stomp(B); B.st = 'move'; }
+    } else if (B.st === 'fade') {
+      // 거짓 가면: 사라졌다가 다른 곳에서 나타난다 (사라진 동안은 맞지 않는다)
+      B.stT -= dt;
+      B.alpha = Math.max(0, B.stT / 0.4);
+      if (B.stT <= 0) {
+        B.x = rnd(WALL + 26, S.W - WALL - 26);
+        B.y = rnd(WALL + 22, Math.max(WALL + 24, S.H * 0.45));
+        B.st = 'appear';
+        B.stT = 0.4;
+      }
+    } else if (B.st === 'appear') {
+      B.stT -= dt;
+      B.alpha = 1 - Math.max(0, B.stT / 0.4);
+      if (B.stT <= 0) { B.st = 'move'; B.alpha = 1; B.homeY = B.y; }
     }
-    if (Math.hypot(B.x - h.x, B.y - h.y) < B.r + 3) hurtHero(B.x, B.y, `${BOSS_NAME}에게 부딪혔어요!`);
+    // 참소하는 그림자의 빙글빙글 구슬
+    if (B.spiral) {
+      const sp = B.spiral;
+      sp.t -= dt;
+      sp.e -= dt;
+      while (sp.e <= 0 && sp.t > 0) {
+        for (const add of [0, Math.PI]) { const a = sp.a + add; S.orbs.push({ x: B.x, y: B.y, vx: Math.cos(a) * 46 * S.mul, vy: Math.sin(a) * 46 * S.mul, t: 0 }); }
+        sp.a += 0.42 * sp.dir;
+        sp.e += 0.09 - (B.blv - 1) * 0.01;
+      }
+      if (sp.t <= 0) B.spiral = null;
+    }
+    // 의심 구름의 비
+    if (B.rain) {
+      const rn = B.rain;
+      rn.e -= dt;
+      if (rn.e <= 0 && rn.n > 0) {
+        const x = clamp(Math.random() < 0.5 ? h.x + rnd(-40, 40) : rnd(WALL + 6, S.W - WALL - 6), WALL + 4, S.W - WALL - 4);
+        S.orbs.push({ x, y: B.y + 8, vx: 0, vy: 58 * S.mul, t: 0 });
+        rn.n--;
+        rn.e = 0.14;
+        if (rn.n % 3 === 0) A.zap();
+      }
+      if (rn.n <= 0) B.rain = null;
+    }
+    if (B.st !== 'fade' && Math.hypot(B.x - h.x, B.y - h.y) < B.r + 3) hurtHero(B.x, B.y, `${B.name}에게 부딪혔어요!`);
+  }
+  // 두려움 거인이 쿵! 하면 구슬 고리가 퍼진다 (빈틈으로 피한다)
+  function stomp(B) {
+    const n = 26, gap = B.blv >= 3 ? 4 : 5, g0 = Math.floor(Math.random() * n);
+    for (let i = 0; i < n; i++) {
+      if ((i - g0 + n) % n < gap) continue;
+      const a = (i / n) * TAU;
+      S.orbs.push({ x: B.x + Math.cos(a) * (B.r - 4), y: B.y + Math.sin(a) * (B.r - 4), vx: Math.cos(a) * 50 * S.mul, vy: Math.sin(a) * 50 * S.mul, t: 0 });
+    }
+    S.shake = 7;
+    A.stomp();
+    burst(B.x, B.y + B.r, '#8E7A9E', 16, 70, 0.5);
   }
   function attack(B) {
-    const h = S.hero, low = B.hp < B.max / 2, blv = B.blv;
-    const cycle = blv >= 2 || low ? ['burst', 'aimed', 'summon', 'burst', 'charge', 'aimed'] : ['burst', 'aimed', 'summon', 'aimed'];
+    const h = S.hero, low = B.hp < B.max / 2, blv = B.blv, mul = S.mul;
+    const CYC = {
+      shadow: blv >= 2 || low ? ['burst', 'aimed', 'summon', 'burst', 'charge', 'aimed'] : ['burst', 'aimed', 'summon', 'aimed'],
+      doubt: ['rain', 'aimed', 'rain', 'burst'],
+      mask: ['decoy', 'aimed', 'teleport', 'aimed', 'burst'],
+      giant: blv >= 2 || low ? ['stomp', 'roar', 'stomp', 'charge'] : ['stomp', 'aimed', 'stomp', 'roar'],
+      accuser: ['spiral', 'words', 'aimed', 'spiral', 'shooters'],
+    };
+    const cycle = CYC[B.kind] || CYC.shadow;
     const pat = cycle[B.pat++ % cycle.length];
-    const mul = S.mul;
     if (pat === 'burst') {
       const n = 10 + blv * 2, off = B.pat * 0.37;
       for (let i = 0; i < n; i++) { const a = off + (i / n) * TAU; S.orbs.push({ x: B.x, y: B.y, vx: Math.cos(a) * 46 * mul, vy: Math.sin(a) * 46 * mul, t: 0 }); }
@@ -796,12 +1137,54 @@ export function trialArcade(T) {
     } else if (pat === 'summon') {
       const n = Math.min(2 + (blv > 1 ? 1 : 0), Math.max(0, S.maxAlive - S.foes.length - S.portals.length));
       for (let i = 0; i < n; i++) openPortal(i === 2 && blv >= 2 ? 'dasher' : 'wisp', { x: clamp(B.x + (i - 1) * 22, WALL + 10, S.W - WALL - 10), y: clamp(B.y + 18, WALL + 10, S.H - WALL - 10) });
+    } else if (pat === 'shooters') {
+      const n = Math.min(blv >= 2 ? 2 : 1, Math.max(0, S.maxAlive - S.foes.length - S.portals.length));
+      for (let i = 0; i < n; i++) openPortal('shooter', { x: clamp(B.x + (i ? 30 : -30), WALL + 10, S.W - WALL - 10), y: clamp(B.y + 14, WALL + 10, S.H - WALL - 10) });
     } else if (pat === 'charge') {
       B.st = 'aim';
       B.stT = 0.8;
       A.warn();
+    } else if (pat === 'rain') {
+      B.rain = { n: 8 + blv * 2, e: 0.2 };
+    } else if (pat === 'decoy') {
+      // 진짜와 가짜 둘이 자리를 바꾼다
+      const spots = [0.25, 0.5, 0.75].map((k) => ({ x: WALL + 20 + (S.W - 2 * WALL - 40) * k, y: rnd(WALL + 22, Math.max(WALL + 24, S.H * 0.4)) }));
+      for (let i = spots.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [spots[i], spots[j]] = [spots[j], spots[i]]; }
+      B.x = spots[0].x; B.y = spots[0].y; B.homeY = B.y;
+      S.decoys = spots.slice(1).map((p) => ({ x: p.x, y: p.y, t: 0, ph: Math.random() * TAU, life: 9, fireT: rnd(1.2, 2.2) }));
+      for (const p of spots) burst(p.x, p.y, '#B9A6E8', 12, 60, 0.4);
+      A.tele();
+    } else if (pat === 'teleport') {
+      B.st = 'fade';
+      B.stT = 0.4;
+      A.tele();
+    } else if (pat === 'stomp') {
+      B.st = 'stompAim';
+      B.stT = 0.7;
+      A.warn();
+    } else if (pat === 'roar') {
+      // 크게 울부짖으면 뒤로 밀려나고, 두려움 그림자가 나온다
+      const dx = h.x - B.x, dy = h.y - B.y, d = Math.hypot(dx, dy) || 1;
+      h.vx += (dx / d) * 150;
+      h.vy += (dy / d) * 150;
+      S.shake = 6;
+      A.roar();
+      tip(B.x, B.y - B.r - 8, '쿠아앙!', '#F6C2CF', 1.0, 18);
+      const n = Math.min(2, Math.max(0, S.maxAlive - S.foes.length - S.portals.length));
+      for (let i = 0; i < n; i++) openPortal('dasher', { x: clamp(B.x + (i ? 26 : -26), WALL + 10, S.W - WALL - 10), y: clamp(B.y + 10, WALL + 10, S.H - WALL - 10) });
+    } else if (pat === 'spiral') {
+      B.spiral = { t: 2.2, e: 0, a: Math.random() * TAU, dir: Math.random() < 0.5 ? 1 : -1 };
+      A.warn();
+    } else if (pat === 'words') {
+      // 참소하는 말: 말풍선이 뜨고 그 자리에서 구슬이 나온다
+      const w = ACCUSE_WORDS[Math.floor(Math.random() * ACCUSE_WORDS.length)];
+      tip(B.x, B.y - B.r - 8, w, '#FF9AA8', 1.6, 16);
+      const base = Math.atan2(h.y - B.y, h.x - B.x);
+      for (let i = 0; i < 4; i++) { const a = base + (i - 1.5) * 0.3; S.orbs.push({ x: B.x, y: B.y, vx: Math.cos(a) * 56 * mul, vy: Math.sin(a) * 56 * mul, t: 0 }); }
+      A.zap();
     }
-    B.atkT = Math.max(1.3, (low ? 1.8 : 2.4) - (blv - 1) * 0.15);
+    const base = { shadow: 2.4, doubt: 2.5, mask: 2.3, giant: 2.7, accuser: 2.9 }[B.kind] || 2.4;
+    B.atkT = Math.max(1.3, base - (low ? 0.6 : 0) - (blv - 1) * 0.15);
   }
 
   // ---------- 그리기 ----------
@@ -860,6 +1243,10 @@ export function trialArcade(T) {
       spr(img, f.x, f.y + (f.kind === 'dasher' ? 0 : Math.round(Math.sin(f.t * 5))));
       if (f.kind === 'dasher' && f.st === 'aim') { b.fillStyle = '#FFE58A'; b.fillRect(Math.round(f.x), Math.round(f.y) - 11, 1, 3); b.fillRect(Math.round(f.x), Math.round(f.y) - 7, 1, 1); }
     }
+    // 빛 발자국
+    for (const pr of S.prints) { b.globalAlpha = clamp(pr.life / pr.max, 0, 1) * 0.8; b.fillStyle = '#E8FFB0'; b.fillRect(Math.round(pr.x) - 1, Math.round(pr.y), 2, 1); b.fillStyle = '#9BE07A'; b.fillRect(Math.round(pr.x) - 1, Math.round(pr.y) + 1, 2, 1); }
+    b.globalAlpha = 1;
+    for (const dc of S.decoys) drawMask(dc.x, dc.y, 14, 1, false, dc.t, true);
     if (S.boss) drawBoss(S.boss);
     // 어두운 구슬
     for (const o of S.orbs) {
@@ -878,6 +1265,33 @@ export function trialArcade(T) {
       if (frozen) img = SP.heroG;
       spr(img, h.x, h.y + (moving && fi ? -1 : 0));
       if (S.power > 0) { b.strokeStyle = `rgba(255,229,138,${0.35 + Math.sin(S.t * 10) * 0.2})`; b.lineWidth = 1; b.beginPath(); b.arc(Math.round(h.x), Math.round(h.y), 10, 0, TAU); b.stroke(); }
+    }
+    // 지켜 주는 의 (차 있으면 금빛 고리)
+    if (S.guard && !frozen) { b.strokeStyle = `rgba(255,214,90,${0.45 + Math.sin(S.t * 6) * 0.2})`; b.lineWidth = 1; b.beginPath(); b.arc(Math.round(h.x), Math.round(h.y), 12, 0, TAU); b.stroke(); }
+    // 도는 방패
+    for (let k = 0; k < S.sk.shield; k++) { const a = S.shAng + (k * TAU) / S.sk.shield; spr(SP.shield, h.x + Math.cos(a) * 17, h.y + Math.sin(a) * 17); }
+    // 빛 칼 휘두르기
+    if (S.slash) {
+      const sl = S.slash, k = sl.t / 0.22;
+      b.strokeStyle = `rgba(255,248,214,${0.9 - k * 0.7})`;
+      b.lineWidth = 3;
+      b.beginPath(); b.arc(Math.round(h.x), Math.round(h.y), sl.R * (0.7 + k * 0.3), sl.a0, sl.a0 + TAU * Math.min(1, k * 1.6)); b.stroke();
+      b.strokeStyle = `rgba(255,255,255,${0.8 - k * 0.8})`;
+      b.lineWidth = 1;
+      b.beginPath(); b.arc(Math.round(h.x), Math.round(h.y), sl.R * (0.7 + k * 0.3) - 2, sl.a0, sl.a0 + TAU * Math.min(1, k * 1.6)); b.stroke();
+    }
+    // 진리의 빛줄기 (지그재그)
+    for (const c of S.chains) {
+      b.strokeStyle = `rgba(255,240,170,${clamp(c.life / 0.22, 0, 1)})`;
+      b.lineWidth = 1;
+      b.beginPath();
+      b.moveTo(Math.round(c.pts[0][0]), Math.round(c.pts[0][1]));
+      for (let i = 1; i < c.pts.length; i++) {
+        const [x0, y0] = c.pts[i - 1], [x1, y1] = c.pts[i];
+        for (let k = 1; k <= 3; k++) { const t2 = k / 4; b.lineTo(Math.round(x0 + (x1 - x0) * t2 + rnd(-3, 3)), Math.round(y0 + (y1 - y0) * t2 + rnd(-3, 3))); }
+        b.lineTo(Math.round(x1), Math.round(y1));
+      }
+      b.stroke();
     }
     // 빛
     for (const s of S.shots) {
@@ -925,6 +1339,114 @@ export function trialArcade(T) {
     hud(frozen);
   }
   function drawBoss(B) {
+    if (B.kind === 'mask') { b.globalAlpha = B.alpha; ellipse(B.x, B.y + 16, 12, 3, 'rgba(8,4,16,.55)'); drawMask(B.x, B.y, B.r, B.hp / B.max, B.flash > 0, B.t, false); b.globalAlpha = 1; return; }
+    if (B.kind === 'doubt') { drawCloud(B); return; }
+    if (B.kind === 'giant') { drawGiant(B); return; }
+    if (B.kind === 'accuser') { drawAccuser(B); return; }
+    drawShadowBoss(B);
+  }
+  // 거짓 가면 (진짜는 금이 가고, 가짜는 바닥 그림자가 없다. 진리의 빛줄기가 있으면 가짜는 붉게 드러난다)
+  function drawMask(cx, cy, r, life, flash, t, fake) {
+    const x = Math.round(cx), y = Math.round(cy + Math.sin(t * 2) * 1.5), k = r / 14;
+    const reveal = fake && S.sk.belt > 0;
+    // 망토
+    b.fillStyle = flash ? '#EDE4FF' : '#0A0614';
+    b.beginPath(); b.arc(x, y + 3 * k, 13 * k + 1, 0, TAU); b.fill();
+    b.fillStyle = flash ? '#8E78D0' : reveal ? '#5A1E36' : '#30204F';
+    b.beginPath(); b.arc(x, y + 3 * k, 13 * k, 0, TAU); b.fill();
+    for (let i = 0; i < 5; i++) { b.beginPath(); b.arc(x + (-9 + i * 4.5) * k, y + (13 + Math.sin(t * 4 + i) * 1.5) * k, 3 * k, 0, TAU); b.fill(); }
+    // 가면 (웃는 척하는 하얀 얼굴)
+    b.fillStyle = '#0A0614';
+    b.beginPath(); b.ellipse(x, y - 1 * k, 9 * k + 1, 10 * k + 1, 0, 0, TAU); b.fill();
+    b.fillStyle = reveal ? '#F6C2CF' : '#EDE4FF';
+    b.beginPath(); b.ellipse(x, y - 1 * k, 9 * k, 10 * k, 0, 0, TAU); b.fill();
+    b.fillStyle = '#0A0614';
+    for (const sd of [-1, 1]) { b.beginPath(); b.ellipse(x + sd * 4 * k, y - 3 * k, 2.4 * k, 1.5 * k, sd * 0.4, 0, TAU); b.fill(); }
+    b.strokeStyle = '#0A0614'; b.lineWidth = 1;
+    b.beginPath(); b.arc(x, y + 1 * k, 5 * k, 0.15 * Math.PI, 0.85 * Math.PI); b.stroke();
+    // 맞을수록 금이 간다
+    if (!fake && life < 0.75) { b.beginPath(); b.moveTo(x + 2, y - 10 * k); b.lineTo(x - 1, y - 6 * k); b.lineTo(x + 2, y - 3 * k); b.stroke(); }
+    if (!fake && life < 0.4) { b.beginPath(); b.moveTo(x - 7 * k, y + 2); b.lineTo(x - 3 * k, y + 4); b.lineTo(x - 5 * k, y + 8); b.stroke(); }
+  }
+  // 의심 구름 (물음표가 떠다닌다)
+  function drawCloud(B) {
+    const t = S.t, x = Math.round(B.x), y = Math.round(B.y), k = B.r / 15;
+    ellipse(x, y + 18 * k, 14 * k, 3, 'rgba(8,4,16,.45)');
+    const puffs = [[-9, 2, 7], [0, -3, 9], [9, 2, 7], [-4, 5, 7], [5, 5, 7]];
+    for (const [col, grow] of [[B.flash > 0 ? '#EDE4FF' : '#0A0614', 1], [B.flash > 0 ? '#9FC8D0' : '#3C5A64', 0]]) {
+      b.fillStyle = col;
+      for (const [px, py, pr] of puffs) { b.beginPath(); b.arc(x + px * k + Math.sin(t * 2 + px) * 0.6, y + py * k, pr * k + grow, 0, TAU); b.fill(); }
+    }
+    b.fillStyle = 'rgba(200,235,240,.25)';
+    b.beginPath(); b.arc(x - 3 * k, y - 6 * k, 4 * k, 0, TAU); b.fill();
+    // 걱정하는 눈
+    for (const sd of [-1, 1]) {
+      ellipse(x + sd * 4 * k, y, 2.6 * k, 3 * k, '#E6FFF9');
+      b.fillStyle = '#0A0614';
+      b.fillRect(Math.round(x + sd * 4 * k + Math.sin(t * 1.7) * 1.2) - 1, Math.round(y), 2, 2);
+      b.fillRect(Math.round(x + sd * 4 * k) - 2, Math.round(y - 4 * k) + (sd > 0 ? 1 : 0), 4, 1);
+    }
+    // 물음표 셋
+    const Q = ['111', '001', '010', '000', '010'];
+    for (let i = 0; i < 3; i++) {
+      const qx = Math.round(x + (i - 1) * 9 * k), qy = Math.round(y - 16 * k + Math.sin(t * 3 + i * 2) * 2);
+      for (let yy = 0; yy < 5; yy++) for (let xx = 0; xx < 3; xx++) if (Q[yy][xx] === '1') { b.fillStyle = '#0A0614'; b.fillRect(qx + xx - 1, qy + yy, 3, 1); }
+      for (let yy = 0; yy < 5; yy++) for (let xx = 0; xx < 3; xx++) if (Q[yy][xx] === '1') { b.fillStyle = '#CDEFF5'; b.fillRect(qx + xx, qy + yy, 1, 1); }
+    }
+  }
+  // 두려움 거인 (쿵 하기 전에 몸을 움츠린다)
+  function drawGiant(B) {
+    const t = S.t, k = B.r / 19;
+    const crouch = B.st === 'stompAim' ? Math.min(1, (0.7 - B.stT) / 0.7) : 0;
+    const step = B.st === 'move' ? Math.abs(Math.sin(t * 5)) * 1.5 : 0;
+    const x = Math.round(B.x), y = Math.round(B.y - step + crouch * 3);
+    const sq = 1 + crouch * 0.15;
+    ellipse(x, y + 20 * k, 17 * k, 4, 'rgba(8,4,16,.55)');
+    const body = B.flash > 0 ? '#9A78B0' : B.st === 'aim' && Math.floor(t * 14) % 2 ? '#7A2448' : '#3E2440';
+    for (const [col, grow] of [[B.flash > 0 ? '#EDE4FF' : '#0A0614', 1], [body, 0]]) {
+      b.fillStyle = col;
+      b.beginPath(); b.ellipse(x, y, 17 * k * sq + grow, 16 * k / sq + grow, 0, 0, TAU); b.fill();
+      // 삐죽삐죽 털
+      for (let i = 0; i < 9; i++) { const a = Math.PI + (i / 8) * Math.PI; b.beginPath(); b.moveTo(x + Math.cos(a - 0.15) * 15 * k, y + Math.sin(a - 0.15) * 14 * k); b.lineTo(x + Math.cos(a) * (21 * k + grow), y + Math.sin(a) * (20 * k + grow)); b.lineTo(x + Math.cos(a + 0.15) * 15 * k, y + Math.sin(a + 0.15) * 14 * k); b.fill(); }
+      // 팔과 발
+      for (const sd of [-1, 1]) { b.beginPath(); b.arc(x + sd * 17 * k, y + 5 * k - crouch * 4, 5 * k + grow, 0, TAU); b.fill(); b.beginPath(); b.arc(x + sd * 8 * k, y + 15 * k, 5 * k + grow, 0, TAU); b.fill(); }
+    }
+    const angry = B.hp < B.max / 2;
+    for (const sd of [-1, 1]) {
+      ellipse(x + sd * 6 * k, y - 4 * k, 4 * k, 4.5 * k, '#FFE0E0');
+      b.fillStyle = angry ? '#E0404F' : '#7A1E2E';
+      b.fillRect(Math.round(x + sd * 6 * k) - 1, Math.round(y - 4 * k), 2, 3);
+      b.fillStyle = '#0A0614';
+      b.fillRect(Math.round(x + sd * 6 * k) - 4, Math.round(y - 10 * k) + (sd > 0 ? 0 : 1), 8, 1);
+    }
+    // 이빨 보이는 입
+    b.fillStyle = '#0A0614';
+    b.fillRect(x - 7, Math.round(y + 5 * k), 14, 3);
+    b.fillStyle = '#FFF8E7';
+    for (let i = 0; i < 4; i++) b.fillRect(x - 6 + i * 4, Math.round(y + 5 * k), 2, 1);
+  }
+  // 참소하는 그림자 (두건을 쓴 큰 눈)
+  function drawAccuser(B) {
+    const t = S.t, x = Math.round(B.x), y = Math.round(B.y + Math.sin(t * 2) * 1.5), k = B.r / 16;
+    ellipse(x, y + 18 * k, 14 * k, 3, 'rgba(8,4,16,.5)');
+    const body = B.flash > 0 ? '#7C8CD8' : '#1E2A58';
+    for (const [col, grow] of [[B.flash > 0 ? '#EDE4FF' : '#0A0614', 1], [body, 0]]) {
+      b.fillStyle = col;
+      b.beginPath(); b.arc(x, y, 14 * k + grow, 0, TAU); b.fill();
+      b.beginPath(); b.moveTo(x - 9 * k - grow, y - 8 * k); b.lineTo(x, y - 22 * k - grow); b.lineTo(x + 9 * k + grow, y - 8 * k); b.fill();
+      for (let i = 0; i < 6; i++) { b.beginPath(); b.arc(x + (-11 + i * 4.4) * k, y + (11 + Math.sin(t * 4 + i) * 2) * k, 3.4 * k + grow, 0, TAU); b.fill(); }
+    }
+    // 큰 눈 하나 (나를 노려본다)
+    const dx = S.hero.x - B.x, dy = S.hero.y - B.y, d = Math.hypot(dx, dy) || 1;
+    ellipse(x, y - 2 * k, 7 * k, 5 * k, '#F3EAFB');
+    ellipse(x + (dx / d) * 2.5 * k, y - 2 * k + (dy / d) * 1.5 * k, 2.6 * k, 2.6 * k, B.hp < B.max / 2 ? '#FF4058' : '#C83A4A');
+    b.fillStyle = '#0A0614';
+    b.fillRect(x - Math.round(7 * k), Math.round(y - 8 * k), Math.round(14 * k), 1);
+    // 소리치는 입
+    const open = B.spiral ? 2 + Math.round(Math.abs(Math.sin(t * 12)) * 2) : 1;
+    b.fillRect(x - 4, Math.round(y + 5 * k), 8, open);
+  }
+  function drawShadowBoss(B) {
     const t = S.t, x = Math.round(B.x), y = Math.round(B.y), k = B.r / 13;
     const angry = B.hp < B.max / 2, aim = B.st === 'aim' && Math.floor(t * 14) % 2;
     // 맞으면 몸이 밝은 보라로 번쩍인다 (하얗게 다 덮으면 큰 그림자 모양이 안 보여서)
@@ -970,7 +1492,7 @@ export function trialArcade(T) {
     ctx.fillText(str, x * u, y * u);
   }
   function hud(frozen) {
-    const u = L.dpr, vw = L.vw, y = L.top + 26;
+    const u = L.dpr, vw = L.vw, y = L.top + 26, c00 = toCss(0, 0);
     ctx.imageSmoothingEnabled = false;
     // 하트
     const hs = 3;
@@ -981,7 +1503,7 @@ export function trialArcade(T) {
     if (S.mult > 1 || S.combo >= 3) text(`콤보 ${S.combo}${S.mult > 1 ? ` · ×${S.mult}` : ''}`, vw / 2, y + 16, 13, '#FFE58A');
     // 물결과 빛 게이지
     const rx = vw - L.right - 12;
-    const wl = S.spec && S.spec.boss ? BOSS_NAME : endless ? `물결 ${S.wave}` : `물결 ${Math.min(S.wave, roomWaves.length)}/${roomWaves.length}`;
+    const wl = S.spec && S.spec.boss ? (BOSS_KINDS[S.spec.kind] || BOSS_KINDS.shadow).name : endless ? `물결 ${S.wave}` : `물결 ${Math.min(S.wave, roomWaves.length)}/${roomWaves.length}`;
     text(wl, rx, y - 6, 15, '#F3EAFB', 'right');
     const gx = rx - GAUGE_MAX * 9 + 2, gy = y + 9;
     for (let i = 0; i < GAUGE_MAX; i++) {
@@ -998,7 +1520,24 @@ export function trialArcade(T) {
       ctx.fillRect(Math.round((bx - 2) * u), Math.round((by - 2) * u), Math.round((bw + 4) * u), Math.round(10 * u));
       ctx.fillStyle = B.hp < B.max / 2 ? '#FF6A7A' : '#B08AF0';
       ctx.fillRect(Math.round(bx * u), Math.round(by * u), Math.round(bw * (B.hp / B.max) * u), Math.round(6 * u));
-      text(BOSS_NAME, bx + bw / 2, by + 16, 12, '#F3EAFB');
+      text(B.name, bx + bw / 2, by + 16, 12, '#F3EAFB');
+    }
+    // 갑주 기술 (판 왼쪽 아래, 단계만큼 노란 점)
+    const cb = toCss(0, S.H);
+    let sx2 = c00.x + 8;
+    for (const k of SKILL_IDS) {
+      const lvK = S.sk[k];
+      if (!lvK) continue;
+      text(SKILLS[k].icon, sx2 + 10, cb.y - 20, 17);
+      for (let i = 0; i < lvK; i++) { ctx.fillStyle = '#FFE58A'; ctx.fillRect(Math.round((sx2 + 3 + i * 5) * u), Math.round((cb.y - 8) * u), Math.round(4 * u), Math.round(4 * u)); }
+      sx2 += 25;
+    }
+    // 판 위에 떠오르는 말 (가짜!, 참소하는 말, 기술 단계)
+    for (const tp of S.tips) {
+      const p = toCss(tp.x, tp.y), k = tp.life / tp.max;
+      ctx.globalAlpha = clamp(k * 2.5, 0, 1);
+      text(tp.txt, p.x, p.y - (1 - k) * 18, tp.px, tp.col);
+      ctx.globalAlpha = 1;
     }
     // 큰 글
     const c0 = toCss(0, 0), c1 = toCss(S.W, S.H), cx = (c0.x + c1.x) / 2, cy = (c0.y + c1.y) / 2;
@@ -1050,10 +1589,14 @@ export function trialArcade(T) {
       phase: S.phase, wave: S.wave, waves: endless ? null : roomWaves.length, cleared: S.cleared, score: S.score, foes: S.foes.length, portals: S.portals.length, queue: S.queue.length,
       boss: S.boss ? { hp: S.boss.hp, max: S.boss.max, st: S.boss.st } : null, hero: { x: Math.round(S.hero.x), y: Math.round(S.hero.y) }, field: [S.W, S.H, L ? L.s : 0],
       ms: started ? Math.round(performance.now() - t0) : 0, power: +S.power.toFixed(1), gauge: S.gauge, combo: S.combo, mult: S.mult, kills: S.kills, items: S.items.length, orbs: S.orbs.length, overlay,
+      sk: { ...S.sk }, pick: S.pick ? [...S.pick] : null, guard: S.guard, bossKind: S.boss ? S.boss.kind : null, decoys: S.decoys.length,
     }),
     // 시험용: 지금 있는 그림자를 모두 물리치고 남은 물결을 비운다 / 큰 그림자에게 바로 / 큰 그림자 힘을 1로
     debugKill: () => { S.queue.length = 0; S.portals.length = 0; for (const f of [...S.foes]) kill(f); },
-    debugBoss: () => { if (endless) return; S.queue.length = 0; S.portals.length = 0; S.foes.length = 0; S.wave = roomWaves.length; nextWave(); },
+    debugBoss: (kind) => { if (kind) S.forceBoss = kind; S.queue.length = 0; S.portals.length = 0; S.foes.length = 0; closePick(); S.pick = null; S.wave = endless ? Math.floor(S.wave / 5) * 5 + 4 : roomWaves.length; nextWave(); },
+    debugSkill: (k, n = 1) => { if (SKILLS[k]) { S.sk[k] = clamp(n, 0, 3); if (k === 'breast' && n) S.guard = true; } },
+    debugChoose: (i = 0) => { if (S.pick && S.pick[i]) choose(S.pick[i]); },
+    debugGod: (on = true) => { S.god = on; },
     debugBossLow: () => { if (S.boss) S.boss.hp = 1; },
     debugHero: (x, y) => { S.hero.x = x; S.hero.y = y; },
   };

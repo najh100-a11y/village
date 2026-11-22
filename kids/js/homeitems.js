@@ -47,6 +47,11 @@ export const HOME_ITEMS = {
   h_laundry: { zone: 'bath', grp: 'bath', name: '세탁기', desc: '누르면 동그란 창 안에서 빨래가 빙글빙글 돌아요.', price: 6, w: 1, d: 1, bath: true },
   h_towel: { zone: 'bath', grp: 'bath', name: '수건걸이', desc: '보송보송한 수건 두 장이 걸려 있어요.', price: 2, w: 1, d: 1, bath: true },
   h_bathmat: { zone: 'room', grp: 'bath', name: '발 매트', desc: '폭신한 물방울 무늬 매트예요. 위에 다른 물건을 놓을 수 있어요.', price: 2, w: 2, d: 1, floor: true, bath: true },
+  // 애완동물 집: 데리고 다니지 않는(집에서 쉬는) 동물이 맞는 집에 와서 쉰다. pet: 쉴 수 있는 동물 종류, rest: 쉬는 자리 [x, y, z, 자세] (물건 기준, 앞이 +z)
+  // 자세 lie(엎드려 잠), sit(앉아 쉼), perch(횃대에 앉음). pethouse: 서버에 애완동물 집이 있을 때만 보인다
+  h_cattower: { zone: 'room', grp: 'pet', name: '캣타워', desc: '층층이 올라가는 고양이 놀이탑이에요. 데리고 다니지 않는 고양이가 꼭대기에서 쉬어요.', price: 8, w: 1, d: 1, pet: ['cat'], rest: [0, 1.27, 0, 'lie'], pethouse: true },
+  h_birdcage: { zone: 'room', grp: 'pet', name: '새장', desc: '그네가 달린 동그란 새장이에요. 데리고 다니지 않는 앵무새가 횃대에 앉아 쉬어요.', price: 6, w: 1, d: 1, pet: ['parrot'], rest: [0, 1.04, 0, 'perch'], pethouse: true },
+  h_petbed: { zone: 'room', grp: 'pet', name: '동물 쿠션', desc: '폭신한 동그란 쿠션이에요. 데리고 다니지 않는 강아지, 고양이, 토끼, 병아리 누구나 와서 쉬어요.', price: 4, w: 1, d: 1, pet: ['dog', 'cat', 'rabbit', 'chick'], rest: [0, 0.1, 0, 'lie'], pethouse: true },
   // 마당
   y_bench: { zone: 'yard', name: '벤치', desc: '마당에서 쉬어 가는 나무 벤치예요.', price: 5, w: 2, d: 1 },
   y_lamp: { zone: 'yard', name: '정원등', desc: '밤이 되면 마당을 환하게 밝혀요.', price: 3, w: 1, d: 1, glow: true },
@@ -57,6 +62,9 @@ export const HOME_ITEMS = {
   y_tree: { zone: 'yard', name: '작은 나무', desc: '마당에 심는 동그란 나무예요.', price: 6, w: 1, d: 1 },
   y_slide: { zone: 'yard', name: '미끄럼틀', desc: '누르면 사다리를 올라가서 쭉 미끄러져 내려와요.', price: 8, w: 1, d: 3 },
   y_mailbox: { zone: 'yard', name: '우체통', desc: '빨간 우체통이에요.', price: 2, w: 1, d: 1 },
+  y_doghouse: { zone: 'yard', name: '강아지 집', desc: '빨간 지붕 나무 강아지 집이에요. 데리고 다니지 않는 강아지가 집 앞에서 낮잠을 자요.', price: 8, w: 2, d: 2, pet: ['dog'], rest: [0, 0, 0.55, 'lie'], pethouse: true },
+  y_hutch: { zone: 'yard', name: '토끼장', desc: '지붕 있는 나무 토끼장이에요. 데리고 다니지 않는 토끼가 당근 옆에서 쉬어요.', price: 6, w: 2, d: 1, pet: ['rabbit'], rest: [-0.25, 0.42, 0.02, 'sit'], pethouse: true },
+  y_nest: { zone: 'yard', name: '병아리 둥지', desc: '보송보송한 지푸라기 둥지예요. 데리고 다니지 않는 병아리가 쏙 들어가 쉬어요.', price: 4, w: 1, d: 1, pet: ['chick'], rest: [0, 0.1, 0, 'sit'], pethouse: true },
   // 밭 (씨앗과 모종)
   s_carrot: { zone: 'garden', name: '당근 씨앗', grown: '당근', kind: 'veg', desc: '심고 이틀이 지나면 당근 3개를 거둬요.', price: 1, w: 1, d: 1 },
   s_tomato: { zone: 'garden', name: '토마토 씨앗', grown: '토마토', kind: 'veg', desc: '사흘이 지나면 토마토가 열려요. 따고 나면 하루 반 뒤에 또 열려서 세 번 거둬요.', price: 1, w: 1, d: 1 },
@@ -67,7 +75,7 @@ export const HOME_ITEMS = {
 };
 export const HOME_IDS = Object.keys(HOME_ITEMS);
 export const ZONE_NAMES = { room: '방', yard: '마당', garden: '밭', kitchen: '주방', bath: '화장실' };
-export const GROUP_NAMES = { bed: '🛏️ 방', living: '🛋️ 거실', kitchen: '🍳 주방', bath: '🛁 화장실' };
+export const GROUP_NAMES = { bed: '🛏️ 방', living: '🛋️ 거실', kitchen: '🍳 주방', bath: '🛁 화장실', pet: '🐾 동물 집' };
 export const isSeed = (id) => String(id).startsWith('s_');
 
 // ---------- 집 넓히기: 복도 있는 집 (방은 모두 가로 8, 세로 6) ----------

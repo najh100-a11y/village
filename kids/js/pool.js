@@ -81,6 +81,121 @@ export function swimPose(av, dt, t) {
 }
 swimPose.swim = true;
 
+// ---------- 튜브: 물에서 '튜브' 단추를 누르면 튜브에 앉아 둥둥 뜬다 ----------
+// 모양은 공짜로 골라 탄다. 친구에게는 하는 일(swim)의 자리 번호 3 + 모양 번호로 보낸다 (0~2는 영법)
+export const TUBES = [
+  { id: 'stripe', name: '줄무늬 튜브', icon: '🛟' },
+  { id: 'donut', name: '도넛 튜브', icon: '🍩' },
+  { id: 'duck', name: '오리 튜브', icon: '🦆' },
+  { id: 'melon', name: '수박 튜브', icon: '🍉' },
+];
+export const TUBE_Y = -0.32; // 튜브를 탈 때 발밑 높이 (허리까지 물에 잠긴다)
+const TUBE_R = 0.56, TUBE_T = 0.2; // 튜브 고리 반지름, 굵기
+const TUBE_AT = WATER_Y - TUBE_Y + 0.05; // 아바타 발밑에서 튜브 가운데까지
+const tubeProto = new Map();
+function tubeModel(i) {
+  if (tubeProto.has(i)) return tubeProto.get(i);
+  const g = new THREE.Group();
+  const ringGeo = new THREE.TorusGeometry(TUBE_R, TUBE_T, 14, 32);
+  ringGeo.rotateX(Math.PI / 2);
+  const id = (TUBES[i] || TUBES[0]).id;
+  const add = (o) => { o.castShadow = false; o.receiveShadow = false; g.add(o); return o; };
+  if (id === 'stripe') {
+    const tex = canvasTex(256, 16, (c, w, h) => { for (let k = 0; k < 8; k++) { c.fillStyle = k % 2 ? '#FFFFFF' : '#E5484D'; c.fillRect((k * w) / 8, 0, w / 8 + 1, h); } });
+    add(new THREE.Mesh(ringGeo, new THREE.MeshToonMaterial({ map: tex, gradientMap: toonGradient() })));
+  } else if (id === 'donut') {
+    add(new THREE.Mesh(ringGeo, toon('#E2A866')));
+    // 윗면 분홍 설탕옷과 알록달록 스프링클
+    const icing = new THREE.TorusGeometry(TUBE_R, TUBE_T * 0.82, 10, 32, Math.PI * 2);
+    icing.rotateX(Math.PI / 2);
+    icing.scale(1, 0.6, 1);
+    icing.translate(0, TUBE_T * 0.55, 0);
+    add(new THREE.Mesh(icing, toon('#F48FB8')));
+    const cols = ['#FFFFFF', '#6FCF97', '#56A8F5', '#F6D55C', '#B48CF0'];
+    const sprGeo = new THREE.BoxGeometry(0.07, 0.025, 0.025);
+    for (let k = 0; k < 22; k++) {
+      const a = (k / 22) * Math.PI * 2 + (k % 3) * 0.1, rr = TUBE_R + ((k * 37) % 7 - 3) * 0.035;
+      const m = add(new THREE.Mesh(sprGeo, toon(cols[k % cols.length])));
+      m.position.set(Math.cos(a) * rr, TUBE_T * 0.78, Math.sin(a) * rr);
+      m.rotation.y = a * 3.1;
+    }
+  } else if (id === 'duck') {
+    add(new THREE.Mesh(ringGeo, toon('#FFD43B')));
+    // 앞(+z)에 오리 머리와 부리, 뒤에 작은 꼬리
+    const head = add(new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 12), toon('#FFD43B')));
+    head.position.set(0, 0.32, TUBE_R + 0.02);
+    const neck = add(new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.15, 0.24, 12), toon('#FFD43B')));
+    neck.position.set(0, 0.14, TUBE_R);
+    const beak = add(new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), toon('#F5893B')));
+    beak.scale.set(0.1, 0.045, 0.12);
+    beak.position.set(0, 0.29, TUBE_R + 0.22);
+    for (const sx of [-1, 1]) {
+      const e = add(new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), toon('#2E2A2A')));
+      e.position.set(sx * 0.09, 0.38, TUBE_R + 0.16);
+    }
+    const tail = add(new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.2, 10), toon('#FFD43B')));
+    tail.rotation.x = -2.2;
+    tail.position.set(0, 0.14, -TUBE_R - 0.12);
+  } else {
+    // 수박: 바깥은 초록 줄무늬 껍질, 윗면은 빨간 속과 까만 씨
+    const tex = canvasTex(256, 16, (c, w, h) => { c.fillStyle = '#3E9B4F'; c.fillRect(0, 0, w, h); c.fillStyle = '#1F6B32'; for (let k = 0; k < 12; k++) c.fillRect((k * w) / 12, 0, w / 30, h); });
+    add(new THREE.Mesh(ringGeo, new THREE.MeshToonMaterial({ map: tex, gradientMap: toonGradient() })));
+    const flesh = new THREE.TorusGeometry(TUBE_R, TUBE_T * 0.8, 10, 32);
+    flesh.rotateX(Math.PI / 2);
+    flesh.scale(1, 0.5, 1);
+    flesh.translate(0, TUBE_T * 0.45, 0);
+    add(new THREE.Mesh(flesh, toon('#F2556B')));
+    const seedGeo = new THREE.SphereGeometry(0.028, 6, 4);
+    for (let k = 0; k < 12; k++) {
+      const a = (k / 12) * Math.PI * 2 + 0.2;
+      const m = add(new THREE.Mesh(seedGeo, toon('#2A2020')));
+      m.scale.set(1, 0.5, 1.5);
+      m.position.set(Math.cos(a) * TUBE_R, TUBE_T * 0.66, Math.sin(a) * TUBE_R);
+    }
+  }
+  tubeProto.set(i, g);
+  return g;
+}
+// 아바타에 튜브를 붙이거나(d: 모양 번호) 뗀다(d: null). 모양은 함께 쓰는 원본을 복제한다(지울 때 버리지 않는다)
+export function setTube(av, d) {
+  const cur = av._tube;
+  if (cur && cur.d === d) return;
+  if (cur) { av.root.remove(cur.obj); av._tube = null; }
+  if (d == null) return;
+  const obj = tubeModel(d).clone();
+  obj.position.y = TUBE_AT;
+  av.root.add(obj);
+  av._tube = { d, obj, bump: 0 };
+}
+// 튜브에 앉은 자세: 다리는 앞으로 뻗어 튜브에 걸치고, 팔은 튜브 위에 얹는다. 움직이면 손으로 물을 젓는다
+export function tubePose(av, dt, t) {
+  const b = av.body;
+  const [a0, a1] = av.arms, [l0, l1] = av.legs;
+  const k0 = av.swimK || 0;
+  const k = (av.swimK = k0 + ((av.swimMoving ? 1 : 0) - k0) * Math.min(1, dt * 5));
+  b.rotation.set(-0.12, 0, 0);
+  b.position.z = 0;
+  if (av.head) av.head.rotation.y = Math.sin(t * 0.7) * 0.25 * (1 - k);
+  l0.rotation.x = -1.35 + Math.sin(t * 3) * 0.12;
+  l1.rotation.x = -1.35 - Math.sin(t * 3) * 0.12;
+  const ph = (av.tubePh = (av.tubePh || 0) + dt * 6 * k);
+  a0.rotation.x = -0.35 + Math.sin(ph) * 0.9 * k;
+  a1.rotation.x = -0.35 - Math.sin(ph) * 0.9 * k;
+  a0.rotation.z = -1.05 + k * 0.25;
+  a1.rotation.z = 1.05 - k * 0.25;
+  b.position.y += Math.sin(t * 2.2) * 0.02;
+  // 튜브가 살랑살랑 기울고, 부딪히면 통 튄다
+  const tb = av._tube;
+  if (tb) {
+    tb.bump = Math.max(0, tb.bump - dt * 2.5);
+    const s = 1 + Math.sin(tb.bump * 18) * tb.bump * 0.18;
+    tb.obj.scale.set(s, 2 - s, s);
+    tb.obj.rotation.z = Math.sin(t * 1.6) * 0.05;
+    tb.obj.rotation.x = Math.sin(t * 1.3 + 1) * 0.04;
+  }
+}
+tubePose.swim = true;
+
 function mesh(geo, mat, x = 0, y = 0, z = 0, cast = true) {
   const o = new THREE.Mesh(geo, mat);
   o.position.set(x, y, z);

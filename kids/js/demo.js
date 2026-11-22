@@ -153,6 +153,13 @@ function petsOf(c) {
   return c.pet ? [c.pet] : [];
 }
 function petsJson(c) { return petsOf(c).map((item) => ({ item, name: ((c && c.pet_names) || {})[item] || null })); }
+// 집에서 쉬는 동물: 가진 동물 가운데 데리고 다니지 않는 동물 (서버 kids__rest_pets와 같다)
+function restPets(db, id) {
+  const c = db.children.find((x) => x.id === id);
+  if (!c) return [];
+  const out = petsOf(c), bag = (db.items || {})[id] || {};
+  return Object.keys(bag).filter((k) => k.startsWith('pet_') && bag[k] > 0 && !out.includes(k)).sort().map((item) => ({ item, name: (c.pet_names || {})[item] || null }));
+}
 function dropPet(c, item) {
   c.pets = petsOf(c).filter((x) => x !== item);
   c.pet = c.pets[0] || null;
@@ -362,7 +369,7 @@ export class DemoBackend {
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true, breeds: true, skip2: true, volley: true, expand: true, houses: true, hide: true, nbr: true, rewards: this.rewards(), jrope: true, jr2: true, bath: true, hlock: true, ropes: true, dungeon: true, arcade: true }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true, breeds: true, skip2: true, volley: true, expand: true, houses: true, hide: true, nbr: true, rewards: this.rewards(), jrope: true, jr2: true, bath: true, hlock: true, ropes: true, dungeon: true, arcade: true, pethouse: true }; }
   // 쪽지함: 친구별 마지막 쪽지와 안 읽은 수 (최근 30일)
   kids_dm_box({ p_token }) {
     const me = this.session(p_token, 'child');
@@ -1061,7 +1068,8 @@ export class DemoBackend {
     const pl = this.homePlan(me), sale = this.villageConf().sale;
     return { layout: JSON.parse(JSON.stringify(this.db.homes[me] || [])), items: this.homeItems(me), fruits: this.child(me).fruits, crops: this.cropsOf(me), now: Date.now(),
       rooms: pl.rooms.slice(), style: JSON.parse(JSON.stringify(pl.style)), look: { ...(pl.look || {}) }, houses: this.housesOf(me), sale, locked: !!(this.db.homeLock || {})[me],
-      build: Object.fromEntries(BUILD_IDS.map((k) => [k, salePrice(SPACES[k].price, sale)])), build_base: Object.fromEntries(BUILD_IDS.map((k) => [k, SPACES[k].price])) };
+      build: Object.fromEntries(BUILD_IDS.map((k) => [k, salePrice(SPACES[k].price, sale)])), build_base: Object.fromEntries(BUILD_IDS.map((k) => [k, SPACES[k].price])),
+      rest_pets: restPets(this.db, me) };
   }
   // 집 넓히기 공사 (서버 kids_home_build와 같다)
   kids_home_build({ p_token, p_space }) {
@@ -1224,7 +1232,7 @@ export class DemoBackend {
     const locked = !!(this.db.homeLock || {})[p_child];
     if (n) return { name: n.village_name, avatar: n.avatar, layout: sampleHome().layout, now: Date.now(), rooms: [], style: {}, look: { ...n.look }, locked };
     const pl = this.homePlan(p_child);
-    return { name: c.village_name, avatar: c.avatar, layout: JSON.parse(JSON.stringify((this.db.homes || {})[p_child] || [])), now: Date.now(), rooms: pl.rooms.slice(), style: JSON.parse(JSON.stringify(pl.style)), look: { ...(pl.look || {}) }, locked };
+    return { name: c.village_name, avatar: c.avatar, layout: JSON.parse(JSON.stringify((this.db.homes || {})[p_child] || [])), now: Date.now(), rooms: pl.rooms.slice(), style: JSON.parse(JSON.stringify(pl.style)), look: { ...(pl.look || {}) }, locked, rest_pets: restPets(this.db, p_child) };
   }
   // ---------- 집 잠그기 (서버 kids_home_lock, kids_here, kids__home_open과 같다) ----------
   // 체험판의 예시 이웃 '솔이'(n2)는 집을 잠가 두고 마을에 없다

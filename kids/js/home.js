@@ -10,6 +10,8 @@ import {
   WALLS, FLOORS, BUILD_IDS, PLAN, HALL, HALL_STYLE, hallRect, doorList, setRooms, builtRooms, spaces, styleOf, cookAt,
 } from './homeitems.js';
 import { buildShell, wallSkin, lookOf, roofColor } from './houses.js';
+import { PET_ITEMS } from './pets-data.js';
+import { makeAnyPet } from './critters.js';
 
 export const HOME_O = { x: 1000, z: 1000 };
 // 앉거나 누울 수 있는 가구: seats(물건 안 자리 x, z), y(뿌리 높이: 앉으면 발, 누우면 엉덩이), front(앞에 서는 곳 z), side(침대 옆),
@@ -778,6 +780,91 @@ export function buildItem(id, glow) {
       box(g, 0.03, 0.22, 0.03, '#F6D55C', 0.2, 1.24, 0.1);
       box(g, 0.03, 0.08, 0.14, '#F6D55C', 0.2, 1.32, 0.16);
       break;
+    // ---------- 애완동물 집 (앞이 +z. 쉬는 동물은 HomeSpace.refreshRest가 따로 놓는다) ----------
+    case 'y_doghouse': {
+      const PL = '#E9C68E', PLD = '#C99862';
+      box(g, 1.3, 0.85, 1.15, PL, 0, 0.425, -0.38);
+      for (const y of [0.22, 0.45, 0.68]) box(g, 1.32, 0.025, 1.17, PLD, 0, y, -0.38); // 판자 줄
+      { const r = m(prismGeo(1.62, 0.6, 1.4), toon('#E5484D'), 0, 0.84, -0.38); g.add(r); }
+      box(g, 0.08, 0.6, 1.42, '#C23B40', 0, 1.42, -0.38).scale.set(1, 0.12, 1); // 용마루
+      // 동그란 문 (어두운 안쪽)
+      box(g, 0.56, 0.42, 0.04, '#3A2A22', 0, 0.23, 0.2);
+      cyl(g, 0.28, 0.28, 0.04, '#3A2A22', 0, 0.44, 0.2, 18).rotation.x = Math.PI / 2;
+      box(g, 0.5, 0.13, 0.03, '#F6D55C', 0, 0.86, 0.21); // 이름판
+      for (const x of [-0.16, 0, 0.16]) ball(g, 0.025, '#B8862E', x, 0.86, 0.23, 6);
+      // 밥그릇과 뼈다귀
+      cyl(g, 0.2, 0.16, 0.1, '#5FA9E0', 0.62, 0.05, 0.55, 16);
+      cyl(g, 0.16, 0.16, 0.02, '#A8662E', 0.62, 0.095, 0.55, 14);
+      box(g, 0.26, 0.05, 0.06, '#FFFDF7', -0.62, 0.04, 0.62).rotation.y = 0.5;
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) ball(g, 0.04, '#FFFDF7', -0.62 + sx * 0.11 * Math.cos(0.5) + sz * 0.03 * Math.sin(0.5), 0.05, 0.62 - sx * 0.11 * Math.sin(0.5) + sz * 0.03 * Math.cos(0.5), 6);
+      break;
+    }
+    case 'y_hutch': {
+      // 다리 위 바닥, 뒤와 옆벽, 비스듬한 지붕 (앞은 열려 있어 토끼가 보인다)
+      for (const x of [-0.72, 0.72]) for (const z of [-0.3, 0.3]) box(g, 0.07, 0.38, 0.07, WD, x, 0.19, z);
+      box(g, 1.6, 0.06, 0.74, W, 0, 0.39, 0);
+      box(g, 1.5, 0.03, 0.64, '#E8D27A', 0, 0.435, 0.02); // 지푸라기
+      box(g, 1.6, 0.62, 0.05, W, 0, 0.72, -0.35);
+      for (const x of [-0.78, 0.78]) box(g, 0.05, 0.62, 0.74, W, x, 0.72, 0);
+      { const r = box(g, 1.76, 0.06, 0.92, '#7FB069', 0, 1.1, 0.04); r.rotation.x = -0.18; }
+      box(g, 0.05, 0.62, 0.05, WD, 0.05, 0.72, 0.33); // 가운데 기둥
+      // 당근과 물병
+      { const c = cyl(g, 0.0, 0.05, 0.24, '#F28C28', 0.35, 0.48, 0.12, 10); c.rotation.z = Math.PI / 2; }
+      ball(g, 0.04, '#5DB760', 0.49, 0.48, 0.12, 6);
+      cyl(g, 0.06, 0.06, 0.22, '#BFE6FF', 0.6, 0.62, -0.28, 10);
+      break;
+    }
+    case 'y_nest': {
+      const tor = new THREE.TorusGeometry(0.3, 0.11, 8, 20);
+      tor.rotateX(Math.PI / 2);
+      g.add(m(tor, toon('#D9B45A'), 0, 0.1, 0));
+      cyl(g, 0.3, 0.26, 0.08, '#E8D27A', 0, 0.06, 0, 16);
+      for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2; const st = box(g, 0.2, 0.015, 0.02, '#C9A24A', Math.cos(a) * 0.34, 0.18, Math.sin(a) * 0.34); st.rotation.y = -a + 0.6; st.rotation.z = 0.3; }
+      ball(g, 0.07, '#FFF8EC', 0.16, 0.12, -0.12, 10).scale.set(1, 1.25, 1); // 알 하나
+      break;
+    }
+    case 'h_cattower': {
+      box(g, 0.82, 0.08, 0.82, '#C9A47A', 0, 0.04, 0);
+      cyl(g, 0.08, 0.08, 1.12, '#D9C29A', 0.18, 0.62, 0.18, 10); // 발톱 긁는 기둥
+      cyl(g, 0.07, 0.07, 1.12, '#D9C29A', -0.2, 0.62, -0.18, 10);
+      cyl(g, 0.3, 0.3, 0.06, '#F3E6D0', -0.1, 0.62, 0.05, 18);
+      // 꼭대기 둥근 잠자리 (둘레 쿠션)
+      cyl(g, 0.36, 0.34, 0.08, '#F3E6D0', 0, 1.2, 0, 20);
+      const rim = new THREE.TorusGeometry(0.31, 0.06, 8, 20);
+      rim.rotateX(Math.PI / 2);
+      g.add(m(rim, toon('#F6A2C4'), 0, 1.27, 0));
+      // 줄에 매달린 공
+      cyl(g, 0.006, 0.006, 0.3, '#5A3D2B', 0.3, 0.45, -0.2, 4);
+      ball(g, 0.06, '#EF6461', 0.3, 0.28, -0.2, 10);
+      break;
+    }
+    case 'h_birdcage': {
+      cyl(g, 0.22, 0.26, 0.05, '#C9A24A', 0, 0.025, 0, 16);
+      cyl(g, 0.03, 0.03, 0.72, '#C9A24A', 0, 0.38, 0, 8);
+      cyl(g, 0.34, 0.34, 0.05, '#E8B04A', 0, 0.75, 0, 20);
+      const bars = new THREE.Group();
+      for (let i = 0; i < 14; i++) { const a = (i / 14) * Math.PI * 2; cyl(bars, 0.008, 0.008, 0.62, '#E8B04A', Math.cos(a) * 0.32, 1.08, Math.sin(a) * 0.32, 4); }
+      g.add(bars);
+      const dome = new THREE.SphereGeometry(0.32, 14, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+      g.add(m(dome, toon('#E8B04A', { side: THREE.DoubleSide, transparent: true, opacity: 0.35 }), 0, 1.38, 0));
+      const ring = new THREE.TorusGeometry(0.06, 0.015, 6, 12);
+      g.add(m(ring, toon('#E8B04A'), 0, 1.76, 0));
+      // 횃대와 그네
+      { const pr = cyl(g, 0.015, 0.015, 0.58, '#A8662E', 0, 1.02, 0, 6); pr.rotation.z = Math.PI / 2; }
+      for (const x of [-0.1, 0.1]) cyl(g, 0.004, 0.004, 0.3, '#5A3D2B', x, 1.32, 0.14, 4);
+      { const sw = cyl(g, 0.012, 0.012, 0.22, '#EF6461', 0, 1.17, 0.14, 6); sw.rotation.z = Math.PI / 2; }
+      cyl(g, 0.05, 0.05, 0.04, '#5FA9E0', 0.2, 0.8, -0.12, 10); // 모이통
+      break;
+    }
+    case 'h_petbed': {
+      cyl(g, 0.4, 0.42, 0.08, '#E07587', 0, 0.04, 0, 20);
+      cyl(g, 0.3, 0.3, 0.07, '#FFE3EC', 0, 0.1, 0, 20);
+      const rim = new THREE.TorusGeometry(0.34, 0.1, 8, 20);
+      rim.rotateX(Math.PI / 2);
+      g.add(m(rim, toon('#F6A2C4'), 0, 0.13, 0));
+      for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2 + 0.3; ball(g, 0.025, '#FFFFFF', Math.cos(a) * 0.34, 0.22, Math.sin(a) * 0.34, 6); }
+      break;
+    }
     default:
       if (isSeed(id)) return buildPlant(id, 3, 'thumb');
       box(g, 0.5, 0.5, 0.5, '#ccc', 0, 0.25, 0);
@@ -999,6 +1086,29 @@ function signTex(text, sub = '') {
 }
 
 // ---------- 내 집 ----------
+// 잠자는 동물 머리 위에 떠오르는 'Z' (그림 하나를 함께 쓴다)
+let zzTex = null;
+function zzSprite() {
+  if (!zzTex) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d');
+    g.font = 'bold 44px sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.lineWidth = 7;
+    g.strokeStyle = '#5A6FB0';
+    g.strokeText('Z', 32, 34);
+    g.fillStyle = '#FFFFFF';
+    g.fillText('Z', 32, 34);
+    zzTex = new THREE.CanvasTexture(c);
+    zzTex.colorSpace = THREE.SRGBColorSpace;
+  }
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: zzTex, transparent: true, depthWrite: false }));
+  sp.renderOrder = 5;
+  return sp;
+}
+
 export class HomeSpace {
   constructor(v) {
     this.v = v;
@@ -1024,6 +1134,8 @@ export class HomeSpace {
     this.forceShell = false; // 집 모양 고르기 중에는 늘 덮는다
     this.items = new Map(); // id → { e, obj, anim, stage }
     this.layout = [];
+    this.restWant = []; // 집에서 쉬는 동물 [{ item, name }] (주인이 데리고 다니지 않는 동물)
+    this.restPets = []; // 애완동물 집에 놓인 쉬는 동물 { item, name, houseId, root, parts, pose, wake, ph }
     this.pickRoots = [];
     this.ghost = null;
     this.sel = null;
@@ -1522,6 +1634,7 @@ export class HomeSpace {
     this.items.clear();
     for (const e of this.layout) this.addObj(e);
     this.rebuildObs();
+    this.refreshRest();
   }
   addObj(e) {
     const it = { e, obj: null, anim: {}, stage: -1 };
@@ -1580,6 +1693,7 @@ export class HomeSpace {
     if (ex) { Object.assign(ex, e); const it = this.items.get(e.id); it.e = ex; this.refreshObj(it); }
     else { const n = { ...e }; this.layout.push(n); this.addObj(n); }
     this.rebuildObs();
+    this.refreshRest();
   }
   take(id) {
     const i = this.layout.findIndex((o) => o.id === id);
@@ -1588,7 +1702,110 @@ export class HomeSpace {
     const it = this.items.get(id);
     if (it) { this.dropObj(it); this.items.delete(id); }
     this.rebuildObs();
+    this.refreshRest();
     return e;
+  }
+
+  // ---------- 애완동물 집에서 쉬는 동물 ----------
+  // list: [{ item, name }] 집에서 쉬는 동물. 동물마다 맞는 집(그 동물만 받는 집을 먼저, 그다음 동물 쿠션)에 한 마리씩 놓는다
+  setRestPets(list) {
+    this.restWant = (Array.isArray(list) ? list : []).filter((p) => p && PET_ITEMS[p.item]).slice(0, 40);
+    this.refreshRest();
+  }
+  refreshRest() {
+    const houses = this.layout.filter((e) => HOME_ITEMS[e.k] && HOME_ITEMS[e.k].pet).map((e) => ({ e, kinds: HOME_ITEMS[e.k].pet, used: false }));
+    const want = [];
+    for (const p of this.restWant) {
+      const kind = PET_ITEMS[p.item].kind;
+      const h = houses.filter((x) => !x.used && x.kinds.includes(kind)).sort((a, b) => a.kinds.length - b.kinds.length)[0];
+      if (!h) continue;
+      h.used = true;
+      want.push({ item: p.item, name: p.name || '', e: h.e });
+    }
+    // 그대로인 동물은 자리만 고치고, 없어진 동물은 치운다
+    const keep = [];
+    for (const rp of this.restPets) {
+      const w = want.find((x) => x.item === rp.item);
+      if (!w) { this.dropRest(rp); continue; }
+      rp.name = w.name;
+      rp.houseId = w.e.id;
+      this.placeRest(rp, w.e);
+      keep.push(rp);
+      want.splice(want.indexOf(w), 1);
+    }
+    for (const w of want) {
+      const def = PET_ITEMS[w.item];
+      const parts = makeAnyPet(def);
+      const root = parts.root;
+      root.scale.setScalar((def.look && def.look.size) || 1);
+      root.userData.pick = { type: 'restpet', item: w.item };
+      root.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+      const rp = { item: w.item, name: w.name, houseId: w.e.id, root, parts, kind: def.kind, wake: 0, hop: 0, ph: Math.random() * 6, zz: null };
+      this.itemRoot.add(root);
+      this.pickRoots.push(root);
+      this.placeRest(rp, w.e);
+      keep.push(rp);
+    }
+    this.restPets = keep;
+  }
+  placeRest(rp, e) {
+    const R = HOME_ITEMS[e.k].rest || [0, 0, 0, 'sit'];
+    const c = centerOf(e), a = -(e.r || 0) * Math.PI / 2;
+    const [ox, oy, oz, pose] = R;
+    rp.base = { x: c.x + ox * Math.cos(a) + oz * Math.sin(a), y: oy, z: c.z - ox * Math.sin(a) + oz * Math.cos(a) };
+    rp.root.position.set(rp.base.x, rp.base.y, rp.base.z);
+    rp.root.rotation.y = a + (pose === 'lie' && e.k === 'h_petbed' ? 0.7 : 0);
+    rp.pose = rp.kind === 'parrot' ? 'perch' : rp.kind === 'chick' ? 'sit' : pose;
+  }
+  dropRest(rp) {
+    rp.root.removeFromParent();
+    const i = this.pickRoots.indexOf(rp.root);
+    if (i >= 0) this.pickRoots.splice(i, 1);
+    if (rp.zz) rp.zz.removeFromParent();
+  }
+  // 쉬는 동물을 누르면 깨어나 깡충 뛴다 (몇 초 뒤 다시 쉰다). 돌려주는 값: { kind, name, item, house }
+  pokeRest(item) {
+    const rp = this.restPets.find((x) => x.item === item);
+    if (!rp) return null;
+    rp.wake = 3.2;
+    rp.hop = 1;
+    const e = this.layout.find((x) => x.id === rp.houseId);
+    return { kind: rp.kind, name: rp.name, item, house: e ? HOME_ITEMS[e.k].name : '' };
+  }
+  tickRest(dt) {
+    for (const rp of this.restPets) {
+      const { body, head, legs, tail } = rp.parts;
+      const t = this.t + rp.ph;
+      rp.wake = Math.max(0, rp.wake - dt);
+      rp.hop = Math.max(0, rp.hop - dt * 2.2);
+      const awake = rp.wake > 0;
+      const H = rp.parts.H || 0.35;
+      let by = 0, legS = 1, headX = 0;
+      if (!awake && rp.pose === 'lie') { by = -H * 0.78; legS = 0.22; headX = 0.3; }
+      else if (!awake && rp.pose === 'sit') { by = -H * 0.4; legS = 0.6; headX = 0.1; }
+      body.position.y += (by - body.position.y) * Math.min(1, dt * 6);
+      for (const l of legs) { l.scale.y += (legS - l.scale.y) * Math.min(1, dt * 6); l.rotation.x = 0; }
+      if (head) head.rotation.x += (headX - head.rotation.x) * Math.min(1, dt * 5);
+      // 숨쉬기와 꼬리
+      body.scale.y = 1 + Math.sin(t * (awake ? 4 : 1.8)) * (awake ? 0.02 : 0.035);
+      if (tail) {
+        if (rp.kind === 'dog') tail.rotation.y = awake ? Math.sin(t * 16) * 0.6 : Math.sin(t * 0.8) * 0.08;
+        else if (rp.kind === 'cat') tail.rotation.z = Math.sin(t * (awake ? 3 : 0.9)) * (awake ? 0.4 : 0.15);
+      }
+      rp.root.position.y = rp.base.y + Math.sin(Math.min(1, rp.hop) * Math.PI) * 0.35;
+      // 잠자는 동물 머리 위 'Z'
+      const sleeping = !awake && rp.pose === 'lie';
+      if (sleeping && !rp.zz) { rp.zz = zzSprite(); this.itemRoot.add(rp.zz); }
+      if (rp.zz) {
+        rp.zz.visible = sleeping;
+        if (sleeping) {
+          const k = (t * 0.35) % 1, s = rp.root.scale.x;
+          rp.zz.position.set(rp.base.x + 0.15 + k * 0.2, rp.base.y + 0.55 * s + k * 0.45, rp.base.z);
+          rp.zz.material.opacity = Math.sin(k * Math.PI) * 0.9;
+          rp.zz.scale.setScalar(0.22 + k * 0.12);
+        }
+      }
+    }
   }
   entry(id) { return this.layout.find((o) => o.id === id) || null; }
   // 식물이 자랐으면 모양을 바꾼다
@@ -1977,6 +2194,7 @@ export class HomeSpace {
       }
     }
     if (tvTex) tvTex.offset.x = (this.t * 0.02) % 1;
+    this.tickRest(dt);
     this.tickFx(dt);
     this.fadeShell(dt);
     this.plantTick = (this.plantTick || 0) - dt;

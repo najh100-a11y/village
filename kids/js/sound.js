@@ -440,6 +440,8 @@ export const sfx = {
   firework: play((kind = 'spark', vol = 1) => fwBurst(kind, vol)),
   boom: play((soft = false) => fwBurst(soft ? 'flower2' : 'spark', 1)),
   // 애완동물: 토끼 깡충, 병아리 삐약
+  // 튜브끼리 부딪힐 때 '뽀잉'
+  boing: play(() => { tone({ f: 260, f2: 640, type: 'sine', dur: 0.16, vol: 0.14 }); tone({ f: 640, f2: 380, type: 'triangle', dur: 0.16, vol: 0.06, delay: 0.13 }); }),
   hop: play(() => { tone({ f: 420, f2: 880, type: 'triangle', dur: 0.12, vol: 0.09 }); tone({ f: 560, f2: 1100, type: 'triangle', dur: 0.1, vol: 0.06, delay: 0.14 }); }),
   peep: play((soft = false) => { const v = soft ? 0.05 : 0.09; tone({ f: 2300, f2: 3000, dur: 0.07, vol: v }); tone({ f: 2400, f2: 3100, dur: 0.07, vol: v, delay: 0.12 }); }),
   // 폴짝 뛰기: 통 올라가는 소리
@@ -496,6 +498,15 @@ export const arcadeSfx = {
     tone({ f: 2093, type: 'triangle', dur: 0.8, vol: 0.06, delay: 1.55 });
   }),
   win: play(() => { [523, 659, 784, 1047].forEach((f, i) => { tone({ f, type: 'square', dur: 0.16, vol: 0.04, delay: i * 0.11, attack: 0.002 }); tone({ f: f / 2, type: 'triangle', dur: 0.18, vol: 0.08, delay: i * 0.11 }); }); tone({ f: 1568, type: 'square', dur: 0.4, vol: 0.04, delay: 0.46, attack: 0.002 }); }),
+  // 갑주 기술과 큰 그림자 소리
+  slash: play(() => { noise({ dur: 0.16, vol: 0.12, freq: 3000, freq2: 900, q: 0.8 }); tone({ f: 900, f2: 1600, type: 'triangle', dur: 0.1, vol: 0.04 }); }),
+  block: play(() => tone({ f: 1500, f2: 1100, type: 'square', dur: 0.035, vol: 0.025, attack: 0.002 })),
+  chain: play(() => { noise({ dur: 0.14, vol: 0.09, freq: 5000, q: 1.5, kind: 'highpass' }); tone({ f: 1800, f2: 600, type: 'square', dur: 0.12, vol: 0.025, attack: 0.002 }); }),
+  radial: play(() => { [1047, 1319, 1568].forEach((f, i) => tone({ f, type: 'triangle', dur: 0.12, vol: 0.05, delay: i * 0.03 })); }),
+  guard: play(() => { tone({ f: 880, type: 'triangle', dur: 0.25, vol: 0.09 }); tone({ f: 1320, type: 'triangle', dur: 0.3, vol: 0.06, delay: 0.06 }); noise({ dur: 0.2, vol: 0.06, freq: 4000, q: 1, kind: 'highpass' }); }),
+  stomp: play(() => { tone({ f: 120, f2: 40, type: 'sine', dur: 0.45, vol: 0.22 }); noise({ dur: 0.35, vol: 0.14, freq: 300, freq2: 80, q: 0.7, kind: 'lowpass' }); }),
+  roar: play(() => { tone({ f: 160, f2: 90, type: 'sawtooth', dur: 0.6, vol: 0.07, attack: 0.04 }); noise({ dur: 0.6, vol: 0.1, freq: 500, freq2: 200, q: 0.8 }); }),
+  tele: play(() => { tone({ f: 600, f2: 1400, type: 'sine', dur: 0.2, vol: 0.06 }); tone({ f: 1400, f2: 500, type: 'sine', dur: 0.2, vol: 0.05, delay: 0.18 }); }),
   over: play(() => { [784, 659, 523, 392].forEach((f, i) => tone({ f, type: 'triangle', dur: 0.24, vol: 0.1, delay: i * 0.2 })); tone({ f: 196, f2: 130, type: 'square', dur: 0.6, vol: 0.03, delay: 0.8, attack: 0.002 }); }),
 };
 

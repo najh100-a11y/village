@@ -499,6 +499,29 @@ body.dg-arcade #toast { top: calc(64px + env(safe-area-inset-top)); }
   body.dg-arcade #gameUi .g-bottom { left: auto; right: max(10px, env(safe-area-inset-right)); bottom: 50%; transform: translateY(50%); flex-direction: column; gap: 10px; }
   body.dg-arcade #gameUi .g-side { grid-auto-flow: row; }
 }
+/* 오락실: 물결 사이 갑주 기술 고르기 카드 */
+.arc-pick { position: fixed; inset: 0; z-index: 13; display: grid; place-content: center; gap: 12px; padding: calc(56px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom)); background: rgba(8, 4, 20, .58); overflow-y: auto; }
+.arc-pick-h { margin: 0; text-align: center; font-family: var(--display); font-size: 24px; color: #FFE58A; text-shadow: 0 2px 0 #1A1030; }
+.arc-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 210px)); gap: 12px; justify-content: center; }
+.arc-card { position: relative; display: grid; justify-items: center; align-content: start; gap: 4px; padding: 14px 12px 12px; border: 3px solid #F2C14E; border-radius: 18px; background: #FFF8E1; color: var(--ink); font-family: inherit; cursor: pointer; box-shadow: 0 6px 0 #B8862E; text-align: center; touch-action: manipulation; }
+.arc-card:disabled { opacity: .75; cursor: default; }
+.arc-card:not(:disabled):hover, .arc-card:focus-visible { transform: translateY(-2px); outline: none; border-color: #E5A21F; }
+.arc-card .ic { font-size: 34px; line-height: 1.1; }
+.arc-card .nm { font-family: var(--display); font-weight: 400; font-size: 19px; color: #4A3B78; }
+.arc-card .lv { font-family: var(--display); font-size: 12.5px; color: #B8862E; }
+.arc-card .ds { font-size: 14.5px; line-height: 1.4; }
+.arc-card .vs { font-size: 12px; line-height: 1.35; color: var(--ink-soft); }
+.arc-card .key { position: absolute; top: 6px; left: 9px; font-family: var(--display); font-size: 12px; color: #C9B27A; }
+@media (max-width: 640px) {
+  .arc-cards { grid-template-columns: minmax(0, 360px); }
+  .arc-card { grid-template-columns: 44px 1fr; justify-items: start; text-align: left; column-gap: 10px; row-gap: 2px; padding: 10px 12px; }
+  .arc-card .ic { grid-row: span 4; align-self: center; font-size: 30px; }
+  .arc-card .key { display: none; }
+}
+@media (max-height: 470px) {
+  .arc-pick { padding-top: calc(10px + env(safe-area-inset-top)); gap: 8px; }
+  .arc-card .vs { display: none; }
+}
 .dg-pick.dg-arc { border-color: #F2C14E; background: #FFF8E1; }
 .dg-pick.dg-arc.on { border-color: #E5A21F; background: #FFEFC2; box-shadow: 0 0 0 2px #F6D55C; }
 .dg-board { display: grid; gap: 3px; padding: 6px 8px; border-radius: 14px; background: #F6F1FF; }
@@ -1380,7 +1403,7 @@ body.home-editing .pad, body.home-editing .jump-btn, body.home-editing #hud .hud
 @media (max-width: 560px) {
   .home-bar, .swim-bar { bottom: calc(92px + env(safe-area-inset-bottom)); }
   html.touch .home-bar, html.touch .swim-bar { bottom: calc(250px + env(safe-area-inset-bottom)); }
-  .swim-bar button { padding: 8px 12px; font-size: 15px; }
+  .swim-bar button { padding: 8px 10px; font-size: 15px; }
   .home-bar { gap: 8px; }
   .home-bar .btn { padding: 10px 14px; font-size: 15px; }
   .he-tab { padding: 5px 9px; font-size: 14px; }
