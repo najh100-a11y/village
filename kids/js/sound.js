@@ -507,6 +507,10 @@ export const arcadeSfx = {
   stomp: play(() => { tone({ f: 120, f2: 40, type: 'sine', dur: 0.45, vol: 0.22 }); noise({ dur: 0.35, vol: 0.14, freq: 300, freq2: 80, q: 0.7, kind: 'lowpass' }); }),
   roar: play(() => { tone({ f: 160, f2: 90, type: 'sawtooth', dur: 0.6, vol: 0.07, attack: 0.04 }); noise({ dur: 0.6, vol: 0.1, freq: 500, freq2: 200, q: 0.8 }); }),
   tele: play(() => { tone({ f: 600, f2: 1400, type: 'sine', dur: 0.2, vol: 0.06 }); tone({ f: 1400, f2: 500, type: 'sine', dur: 0.2, vol: 0.05, delay: 0.18 }); }),
+  // 물결 20부터 나오는 센 그림자: 빛줄기(미움 그림자), 떨어지는 걱정 덩이와 터지는 소리(걱정 그림자)
+  laser: play(() => { tone({ f: 1800, f2: 260, type: 'sawtooth', dur: 0.42, vol: 0.045, attack: 0.002 }); noise({ dur: 0.4, vol: 0.07, freq: 2400, freq2: 600, q: 0.9 }); }),
+  drop: play(() => tone({ f: 1100, f2: 320, type: 'triangle', dur: 0.3, vol: 0.045 })),
+  boom: play(() => { tone({ f: 95, f2: 32, type: 'sine', dur: 0.4, vol: 0.2 }); noise({ dur: 0.32, vol: 0.13, freq: 700, freq2: 90, q: 0.7, kind: 'lowpass' }); }),
   over: play(() => { [784, 659, 523, 392].forEach((f, i) => tone({ f, type: 'triangle', dur: 0.24, vol: 0.1, delay: i * 0.2 })); tone({ f: 196, f2: 130, type: 'square', dur: 0.6, vol: 0.03, delay: 0.8, attack: 0.002 }); }),
 };
 
