@@ -1021,31 +1021,54 @@ async function refreshWall() {
 // ---------- 수영: 물에 들어가면 영법(자유형·배영·접영)이나 튜브를 고른다 ----------
 // 튜브는 공짜이고 모양(줄무늬, 도넛, 오리, 수박)을 고를 수 있다. '튜브'를 한 번 더 누르면 다음 모양으로 바뀐다
 const STROKE_LIST = [['free', '🏊', '자유형'], ['back', '🙃', '배영'], ['fly', '🦋', '접영'], ['tube', '🛟', '튜브']];
-let stroke = 'free', tubeD = 0, swimming = false, strokeTold = false, lieTold = false, tubeTold = false;
+let stroke = 'free', tubeD = 0, swimming = false, strokeTold = false, lieTold = false;
 try { const s0 = store.get('stroke'); if (STROKE_LIST.some(([k]) => k === s0)) stroke = s0; } catch (e) { /* 기본 자유형 */ }
 try { const t0 = Number(store.get('tube')); if (Number.isInteger(t0) && t0 >= 0 && t0 < TUBES.length) tubeD = t0; } catch (e) { /* 첫 모양 */ }
-let swimBar = null;
+let swimBtn = null, swimMenu = null;
 function strokeIdx() { return stroke === 'tube' ? 3 + tubeD : STROKE_LIST.findIndex(([k]) => k === stroke); } // 친구에게 보내는 자리 번호
-function drawSwimBar() {
-  if (!swimBar) {
-    swimBar = h('div', { class: 'swim-bar', hidden: true, role: 'group', 'aria-label': '헤엄치는 방법 고르기' },
-      ...STROKE_LIST.map(([k, ic, name]) => h('button', { type: 'button', 'data-k': k, onclick: () => pickStroke(k) }, h('span', { 'aria-hidden': 'true' }, ic), ` ${name}`)));
-    document.body.append(swimBar);
-  }
-  for (const b of swimBar.querySelectorAll('button')) {
-    b.setAttribute('aria-pressed', b.dataset.k === stroke ? 'true' : 'false');
-    if (b.dataset.k === 'tube') {
-      const tb = TUBES[tubeD];
-      b.firstChild.textContent = stroke === 'tube' ? tb.icon : '🛟';
-      b.setAttribute('aria-label', stroke === 'tube' ? `${tb.name} (누르면 다른 모양)` : '튜브 타기');
-    }
-  }
-  swimBar.hidden = !swimming;
-  document.body.classList.toggle('swimming', swimming); // 아래쪽 안내 글이 단추에 가리지 않게
+// 화면을 가리지 않게 오른쪽 아래에 작은 단추 하나만 두고, 누르면 영법과 튜브 모양을 고르는 작은 창이 열린다 (고르면 닫힌다)
+function swimFace() {
+  if (stroke === 'tube') return [TUBES[tubeD].icon, '튜브'];
+  const [, ic, name] = STROKE_LIST[strokeIdx()];
+  return [ic, name];
 }
-function pickStroke(k) {
-  if (k === stroke && k !== 'tube') return;
-  if (k === 'tube' && stroke === 'tube') tubeD = (tubeD + 1) % TUBES.length; // 튜브를 타고 있으면 다음 모양
+function openSwimMenu(on) {
+  if (!swimMenu) return;
+  swimMenu.hidden = !on;
+  swimBtn.setAttribute('aria-expanded', on ? 'true' : 'false');
+  if (on) sfx.pop();
+}
+function drawSwimBar() {
+  if (!swimBtn) {
+    swimBtn = h('button', { class: 'swim-btn', type: 'button', hidden: true, 'aria-haspopup': 'true', 'aria-expanded': 'false', onclick: () => openSwimMenu(swimMenu.hidden) },
+      h('span', { class: 'ic', 'aria-hidden': 'true' }), h('span', { class: 'nm' }));
+    const opt = (k, d, ic, name) => h('button', { type: 'button', 'data-k': k, 'data-d': d, onclick: () => pickStroke(k, d) }, h('span', { 'aria-hidden': 'true' }, ic), h('span', {}, name));
+    swimMenu = h('div', { class: 'swim-menu', hidden: true, role: 'group', 'aria-label': '헤엄치는 방법 고르기' },
+      h('div', { class: 'sm-h' }, '헤엄치기'),
+      h('div', { class: 'sm-row' }, ...STROKE_LIST.slice(0, 3).map(([k, ic, name]) => opt(k, 0, ic, name))),
+      h('div', { class: 'sm-h' }, '튜브 타기'),
+      h('div', { class: 'sm-row' }, ...TUBES.map((t, i) => opt('tube', i, t.icon, t.name.replace(' 튜브', '')))));
+    document.body.append(swimMenu, swimBtn);
+    // 창 바깥을 누르면 닫는다
+    document.addEventListener('pointerdown', (e) => { if (!swimMenu.hidden && !swimMenu.contains(e.target) && !swimBtn.contains(e.target)) openSwimMenu(false); }, true);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !swimMenu.hidden) openSwimMenu(false); });
+  }
+  const [ic, nm] = swimFace();
+  swimBtn.querySelector('.ic').textContent = ic;
+  swimBtn.querySelector('.nm').textContent = nm;
+  swimBtn.setAttribute('aria-label', `헤엄치는 방법 바꾸기 (지금 ${stroke === 'tube' ? TUBES[tubeD].name : nm})`);
+  for (const b of swimMenu.querySelectorAll('button')) {
+    const on = b.dataset.k === stroke && (stroke !== 'tube' || Number(b.dataset.d) === tubeD);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+  swimBtn.hidden = !swimming;
+  if (!swimming) openSwimMenu(false);
+  document.body.classList.toggle('swimming', swimming);
+}
+function pickStroke(k, d = 0) {
+  openSwimMenu(false);
+  if (k === stroke && (k !== 'tube' || d === tubeD)) return;
+  if (k === 'tube') tubeD = d;
   stroke = k;
   try { store.set('stroke', k); store.set('tube', tubeD); } catch (e) { /* 저장 못 해도 이번에는 된다 */ }
   village.setStroke(k, tubeD);
@@ -1053,8 +1076,7 @@ function pickStroke(k) {
   drawSwimBar();
   if (swimming) setActivity('swim', strokeIdx());
   if (k === 'tube') {
-    toast(`${TUBES[tubeD].icon} ${josa(TUBES[tubeD].name, '을', '를')} 탔어요!${tubeTold ? '' : ' 튜브를 한 번 더 누르면 모양이 바뀌어요.'}`, 2400);
-    tubeTold = true;
+    toast(`${TUBES[tubeD].icon} ${josa(TUBES[tubeD].name, '을', '를')} 탔어요!`, 2000);
     return;
   }
   const [, , name] = STROKE_LIST[strokeIdx()];
@@ -1066,7 +1088,7 @@ function onSwim(on) {
   drawSwimBar();
   if (on) {
     setActivity('swim', strokeIdx());
-    if (!strokeTold) { strokeTold = true; toast('아래 단추로 자유형, 배영, 접영을 고르거나 튜브를 타 봐요!', 3000); }
+    if (!strokeTold) { strokeTold = true; toast(`${swimFace()[0]} 단추로 헤엄치는 방법을 바꾸거나 튜브를 타요!`, 2800); }
   } else if (myAct === 'swim') setActivity('');
 }
 
@@ -1740,7 +1762,7 @@ function showNews() {
     news.push(['rewards1116', `새 소식! 말씀 활동 열매가 ${up ? '늘었어요' : '바뀌었어요'}. 묵상은 하루 ${REWARD.qt}개, 암송 연습은 구절마다 ${REWARD.memory}개(하루 ${REWARD.verses}구절까지), 필사는 ${REWARD.copy}개이고 공책 사진을 올리면 그 주 필사 열매가 모두 ${REWARD.photo}개예요. 선생님 도장은 ${REWARD.stamp}개예요.`]);
   }
   if (state.features.bugs) news.push(['bugs25', '새 소식! 마을에 곤충이 14가지 더 왔어요. 노랑나비, 네발나비, 꽃등에, 꼬리박각시, 방아깨비, 귀뚜라미(밤), 홍줄노린재, 길앞잡이, 풍뎅이, 알락하늘소, 흰점박이꽃무지, 밀잠자리, 실잠자리, 소금쟁이(연못)를 잡아 곤충 도감을 채워 봐요.']);
-  news.push(['tube', '새 소식! 수영장에서 튜브를 타요. 물에 들어가 아래 \'튜브\'를 누르고, 한 번 더 누르면 도넛, 오리, 수박 튜브로 바뀌어요. 친구 튜브와 부딪히면 통 튀어요!']);
+  news.push(['tube', '새 소식! 수영장에서 튜브를 타요. 물에 들어가 오른쪽 아래 🏊 단추를 누르면 줄무늬, 도넛, 오리, 수박 튜브를 고를 수 있어요. 친구 튜브와 부딪히면 통 튀어요!']);
   if (state.features.arcade) news.push(['arcade2', "새 소식! 새벽 동굴 오락실에서 물결을 이길 때마다 갑주 기술(빛 칼, 도는 방패, 진리의 빛줄기 등)을 하나씩 골라요. 의심 구름, 거짓 가면, 두려움 거인, 참소하는 그림자도 새로 나타났어요."]);
   if (state.features.pethouse) news.push(['pethouse', "새 소식! 열매 상점에 애완동물 집(강아지 집, 캣타워, 토끼장, 새장, 병아리 둥지, 동물 쿠션)이 생겼어요. 집에 놓으면 데리고 다니지 않는 동물이 와서 쉬어요."]);
   if (state.features.arcade) news.push(['arcade', "새 소식! 새벽 동굴에 오락실 방이 생겼어요. '그림자 떼 굴'에서는 화면을 누른 채 밀며 뛰어다니고, 말씀의 빛으로 그림자 떼와 큰 그림자를 물리쳐요. 그림자 떼 굴을 깨면 갑주의 방에서 '도전 모드'(하루 10번까지)로 끝없는 물결에 도전하고 이번 주 기록판에 오를 수 있어요."]);
@@ -2581,7 +2603,8 @@ function openFriends() {
     drawFaceIcon(face, normalizeAvatar(p.avatar));
     const r = village.remotes.get(p.id);
     const act = r && r.actName;
-    const swimAs = act === 'swim' && STROKE_LIST[r.actSeat] ? `${STROKE_LIST[r.actSeat][2]}으로 ` : ''; // 배영으로 수영하는 중
+    const swimRow = act === 'swim' ? STROKE_LIST[Math.min(3, r.actSeat)] : null; // 자리 3부터는 튜브 모양
+    const swimAs = swimRow ? `${josa(swimRow[2], '으로', '로')} ` : ''; // 배영으로 수영하는 중, 튜브로 수영하는 중
     const unread = (state.dms.get(p.id) || []).filter((m) => !m.mine && !m.read).length;
     return h('div', { class: 'fl-row' }, face,
       h('div', { class: 'fl-main' }, h('b', {}, p.name, tBadge(p)), h('span', {}, houseText(r) || (act ? `${ACT_ICON[act] || ''} ${swimAs}${ACT_TEXT[act] || ''}` : '마을을 걷고 있어요'))),
