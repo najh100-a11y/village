@@ -591,13 +591,28 @@ export class DemoBackend {
       .sort((a, b) => b.x.score - a.x.score || a.x.at.localeCompare(b.x.at))
       .map(({ x, c }) => ({ name: c.village_name, avatar: c.avatar, score: x.score, wave: x.wave, me: c.id === me, teacher: !!c.teacher }));
   }
+  // 오늘 한 도전 수 (시작한 수와 끝난 기록 수 가운데 큰 쪽, 서버 kids__arc_plays와 같다)
+  arcPlays(me) {
+    const t0 = startOfToday();
+    const starts = (this.db.arcStarts || []).filter((x) => x.child === me && x.at >= t0).length;
+    return Math.max(starts, this.arcRuns().filter((x) => x.child === me && x.at >= t0).length);
+  }
+  // 도전을 시작한다 (하루 10번까지)
+  kids_arcade_start({ p_token }) {
+    const me = this.session(p_token, 'child');
+    this.gate(me);
+    const n = this.arcPlays(me);
+    if (n >= 10) fail('ARC_DAY');
+    (this.db.arcStarts = this.db.arcStarts || []).push({ child: me, at: nowIso() });
+    return { plays: n + 1, play_cap: 10 };
+  }
   arcBest(me, week) { return Math.max(0, ...this.arcRuns().filter((x) => x.child === me && (!week || x.week === week)).map((x) => x.score)); }
   kids_arcade_book({ p_token }) {
     const me = this.session(p_token, 'child');
     const wk = weekOf(iso(new Date()));
     const mine = this.arcRuns().filter((x) => x.child === me);
     return { best: this.arcBest(me), week_best: this.arcBest(me, wk), best_wave: Math.max(0, ...mine.map((x) => x.wave)),
-      week: this.arcRows(me, wk).slice(0, 10), all: this.arcRows(me, null).slice(0, 10), today: this.dgToday(me), cap: 5 };
+      week: this.arcRows(me, wk).slice(0, 10), all: this.arcRows(me, null).slice(0, 10), today: this.dgToday(me), cap: 5, plays: this.arcPlays(me), play_cap: 10 };
   }
   // p_wave: 이긴 물결 수. 5개 넘으면 열매 1, 10개 넘으면 2 (동굴 열매와 함께 하루 5개까지)
   kids_arcade_end({ p_token, p_score, p_wave, p_ms }) {
@@ -610,7 +625,7 @@ export class DemoBackend {
     const last = mine.map((x) => x.at).sort().pop();
     if (last && Date.now() - Date.parse(last) < 5000) fail('TOO_FAST');
     const t0 = startOfToday();
-    if (mine.filter((x) => x.at >= t0).length >= 100) fail('ARC_DAY');
+    if (mine.filter((x) => x.at >= t0).length >= 10) fail('ARC_DAY');
     const today = this.dgToday(me);
     const want = p_wave >= 10 ? 2 : p_wave >= 5 ? 1 : 0;
     const got = Math.max(0, Math.min(want, 5 - today));
@@ -621,7 +636,7 @@ export class DemoBackend {
     const rows = this.arcRows(me, wk);
     const ri = rows.findIndex((r) => r.me);
     return { got, fruits: c.fruits, today: today + got, cap: 5, best: this.arcBest(me), week_best: this.arcBest(me, wk),
-      best_wave: Math.max(0, ...list.filter((x) => x.child === me).map((x) => x.wave)), rank: p_score > 0 && ri >= 0 ? ri + 1 : null };
+      best_wave: Math.max(0, ...list.filter((x) => x.child === me).map((x) => x.wave)), rank: p_score > 0 && ri >= 0 ? ri + 1 : null, plays: this.arcPlays(me), play_cap: 10 };
   }
   // ---------- 물수제비 (서버 kids_skip_throw와 같다) ----------
   skipTop(me) {

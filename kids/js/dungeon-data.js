@@ -79,8 +79,10 @@ export const DUNGEONS = [
 ];
 // 갑주의 방에서 고르는 '도전 모드': 혼자서 끝없이 오는 그림자 물결을 막는다 (점수는 이번 주 기록판에)
 // 물결 5개를 넘기면 열매 1개, 10개를 넘기면 2개 (동굴 열매와 함께 하루 5개까지, 서버 kids_arcade_end와 같다)
+// 도전 모드는 게임 같은 면이 커서 하루에 시작할 수 있는 횟수를 줄여 둔다 (서버 kids_arcade_start와 같다)
+export const ARC_PLAYS = 10;
 export const CHALLENGE = { id: 'arcade', name: '그림자 떼 도전', icon: '🕹️', place: '끝없는 그림자 소굴',
-  how: '그림자 물결이 끝없이 와요. 다섯 번째 물결마다 큰 그림자가 나와요. 하트를 다 잃으면 끝나요. 기도의 빛은 15초에 한 번 쓸 수 있어요.',
+  how: '그림자 물결이 끝없이 와요. 다섯 번째 물결마다 큰 그림자가 나와요. 하트를 다 잃으면 끝나요. 기도의 빛은 15초에 한 번 쓸 수 있어요. 도전은 하루 10번까지예요.',
   fruit: [[10, 2], [5, 1]], verse: GREATER_VERSE };
 export const challengeFruit = (cleared) => { for (const [n, f] of CHALLENGE.fruit) if (cleared >= n) return f; return 0; };
 export const dungeonById = (id) => DUNGEONS.find((d) => d.id === id) || null;
