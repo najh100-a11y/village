@@ -5,6 +5,8 @@
 // 동굴 안은 마을과 따로 된 장면이다. 마을의 내 주민은 동굴 앞에 서 있고, 동굴 안에는 갑주를 입는 내 주민을 따로 만든다.
 // 친구와 함께 할 때: 방장이 방(hub 'dgn')을 열고 친구를 부른다. 시험은 아이마다 자기 화면에서 하고(같은 씨앗),
 // 모두 통과하면 방장이 다음 방으로 데려간다. 쓰러진 친구는 기도로 일으키고, 새벽의 방에서는 모두의 힘을 모아 새벽을 맞는다.
+// 오락실 방과 도전 모드는 친구와 한 판에서 함께 싸운다(arcade.js. 방장 화면이 그림자를 움직이고 '~S', 친구는 내 주인공을 보낸다 '~A').
+// 도전 모드를 함께 하면 쓰러진 아이는 친구의 기도로만 일어나고, 모두 쓰러지면 끝난다. 팀 점수가 모두의 기록에 남는다.
 import * as THREE from './three.module.min.js';
 import { Avatar } from './avatar.js';
 import { normalizeAvatar, drawFaceIcon } from './face.js';
@@ -234,6 +236,7 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
     r.d = Math.max(0, num(m.d));
     r.k = num(m.k, -1);
     r.c = m.c === 1 ? 1 : 0;
+    r.pl = Number.isFinite(m.pl) ? m.pl : -1;
     if (!!m.rb !== !!r.robe) { r.robe = m.rb ? 1 : 0; r.dress.setRobe(!!r.robe); }
     r.at = performance.now();
     if (R && R.phase === 'play' && R.run && R.run.rooms[R.run.i].t === 'dawn') checkDawn();
@@ -264,7 +267,8 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
     if (!R || !R.room || !realFriends().length || !me.av) return;
     const p = me.av.root.position;
     const m = { x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), r: +me.av.root.rotation.y.toFixed(2), a: me.act || '', g: me.dress.st.guardTo ? 1 : 0,
-      h: R.hearts, f: me.fallen ? 1 : 0, dr: R.dressed, d: R.myD, k: R.run ? R.run.i : -1, c: R.phase === 'cleared' || R.phase === 'done' ? 1 : 0, rb: me.dress.robeOn() ? 1 : 0 };
+      h: R.hearts, f: me.fallen ? 1 : 0, dr: R.dressed, d: R.myD, k: R.run ? R.run.i : -1, c: R.phase === 'cleared' || R.phase === 'done' ? 1 : 0, rb: me.dress.robeOn() ? 1 : 0,
+      pl: abook.loaded ? playsLeft() : -1 }; // 오늘 남은 도전 수 (방장이 함께 도전할 수 있는지 본다)
     const key = JSON.stringify(m);
     const now = performance.now();
     if (!force && key === R.lastP && now - R.lastPAt < 2500) return;
@@ -339,6 +343,7 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
     if (R) leave();
     open({ room: session, host: false });
     loadBook();
+    loadArcade();
   }
   function open({ room, host }) {
     stopAll();
@@ -453,7 +458,11 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
       if (notReady.length) wait = `${notReady.map((id) => nameOf(id)).join(', ')} 준비하는 중…`;
       if (isCh) {
         const done = abook.loaded && !playsLeft();
-        main = { label: party ? '혼자 할 때만' : done ? '내일 또 해요' : '도전!', disabled: party || done || !challengeOpen() || !R.prayed || !!R.starting, pulse: !party && !done, onClick: () => startRun() };
+        const solo = party && !coopOk(); // 서버가 아직 함께 하는 도전을 모르면 혼자만
+        const tired = party && !solo ? friendsOutOfPlays() : [];
+        if (tired.length) wait = `${tired.map((id) => nameOf(id)).join(', ')}${josa(nameOf(tired[tired.length - 1]), '은', '는').slice(-1)} 오늘 도전을 다 했어요.`;
+        main = { label: solo ? '혼자 할 때만' : done ? '내일 또 해요' : notReady.length ? '기다리는 중' : party ? '함께 도전!' : '도전!',
+          disabled: solo || done || !!tired.length || !!notReady.length || !challengeOpen() || !R.prayed || !!R.starting, pulse: !solo && !done && !tired.length && !notReady.length, onClick: () => startRun() };
       }
       else main = { label: notReady.length ? '기다리는 중' : '들어가기!', disabled: !!notReady.length || !unlocked(di), pulse: !notReady.length, onClick: () => startRun() };
     } else main = { label: '방장을 기다려요', disabled: true, pulse: false, onClick: () => {} };
@@ -487,10 +496,12 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
   // 도전 모드 설명과 이번 주 기록판 (세 줄만, 더 보기는 창으로)
   function challengeInfo(party) {
     const fmt = (n) => Math.round(n || 0).toLocaleString('ko-KR');
-    const rows = (abook.week || []).slice(0, 3).map((r, i) => h('div', { class: 'dg-brow' + (r.me ? ' me' : '') }, h('b', {}, `${i + 1}`), h('span', {}, r.name, r.teacher ? ' (선생님)' : '', r.me ? ' (나)' : ''), h('em', {}, `${fmt(r.score)}점`)));
+    const rows = (abook.week || []).slice(0, 3).map((r, i) => h('div', { class: 'dg-brow' + (r.me ? ' me' : '') }, h('b', {}, `${i + 1}`), h('span', {}, r.name, r.teacher ? ' (선생님)' : '', r.me ? ' (나)' : '', r.party > 1 ? ` 👫${r.party}` : ''), h('em', {}, `${fmt(r.score)}점`)));
     return [
-      h('p', { class: 'dg-desc' }, `${CHALLENGE.icon} ${CHALLENGE.name}: 혼자서 끝없이 오는 그림자 물결을 막아요. 물결 5개를 넘기면 🍎1개, 10개를 넘기면 🍎2개를 받아요(동굴 열매와 함께 하루 ${book.cap}개까지).`),
-      !challengeOpen() ? h('p', { class: 'dg-hint' }, '👾 그림자 떼 굴을 깨면 열려요.') : party ? h('p', { class: 'dg-hint' }, '도전 모드는 혼자 할 때만 할 수 있어요.') : null,
+      h('p', { class: 'dg-desc' }, `${CHALLENGE.icon} ${CHALLENGE.name}: 끝없이 오는 그림자 물결을 막아요(친구와 함께 넷까지). 물결 5개를 넘기면 🍎1개, 10개를 넘기면 🍎2개를 받아요(동굴 열매와 함께 하루 ${book.cap}개까지).`),
+      !challengeOpen() ? h('p', { class: 'dg-hint' }, '👾 그림자 떼 굴을 깨면 열려요.')
+        : party && !coopOk() ? h('p', { class: 'dg-hint' }, '도전 모드는 지금은 혼자 할 때만 할 수 있어요.')
+        : party ? h('p', { class: 'dg-hint' }, '함께 하면 그림자와 큰 그림자도 더 세져요. 쓰러진 친구는 ‘친구 기도’로 일으켜 줘요. 모두 쓰러지면 끝나요. 하루 도전 횟수는 한 사람이 한 번씩 써요.') : null,
       h('p', { class: 'dg-hint' }, playsLeft() ? `도전은 하루 ${abook.play_cap}번까지예요. 오늘 ${abook.plays}번 했어요 (${playsLeft()}번 남음).` : `오늘 도전 ${abook.play_cap}번을 다 했어요. 내일 또 만나요! 동굴 탐험은 계속할 수 있어요.`),
       h('div', { class: 'dg-board' }, h('div', { class: 'dg-board-h' }, h('span', {}, '🏆 이번 주 기록'), h('small', {}, `내 최고 ${fmt(abook.best)}점 · 이번 주 ${fmt(abook.week_best)}점`)),
         rows.length ? rows : h('p', { class: 'dg-hint' }, abook.loaded ? '이번 주는 아직 기록이 없어요. 첫 기록을 세워 봐요!' : '기록을 꺼내는 중…'),
@@ -503,7 +514,7 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
       const cv = h('canvas', { width: 64, height: 64, class: 'fl-face', 'aria-hidden': 'true' });
       drawFaceIcon(cv, normalizeAvatar(t.avatar));
       return h('div', { class: 'fl-row' + (t.me ? ' me' : '') }, h('b', { class: 'rank' }, `${i + 1}`), cv,
-        h('div', { class: 'fl-main' }, h('b', {}, t.name, t.teacher ? h('span', { class: 't-badge' }, '선생님') : null, t.me ? ' (나)' : ''), h('span', {}, `${fmt(t.score)}점 · 물결 ${t.wave || 0}개`)));
+        h('div', { class: 'fl-main' }, h('b', {}, t.name, t.teacher ? h('span', { class: 't-badge' }, '선생님') : null, t.me ? ' (나)' : ''), h('span', {}, `${fmt(t.score)}점 · 물결 ${t.wave || 0}개${t.party > 1 ? ` · 함께 ${t.party}명` : ''}`)));
     });
     const box = h('div', { class: 'mem' });
     const draw = () => box.replaceChildren(
@@ -626,13 +637,17 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
   // ---------- 동굴 탐험 ----------
   function startRun() {
     if (!R || !R.host || R.phase !== 'lobby' || !R.prayed || !allReady()) return;
-    if (R.dg === CHALLENGE.id) { if (partyCount() === 1 && challengeOpen()) askChallenge(false); return; }
+    if (R.dg === CHALLENGE.id) { if ((partyCount() === 1 || (coopOk() && !friendsOutOfPlays().length)) && challengeOpen()) askChallenge(false); return; }
     const i = DUNGEONS.findIndex((d) => d.id === R.dg);
     if (!unlocked(i)) return;
     const seed = Math.floor(Math.random() * 1e9);
     if (R.room && realFriends().length) R.room.send('G', { dg: R.dg, seed });
     goRun(R.dg, seed);
   }
+  // 서버가 함께 하는 도전 모드를 아는지 (kids_features의 arcoop)
+  function coopOk() { return !!features().arcoop; }
+  // 오늘 도전을 다 한 친구 (자리 알림으로 받은 남은 수가 0)
+  function friendsOutOfPlays() { return realFriends().filter((id) => { const r = remotes.get(id); return r && r.pl === 0; }); }
   function goRun(dg, seed) {
     const d = dungeonById(dg);
     if (!d) return;
@@ -640,6 +655,7 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
     R.run = { d, rooms: roomsOf(d), i: -1, seed, t0: performance.now(), cleared: new Set() };
     R.ready = new Set();
     R.falls = 0;
+    R.botRev = 2;
     R.phase = 'moving'; // 다음 화면으로 넘어가는 동안 (단추를 두 번 눌러도 한 번만)
     if (btn.friends) btn.friends.style.display = 'none';
     if (btn.book) btn.book.style.display = 'none'; // 동굴 안에서는 단추를 줄인다 (휴대폰에서 판을 가리지 않게)
@@ -647,7 +663,8 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
     enterRoom(0);
   }
   // 도전 모드는 하루 10번까지라 시작할 때마다 서버에 한 번을 적는다 (중간에 그만두어도 한 번)
-  async function askChallenge(auto) {
+  // seed: 친구 화면은 방장이 보낸 씨앗으로 (방장은 새로 만든다)
+  async function askChallenge(auto, seed = null) {
     if (!R || R.starting || (R.phase !== 'lobby' && R.phase !== 'done')) return;
     R.starting = true;
     ui.setMain('…', { disabled: true });
@@ -658,8 +675,9 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
       R.starting = false;
       if (lost(e)) return;
       if (e.code === 'ARC_DAY') abook.plays = abook.play_cap || ARC_PLAYS;
-      toast(message(e));
+      toast(seed != null && e.code === 'ARC_DAY' ? '오늘 도전을 다 해서 이번에는 함께 못 해요. 내일 또 해요!' : message(e));
       if (R.phase === 'lobby') drawLobby(); else if (R.phase === 'done') drawAgain();
+      sendP(true);
       return;
     }
     if (!R) return;
@@ -667,13 +685,18 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
     if (R.phase !== 'lobby' && R.phase !== 'done') return;
     if (r && Number.isFinite(r.plays)) abook.plays = r.plays;
     if (r && Number.isFinite(r.play_cap)) abook.play_cap = r.play_cap;
-    startChallenge(auto);
+    const sd = seed != null ? seed : Math.floor(Math.random() * 1e9);
+    // 방장: 친구들에게 함께 시작하자고 알린다 (친구도 저마다 서버에 한 번을 적는다)
+    if (R.host && seed == null && R.room && realFriends().length) R.room.send('G', { dg: CHALLENGE.id, seed: sd });
+    startChallenge(auto, sd);
   }
   // 도전 모드: 방 하나(끝없는 오락실)만 있는 탐험
-  function startChallenge(auto = false) {
-    R.run = { d: CHALLENGE, rooms: [{ t: 'arcade', lv: 1, endless: true }], i: -1, seed: Math.floor(Math.random() * 1e9), t0: performance.now(), cleared: new Set(), challenge: true };
+  function startChallenge(auto = false, seed = Math.floor(Math.random() * 1e9)) {
+    R.run = { d: CHALLENGE, rooms: [{ t: 'arcade', lv: 1, endless: true }], i: -1, seed, t0: performance.now(), cleared: new Set(), challenge: true };
     R.ready = new Set();
     R.falls = 0;
+    R.botRev = 2;
+    R.dg = CHALLENGE.id;
     R.phase = 'moving';
     if (btn.friends) btn.friends.style.display = 'none';
     if (btn.book) btn.book.style.display = 'none';
@@ -743,9 +766,28 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
       dawnLevel: () => dawnLevel(),
       fadeSwap: (fn) => fade(fn, 300),
       cam: (pos, look) => setCam(pos, look),
+      // 도전 모드를 함께 할 때: 모두 쓰러지면 끝 (방장 화면이 알린다) / 혼자 기도해서 일어날 수 있는지
+      over: () => challengeOver(),
+      selfPray: () => !coopChallenge(),
     };
+    // 오락실은 친구와 한 판에서 함께 (예시 친구도 함께 싸운다)
+    if (room.t === 'arcade' && (realFriends().length || R.bots.size)) {
+      T.coop = {
+        get host() { return !!(R && R.host); },
+        me: meId(),
+        slot: (id) => (R ? R.slots.indexOf(id) : -1),
+        name: (id) => nameOf(id),
+        size: () => partyCount(),
+        bots: () => (R ? [...R.bots] : []),
+        send: (t, d) => { if (R && R.room && R.room.blast && realFriends().length) R.room.blast(t, d); },
+        // 쓰러진 나를 일으켜 줄 예시 친구가 남았는지
+        canRevive: () => !!(R && R.bots.size && R.botRev > 0),
+      };
+    }
     return T;
   }
+  // 도전 모드를 친구와 함께 하는 중인지
+  function coopChallenge() { return !!(R && R.run && R.run.challenge && (realFriends().length || R.bots.size)); }
   function hudEl() {
     const n = R.run.rooms.length, room = R.run.rooms[R.run.i];
     const hearts = h('span', { class: 'dg-hearts', 'aria-label': `하트 ${R.hearts}개` }, '❤️'.repeat(Math.max(0, R.hearts)) + '🤍'.repeat(Math.max(0, 3 - R.hearts)));
@@ -797,6 +839,8 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
     R.trial.begin();
     drawPlayPanel();
     sendP(true);
+    // 오락실을 함께 할 때는 방장이 시작하면 모두 함께 시작한다
+    if (R.host && R.trial.coop && R.room && realFriends().length) R.room.send('AS', { i: R.run.i });
   }
   // ---------- 하트, 쓰러짐, 기도 ----------
   function hurt(why, quiet = false) {
@@ -818,7 +862,7 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
     sendP(true);
   }
   function fall() {
-    if (R.run && R.run.challenge) { challengeOver(); return; }
+    if (R.run && R.run.challenge && !coopChallenge()) { challengeOver(); return; }
     me.fallen = true;
     me.task = null;
     R.falls++;
@@ -826,15 +870,21 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
     sfx.fail();
     const party = realFriends().length > 0;
     R.fallLabel = '';
-    ui.say(party ? '쓰러졌어요… 친구가 기도해 주면 바로 일어나요. 조금 뒤에는 혼자서도 기도할 수 있어요.' : '쓰러졌어요… ‘기도하기’를 누르면 하나님이 다시 일으켜 주세요.');
-    ui.banner('쓰러졌어요', '기도하면 다시 일어날 수 있어요', 1600);
+    const ch = coopChallenge();
+    ui.say(ch ? '쓰러졌어요… 친구가 ‘친구 기도’를 눌러 주면 다시 일어나요. 모두 쓰러지면 도전이 끝나요.' : party ? '쓰러졌어요… 친구가 기도해 주면 바로 일어나요. 조금 뒤에는 혼자서도 기도할 수 있어요.' : '쓰러졌어요… ‘기도하기’를 누르면 하나님이 다시 일으켜 주세요.');
+    ui.banner('쓰러졌어요', ch ? '친구가 기도해 주면 일어나요' : '기도하면 다시 일어날 수 있어요', 1600);
     drawFallen();
+    // 예시 친구는 도전 모드에서 두 번까지 나를 위해 기도해 준다
+    if (ch && R.bots.size && R.botRev > 0) {
+      const b = [...R.bots][0];
+      setTimeout(() => { if (R && me.fallen && R.botRev > 0 && R.phase === 'play') { R.botRev--; revive(b); } }, 2000);
+    }
   }
-  function selfPrayIn() { return realFriends().length ? Math.max(0, 4 - (performance.now() - R.fallenAt) / 1000) : 0; }
+  function selfPrayIn() { return coopChallenge() ? Infinity : realFriends().length ? Math.max(0, 4 - (performance.now() - R.fallenAt) / 1000) : 0; }
   function drawFallen() {
     if (!R || !me.fallen) return;
     const w = selfPrayIn();
-    const lab = w > 0 ? `기도 ${Math.ceil(w)}` : '기도하기';
+    const lab = w === Infinity ? '친구 기도를 기다려요' : w > 0 ? `기도 ${Math.ceil(w)}` : '기도하기';
     if (lab === R.fallLabel) return;
     R.fallLabel = lab;
     ui.setMain(lab, { disabled: w > 0, pulse: w <= 0, onClick: () => { if (selfPrayIn() <= 0) revive(null); } });
@@ -842,7 +892,7 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
   function revive(by) {
     if (!R || !me.fallen) return;
     me.fallen = false;
-    R.hearts = 3;
+    R.hearts = coopChallenge() ? 2 : 3; // 도전 모드를 함께 할 때는 하트 둘로 일어난다
     R.inv = 1.6;
     act('pray', 1.0);
     const p = me.av.root.position;
@@ -1022,20 +1072,23 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
     const info = R.trial ? R.trial.info() : {};
     if (R.trial && R.trial.finish) R.trial.finish();
     const score = Math.max(0, Math.round(info.score || 0)), waves = Math.max(0, info.cleared | 0), ms = Math.max(0, info.ms | 0);
+    const party = Math.max(1, Math.min(4, info.party | 0 || 1)); // 함께 한 사람 수 (예시 친구는 세지 않는다)
     const fmt = (n) => Math.round(n || 0).toLocaleString('ko-KR');
     if (btn.pray) btn.pray.style.display = 'none';
     ui.say(waves ? `물결 ${waves}개를 이겼어요! 다시 해 볼까요?` : '그림자가 많았어요. 다시 해 볼까요?');
     const res = h('p', { class: 'dg-result' }, '기록을 저장하는 중…');
     R.over = h('div', { class: 'dg-card win' },
       h('div', { class: 'dg-card-h' }, `${CHALLENGE.icon} ${CHALLENGE.name}`, h('small', {}, fmtTime(ms))),
-      h('p', { class: 'dg-score' }, `점수 ${fmt(score)}`, h('small', {}, `물결 ${waves}개`)), res,
+      h('p', { class: 'dg-score' }, `${party > 1 ? '팀 점수' : '점수'} ${fmt(score)}`, h('small', {}, `물결 ${waves}개${party > 1 ? ` · 함께 ${party}명` : ''}`)), res,
       h('div', { class: 'row' }, h('button', { class: 'btn btn-soft dg-back', type: 'button', onclick: () => backToLobby() }, '갑주의 방'), h('button', { class: 'btn btn-soft dg-back', type: 'button', onclick: () => openArcadeBoard() }, '🏆 기록판')),
       h('p', { class: 'dg-verse' }, CHALLENGE.verse.text, h('cite', {}, CHALLENGE.verse.ref)));
     drawPlayPanel();
     ui.setMain('…', { disabled: true });
     const oldBest = abook.best || 0;
     let r = null, err = '';
-    try { r = await rpc('kids_arcade_end', { p_token: getToken(), p_score: score, p_wave: waves, p_ms: ms }); }
+    const args = { p_token: getToken(), p_score: score, p_wave: waves, p_ms: ms };
+    if (party > 1 && coopOk()) args.p_party = party;
+    try { r = await rpc('kids_arcade_end', args); }
     catch (e) { if (lost(e)) return; err = message(e); }
     if (!R || R.phase !== 'done' || !R.run || !R.run.challenge) return;
     const lines = [];
@@ -1063,6 +1116,7 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
   // 끝난 뒤 큰 단추: 남은 도전이 있으면 '다시 하기', 없으면 갑주의 방으로
   function drawAgain() {
     if (!R || R.phase !== 'done' || !R.run || !R.run.challenge) return;
+    if (!R.host && realFriends().length) { ui.setMain('방장을 기다려요', { disabled: true }); return; } // 함께 할 때는 방장이 '다시 하기'를 누른다
     if (playsLeft()) ui.setMain('다시 하기', { pulse: true, onClick: () => againChallenge() });
     else ui.setMain('갑주의 방', { pulse: true, onClick: () => backToLobby() });
   }
@@ -1094,6 +1148,7 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
     if (!R || typeof from !== 'string') return;
     const fromHost = from === R.room.hostId;
     if (m.t === '~P') { onP(from, m); return; }
+    if (m.t === '~S' || m.t === '~A') { if (R.trial && R.trial.onNet) R.trial.onNet(m, from, fromHost); return; }
     if (m.t === 'L' && !R.host && fromHost && Array.isArray(m.sl)) {
       const sl = m.sl.filter((x) => typeof x === 'string').slice(0, DG_MAX_PARTY);
       if (!sl.includes(meId())) {
@@ -1117,8 +1172,13 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
       if (!R.slots.includes(from)) { if (partyCount() >= DG_MAX_PARTY) return; R.slots.push(from); }
       if (m.r) R.ready.add(from); else R.ready.delete(from);
       sendRoster();
-    } else if (m.t === 'G' && !R.host && fromHost && R.phase === 'lobby' && typeof m.dg === 'string') {
-      goRun(m.dg, (m.seed >>> 0) || 1);
+    } else if (m.t === 'G' && !R.host && fromHost && typeof m.dg === 'string') {
+      // 도전 모드: 나도 서버에 한 번을 적고 함께 시작한다 (끝난 뒤 '다시 하기'도)
+      if (m.dg === CHALLENGE.id) { if (R.phase === 'lobby' || R.phase === 'done') askChallenge(R.phase === 'done', (m.seed >>> 0) || 1); }
+      else if (R.phase === 'lobby') goRun(m.dg, (m.seed >>> 0) || 1);
+    } else if (m.t === 'AS' && !R.host && fromHost && R.run && m.i === R.run.i && R.phase === 'intro') {
+      startTrial(); // 방장이 오락실을 시작했다
+
     } else if (m.t === 'N' && !R.host && fromHost && R.run && Number.isInteger(m.i) && m.i === R.run.i + 1 && R.phase !== 'moving') {
       R.phase = 'moving';
       enterRoom(m.i);
@@ -1142,6 +1202,8 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
     // 잠깐 연결이 끊겼다가 다시 오는 때가 있어서, 조금 기다려도 안 돌아오면 알린다
     setTimeout(() => { if (R && !R.slots.includes(id)) toast(`${josa(nameOf(id), '이가', '가')} 동굴에서 나갔어요.`, 2200); }, 5000);
     if (R.host) { sendRoster(); checkAdvance(); checkDawn(); }
+    // 함께 하던 도전에서 쓰러진 채 혼자 남았다
+    if (me.fallen && R.phase === 'play' && R.run && R.run.challenge && !coopChallenge()) { me.fallen = false; challengeOver(); }
   }
   // 방장이 나가면: 혼자서 이어 간다 (내가 방장이 된다)
   function becomeSolo() {
@@ -1157,6 +1219,8 @@ export function createDungeon({ v, ui, begin, stopAll, portrait, rpc, getToken, 
     for (const id of [...remotes.keys()]) dropRemote(id);
     if (R.phase === 'cleared') { drawCleared(); checkAdvance(); }
     if (R.phase === 'play' && R.run && R.run.rooms[R.run.i].t === 'dawn') checkDawn();
+    if (R.trial && R.trial.promote) R.trial.promote(); // 함께 하던 오락실은 지금 판을 이어받아 혼자 이어 간다
+    if (me.fallen && R.phase === 'play' && R.run && R.run.challenge) { me.fallen = false; challengeOver(); } // 쓰러진 채 혼자 남았다
     if (R.phase === 'lobby') drawLobby();
   }
 
