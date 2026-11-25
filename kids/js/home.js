@@ -686,9 +686,11 @@ export function buildItem(id, glow) {
       for (let i = 0; i < 2; i++) box(g, 0.5, 0.025, 0.055, '#FFFFFF', 0.03, 0.9 + i * 0.045, -0.35);
       break;
     case 'h_bathmat': {
-      box(g, 1.7, 0.03, 0.8, '#A9DCC4', 0, 0.02, 0);
-      for (const x of [-0.84, 0.84]) for (let k = 0; k < 6; k++) box(g, 0.06, 0.03, 0.06, '#FFFFFF', x, 0.02, -0.33 + k * 0.13); // 술
-      for (const [x, z] of [[-0.55, -0.18], [-0.15, 0.15], [0.25, -0.15], [0.6, 0.2], [-0.5, 0.25], [0.05, -0.25]]) cyl(g, 0.07, 0.07, 0.035, '#FFFFFF', x, 0.03, z, 10);
+      // 방 바닥 윗면이 0.06이라 그보다 위에 깐다 (전에는 바닥 아래에 묻혀 안 보였다)
+      const mat = box(g, 1.7, 0.072 - 0.058, 0.8, '#A9DCC4', 0, (0.072 + 0.058) / 2, 0);
+      mat.castShadow = false;
+      for (const x of [-0.84, 0.84]) for (let k = 0; k < 6; k++) { const o = box(g, 0.06, 0.068 - 0.058, 0.06, '#FFFFFF', x, (0.068 + 0.058) / 2, -0.33 + k * 0.13); o.castShadow = false; } // 술
+      for (const [x, z] of [[-0.55, -0.18], [-0.15, 0.15], [0.25, -0.15], [0.6, 0.2], [-0.5, 0.25], [0.05, -0.25]]) { const o = cyl(g, 0.07, 0.07, 0.008, '#FFFFFF', x, 0.076, z, 10); o.castShadow = false; } // 물방울 무늬
       break;
     }
     // 마당

@@ -84,6 +84,13 @@ export const ARC_PLAYS = 10;
 export const CHALLENGE = { id: 'arcade', name: '그림자 떼 도전', icon: '🕹️', place: '끝없는 그림자 소굴',
   how: '그림자 물결이 끝없이 와요. 도전 모드에서는 움직이고 있을 때만 말씀의 빛이 나가요. 다섯 번째 물결마다 큰 그림자가 나오고, 물결 20부터는 더 센 그림자(미움, 걱정, 교만)도 나와요. 하트를 다 잃으면 끝나요. 기도의 빛은 15초에 한 번 쓸 수 있어요. 도전은 하루 10번까지예요.',
   fruit: [[10, 2], [5, 1]], verse: GREATER_VERSE };
+// 도전 모드 난이도 (서버 kids_arcade_end의 p_level과 같은 번호, 2026년 11월 25일). 보통이 그전까지의 난이도다.
+// spd: 그림자와 구슬 빠르기, count: 그림자 수, boss: 큰 그림자 힘, atk: 큰 그림자 공격 사이에 더하는 초, heart: 그림자가 하트를 떨어뜨릴 확률, score: 점수 배수
+export const ARC_LEVELS = [
+  { id: 0, name: '쉬움', icon: '🌱', desc: '그림자가 느리고 적어요 · 점수는 반', spd: 0.85, count: 0.8, boss: 0.65, atk: 0.4, heart: 0.04, score: 0.5 },
+  { id: 1, name: '보통', icon: '⭐', desc: '늘 하던 대로', spd: 1, count: 1, boss: 1, atk: 0, heart: 0.025, score: 1 },
+  { id: 2, name: '어려움', icon: '🔥', desc: '그림자가 빠르고 많아요 · 점수 1.5배', spd: 1.12, count: 1.2, boss: 1.35, atk: -0.25, heart: 0.015, score: 1.5 },
+];
 export const challengeFruit = (cleared) => { for (const [n, f] of CHALLENGE.fruit) if (cleared >= n) return f; return 0; };
 export const dungeonById = (id) => DUNGEONS.find((d) => d.id === id) || null;
 export const DG_DAY = 5; // 하루에 동굴에서 받는 열매 상한 (서버와 같다)

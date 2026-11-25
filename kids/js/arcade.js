@@ -15,7 +15,7 @@
 import * as THREE from './three.module.min.js';
 import { arcadeSfx as A, startChip, stopChip, setScene, sceneNow } from './sound.js';
 import { makeShadow, bobShadow } from './dungeon-scene.js';
-import { ARMOR } from './dungeon-data.js';
+import { ARMOR, ARC_LEVELS } from './dungeon-data.js';
 
 const TAU = Math.PI * 2;
 const NORTH = Math.PI;
@@ -249,6 +249,11 @@ export function trialArcade(T) {
   const endless = !!T.endless;
   const lv = endless ? 1 : clamp(T.lv || 1, 1, 3);
   const roomWaves = endless ? null : ROOM_WAVES[lv];
+  // 도전 모드 난이도 (쉬움, 보통, 어려움. 동굴 오락실 방은 늘 보통)
+  const DK = endless ? ARC_LEVELS[T.level] || ARC_LEVELS[1] : ARC_LEVELS[1];
+  // 함께 할 때 한 사람 더할 때마다 세지는 정도 (도전 모드는 더 많이: 그림자 수 75%, 한꺼번에 넷 더, 빠르기 5%, 큰 그림자 힘 90%, 공격 사이 10% 짧게)
+  const PARTY = endless ? { count: 0.75, alive: 4, spd: 0.05, boss: 0.9, atk: 0.1 } : { count: 0.5, alive: 3, spd: 0, boss: 0.6, atk: 0.06 };
+  const pts = (n) => Math.round(n * DK.score); // 난이도에 따른 점수
   // 친구와 함께: CO는 동굴이 주는 함께 하기 도구(혼자면 null), HOST는 그림자를 움직이는 화면(혼자면 늘 나)
   let CO = T.coop || null;
   let HOST = !CO || !!CO.host;
@@ -456,18 +461,20 @@ export function trialArcade(T) {
   }
 
   // ---------- 물결 ----------
+  // 도전 모드 빠르기: 물결마다 조금씩 (최대 1.6배) × 난이도 × 함께 하는 사람 수
+  function endlessMul(pn = 1) { return (1 + Math.min(0.6, (S.wave - 1) * 0.03)) * DK.spd * (1 + PARTY.spd * (pn - 1)); }
   function nextWave() {
     S.wave++;
-    // 함께 하면 사람 수만큼 그림자가 많아진다 (한 사람 더할 때마다 반만큼)
-    const pn = partyN(), pk = 1 + 0.5 * (pn - 1);
+    // 함께 하면 사람 수만큼 그림자가 많아진다 (PARTY), 난이도에 따라 그림자 수가 바뀐다 (DK)
+    const pn = partyN(), pk = (1 + PARTY.count * (pn - 1)) * DK.count;
     S.pn = pn;
     let spec = endless ? endlessWave(S.wave, T.rng, pk) : S.wave <= roomWaves.length ? roomWaves[S.wave - 1] : null;
     if (spec && spec.boss && S.forceBoss) spec = { ...spec, kind: S.forceBoss };
     if (!spec) { const ks = ROOM_BOSSES[lv]; spec = { boss: true, hp: BOSS_HP[lv], blv: lv, kind: S.forceBoss || ks[Math.floor(T.rng() * ks.length)] }; }
     S.spec = spec;
-    if (endless) { S.mul = 1 + Math.min(0.6, (S.wave - 1) * 0.03); S.maxAlive = Math.min(12, 6 + Math.floor(S.wave / 3)); }
+    if (endless) { S.mul = endlessMul(pn); S.maxAlive = Math.min(12, 6 + Math.floor(S.wave / 3)); }
     else S.maxAlive = [6, 8, 9][lv - 1];
-    S.maxAlive += 3 * (pn - 1);
+    S.maxAlive += PARTY.alive * (pn - 1);
     S.phase = 'between';
     S.betweenT = S.wave === 1 ? 1.8 : 1.5;
     if (spec.boss) {
@@ -479,7 +486,7 @@ export function trialArcade(T) {
     const kinds = Object.keys(spec);
     const freshAll = kinds.filter((k) => !S.seen.has(k)), fresh = freshAll[0];
     for (const k of kinds) S.seen.add(k);
-    const title = endless ? `물결 ${S.wave}` : `물결 ${S.wave}/${roomWaves.length}`;
+    const title = endless ? `${DK.icon} 물결 ${S.wave}` : `물결 ${S.wave}/${roomWaves.length}`;
     if (freshAll.some((k) => FOES[k].strong)) banner(title, `더 센 그림자가 나와요! ${freshAll.filter((k) => FOES[k].strong).map((k) => FOES[k].name).join(', ')}`, 2.4, false, true);
     else banner(title, fresh ? `새 그림자: ${FOES[fresh].name} · ${FOES[fresh].tip}` : '말씀의 빛으로 물리쳐요!', 1.5, false, true);
     const q = [];
@@ -642,7 +649,7 @@ export function trialArcade(T) {
   function spawnBoss(spec) {
     S.phase = 'boss';
     const kind = BOSS_KINDS[spec.kind] ? spec.kind : 'shadow', K = BOSS_KINDS[kind];
-    const hp = Math.round(spec.hp * K.hpK * BOSS_K * (1 + BOSS_PICK_K * Math.min(21, pickCount())) * (1 + 0.6 * (partyN() - 1)));
+    const hp = Math.round(spec.hp * K.hpK * BOSS_K * (1 + BOSS_PICK_K * Math.min(21, pickCount())) * DK.boss * (1 + PARTY.boss * (partyN() - 1)));
     const homeY = kind === 'giant' ? S.H * 0.3 : kind === 'doubt' ? S.H * 0.22 : S.H * 0.27;
     S.boss = { n: ++S.bossN, kind, name: K.name, x: S.W / 2, y: -26, hp, max: hp, t: 0, st: 'enter', stT: 1.7, atkT: 2.0, flash: 0, r: K.r, pat: 0, blv: spec.blv || 1, dx: 0, dy: 0, bombed: -1, homeY, alpha: 1, split: 0, tgI: 0, mad: false };
     S.lastBoss = kind;
@@ -661,7 +668,7 @@ export function trialArcade(T) {
     tip(dc.x, dc.y - 12, '가짜!', '#F6C2CF', 0.9, 14);
     A.pop(2);
     if (CL()) { S.decQ.push(dc.id); S.dead.set('d' + dc.id, S.t); return; } // 방장에게 알린다
-    S.score += 50;
+    S.score += pts(50);
   }
 
   // ---------- 갑주 기술 ----------
@@ -718,7 +725,7 @@ export function trialArcade(T) {
         const first = nearestFrom(h.x, h.y, 150);
         if (first) {
           S.skT.belt = BELT_GAP[sk.belt];
-          const pts = [[h.x, h.y]], hitList = [first];
+          const path = [[h.x, h.y]], hitList = [first];
           let cur = first;
           while (hitList.length < BELT_N[sk.belt]) {
             let nx = null, nd = 58;
@@ -729,12 +736,12 @@ export function trialArcade(T) {
             cur = nx;
           }
           for (const t of hitList) {
-            pts.push([t.x, t.y]);
+            path.push([t.x, t.y]);
             if (t === S.boss) hitBoss(1);
             else if (S.decoys.includes(t)) popDecoy(t);
             else hitFoe(t, 2, 0, 0);
           }
-          S.chains.push({ pts, life: 0.22 });
+          S.chains.push({ pts: path, life: 0.22 });
           A.chain();
         } else S.skT.belt = 0.2;
       }
@@ -776,7 +783,7 @@ export function trialArcade(T) {
         const i = S.foes.indexOf(f);
         if (i >= 0) S.foes.splice(i, 1);
         S.dead.set(f.id, S.t);
-        killFx(f, FOES[f.kind].pts * S.mult, true);
+        killFx(f, pts(FOES[f.kind].pts * S.mult), true);
         return;
       }
     } else if (f.hp <= 0) { kill(f); return; }
@@ -793,9 +800,9 @@ export function trialArcade(T) {
     S.comboT = 2.6;
     const m = Math.min(5, 1 + Math.floor(S.combo / 6));
     if (m > S.mult) { S.mult = m; A.combo(m); comboPop(m); }
-    const pts = F.pts * S.mult;
-    S.score += pts;
-    killFx(f, pts, true);
+    const p = pts(F.pts * S.mult);
+    S.score += p;
+    killFx(f, p, true);
     if (f.kind === 'split') for (const s of [-1, 1]) { const c = addFoe('mini', f.x + s * 5, f.y); c.vx = s * 60; c.st = 'chase'; }
   }
   // 그림자가 물러갈 때 보이는 것 (점수 글자, 빛, 소리)과 떨어지는 빛 조각, 하트 (빛 조각과 하트는 화면마다 따로 줍는다)
@@ -807,7 +814,7 @@ export function trialArcade(T) {
     if (mine) { S.stop = Math.max(S.stop, CO ? 0.02 : 0.035); S.shake = Math.max(S.shake, 1.6); }
     A.pop(S.combo > 1 ? Math.min(7, Math.floor(S.combo / 3)) : 0);
     if (Math.random() < (f.kind === 'mini' ? 0.3 : 0.7)) addItem('gem', f.x, f.y);
-    if (T.hearts() < 3 && T.alive() && Math.random() < (endless ? 0.025 : 0.05) && !S.items.some((it) => it.kind === 'heart')) addItem('heart', f.x, f.y);
+    if (T.hearts() < 3 && T.alive() && Math.random() < (endless ? DK.heart : 0.05) && !S.items.some((it) => it.kind === 'heart')) addItem('heart', f.x, f.y);
   }
   function comboPop(m) { S.comboPop = { m, life: 1.1 }; }
   function addItem(kind, x, y) {
@@ -932,6 +939,7 @@ export function trialArcade(T) {
     if (d.m > 0) h.moved += dt;
     // 도전 모드에서는 움직이고 있을 때만 빛을 쏜다 (빛 칼, 진리의 빛줄기, 사방 빛도)
     const atk = meOn && (!endless || d.m > 0.15);
+    S.inMove = meOn && d.m > 0.15; // 친구 기도는 움직이면 멈춘다 (동굴이 묻는다)
     if (endless && meOn && !atk && (S.phase === 'fight' || S.phase === 'boss') && (S.foes.length || S.boss)) {
       S.stillT += dt;
       if (S.stillT > 1.4 && S.stillTips < 4) { S.stillT = 0; S.stillTips++; tip(h.x, h.y - 15, '움직여야 빛이 나가요!', '#FFE58A', 1.2, 13); }
@@ -1130,7 +1138,7 @@ export function trialArcade(T) {
       burst(it.x, it.y, '#FF8A9A', 8, 40, 0.4);
       return;
     }
-    if (CL()) S.gemQ++; else S.score += 10; // 함께 할 때 점수는 방장 화면이 센다
+    if (CL()) S.gemQ++; else S.score += pts(10); // 함께 할 때 점수는 방장 화면이 센다
     A.gem();
     burst(it.x, it.y, '#FFE58A', 4, 30, 0.3);
     if (S.power > 0) return;
@@ -1323,11 +1331,11 @@ export function trialArcade(T) {
       B.rain = null;
       S.orbs.length = 0;
       S.portals.length = 0;
-      const pts = (endless ? 2000 + S.wave * 200 : 2000 + lv * 1000) * S.mult;
-      S.score += pts;
-      popText(B.x, B.y - 18, `+${pts}`, '#FFF8D6');
+      const bp = pts((endless ? 2000 + S.wave * 200 : 2000 + lv * 1000) * S.mult);
+      S.score += bp;
+      popText(B.x, B.y - 18, `+${bp}`, '#FFF8D6');
       A.bossDown();
-      share('bd', r1(B.x), r1(B.y), pts);
+      share('bd', r1(B.x), r1(B.y), bp);
       S.shake = 6;
       // 남은 작은 그림자와 가짜 가면도 함께 흩어진다
       for (const f of [...S.foes]) kill(f);
@@ -1535,7 +1543,7 @@ export function trialArcade(T) {
     }
     // 더 자주 공격한다 (힘이 반 아래면 더, 3분의 1 아래면 더더). 함께 하면 사람이 많을수록 조금 더 자주
     const base = { shadow: 2.4, doubt: 2.5, mask: 2.3, giant: 2.7, accuser: 2.9 }[B.kind] || 2.4;
-    B.atkT = Math.max(0.9, (base - 0.5 - (low ? 0.55 : 0) - (B.mad ? 0.3 : 0) - (blv - 1) * 0.15) * (1 - 0.06 * (S.pn - 1)));
+    B.atkT = Math.max(0.8, (base - 0.5 + DK.atk - (low ? 0.55 : 0) - (B.mad ? 0.3 : 0) - (blv - 1) * 0.15) * (1 - PARTY.atk * (S.pn - 1)));
   }
   // 도전 모드 물결 20부터는 큰 그림자도 센 그림자를 데려온다
   function strongNow() { return endless && S.wave >= STRONG_FROM; }
@@ -1719,7 +1727,7 @@ export function trialArcade(T) {
     if (Array.isArray(m.k)) for (let i = 0; i + 1 < m.k.length; i += 2) { const f = S.foes.find((x) => x.id === m.k[i]); if (f) hitFoe(f, clamp(Number(m.k[i + 1]) || 0, 0, 30), 0, 0); }
     if (Number.isFinite(m.bd) && m.bd > 0) hitBoss(Math.min(80, m.bd));
     if (Array.isArray(m.dk)) for (const id of m.dk) { const dc = S.decoys.find((x) => x.id === id); if (dc) popDecoy(dc); }
-    if (Number.isFinite(m.g) && m.g > 0) S.score += 10 * Math.min(60, m.g | 0);
+    if (Number.isFinite(m.g) && m.g > 0) S.score += pts(10) * Math.min(60, m.g | 0);
   }
   const hostNow = () => S.hostT + Math.min(0.6, (performance.now() - S.hostAt) / 1000);
   // 방장이 보낸 판 모습 (친구 화면)
@@ -1818,7 +1826,7 @@ export function trialArcade(T) {
       f.fireT = st === 3 ? 0.2 : 1;
     }
     // 방장 화면에서 사라진 그림자: 친구가 물리쳤다
-    for (const f of [...S.foes]) if (!seen.has(f.id)) { S.foes.splice(S.foes.indexOf(f), 1); killFx(f, FOES[f.kind].pts * S.mult, false); }
+    for (const f of [...S.foes]) if (!seen.has(f.id)) { S.foes.splice(S.foes.indexOf(f), 1); killFx(f, pts(FOES[f.kind].pts * S.mult), false); }
   }
   function syncBoss(Bo) {
     if (!Array.isArray(Bo)) {
@@ -1874,7 +1882,7 @@ export function trialArcade(T) {
       if (B.st === 'down') B.stT = Math.max(0.3, B.stT); else if (B.st === 'enter') B.stT = 0.6; else { B.st = 'move'; B.alpha = 1; }
     }
     S.queue = [...S.qStr].map((c) => QKIND[c] || 'wisp');
-    S.mul = endless ? 1 + Math.min(0.6, (S.wave - 1) * 0.03) : [1, 1.08, 1.16][lv - 1];
+    S.mul = endless ? endlessMul(1) : [1, 1.08, 1.16][lv - 1];
     S.maxAlive = endless ? Math.min(12, 6 + Math.floor(S.wave / 3)) : [6, 8, 9][lv - 1];
     S.pn = 1;
     if (ph === 'wait') { S.wave = 0; nextWave(); }
@@ -2267,7 +2275,7 @@ export function trialArcade(T) {
     if (S.mult > 1 || S.combo >= 3) text(`콤보 ${S.combo}${S.mult > 1 ? ` · ×${S.mult}` : ''}`, vw / 2, y + 16, 13, '#FFE58A');
     // 물결과 빛 게이지
     const rx = vw - L.right - 12;
-    const wl = S.spec && S.spec.boss ? (BOSS_KINDS[S.spec.kind] || BOSS_KINDS.shadow).name : endless ? `물결 ${S.wave}` : `물결 ${Math.min(S.wave, roomWaves.length)}/${roomWaves.length}`;
+    const wl = S.spec && S.spec.boss ? (BOSS_KINDS[S.spec.kind] || BOSS_KINDS.shadow).name : endless ? `${DK.icon} 물결 ${S.wave}` : `물결 ${Math.min(S.wave, roomWaves.length)}/${roomWaves.length}`;
     text(wl, rx, y - 6, 15, '#F3EAFB', 'right');
     const gx = rx - GAUGE_MAX * 9 + 2, gy = y + 9;
     for (let i = 0; i < GAUGE_MAX; i++) {
@@ -2338,7 +2346,7 @@ export function trialArcade(T) {
       text('‘기도하기’를 누르면 다시 일어나요', cx, cy + 18, 15, '#F3EAFB');
     } else if (down && CO) {
       text('쓰러졌어요', cx, cy - 12, 24, '#F6C2CF');
-      wrapText(T.selfPray && T.selfPray() ? '‘기도하기’를 누르면 다시 일어나요' : '친구가 ‘친구 기도’를 누르면 다시 일어나요', cx, cy + 16, 14, '#F3EAFB', (c1.x - c0.x) * 0.9);
+      wrapText(T.selfPray && T.selfPray() ? '‘기도하기’를 누르면 다시 일어나요' : '친구가 ‘친구 기도’를 꾹 누르면 다시 일어나요', cx, cy + 16, 14, '#F3EAFB', (c1.x - c0.x) * 0.9);
     }
     // 함께 할 때 기다리는 말
     if (CO && !S.picking && !S.end) {
@@ -2372,6 +2380,7 @@ export function trialArcade(T) {
 
   return {
     begin, update, onKey, onPray, stop, finish, onNet, promote,
+    isMoving: () => !!S.inMove,
     get overlay() { return overlay; },
     get coop() { return !!CO; },
     info: () => ({
@@ -2379,7 +2388,7 @@ export function trialArcade(T) {
       boss: S.boss ? { hp: S.boss.hp, max: S.boss.max, st: S.boss.st } : null, hero: { x: Math.round(S.hero.x), y: Math.round(S.hero.y) }, field: [S.W, S.H, L ? L.s : 0],
       ms: started ? Math.round(performance.now() - t0) : 0, power: +S.power.toFixed(1), gauge: S.gauge, combo: S.combo, mult: S.mult, kills: S.kills, items: S.items.length, orbs: S.orbs.length, overlay,
       sk: { ...S.sk }, pick: S.pick ? [...S.pick] : null, guard: S.guard, bossKind: S.boss ? S.boss.kind : null, decoys: S.decoys.length,
-      coop: !!CO, host: HOST, party: S.partyMax, friends: [...S.heroes.values()].map((rh) => ({ id: rh.id, x: Math.round(rh.x), y: Math.round(rh.y), f: rh.f, ai: rh.ai, pk: rh.pk, age: Math.round(performance.now() - rh.seen) })), pickWaitT: +S.pickWaitT.toFixed(1),
+      coop: !!CO, host: HOST, party: S.partyMax, level: DK.id, mul: +S.mul.toFixed(3), maxAlive: S.maxAlive, bossMax: S.boss ? S.boss.max : 0, friends: [...S.heroes.values()].map((rh) => ({ id: rh.id, x: Math.round(rh.x), y: Math.round(rh.y), f: rh.f, ai: rh.ai, pk: rh.pk, age: Math.round(performance.now() - rh.seen) })), pickWaitT: +S.pickWaitT.toFixed(1),
       myPk: S.myPk, picking: S.picking, bossMad: S.boss ? !!S.boss.mad : false,
       bombs: S.bombs.length, kinds: S.foes.map((f) => f.kind), lasers: S.foes.filter((f) => f.st === 'lzAim' || f.st === 'lzFire').map((f) => f.st), stillTips: S.stillTips,
     }),

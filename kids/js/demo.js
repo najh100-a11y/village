@@ -369,7 +369,7 @@ export class DemoBackend {
   playFree() { const f = this.villageConf().free_until; return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= today(); }
 
   // ---------- 마을 글 대화 ----------
-  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true, breeds: true, skip2: true, volley: true, expand: true, houses: true, hide: true, nbr: true, rewards: this.rewards(), jrope: true, jr2: true, bath: true, hlock: true, ropes: true, dungeon: true, arcade: true, pethouse: true, arcoop: true }; }
+  kids_features() { return { dish: true, comments: true, dm: true, eat: true, bugs: true, shop: true, lectio: true, photo10: true, pets: true, home: true, feedback: true, gift: true, sell: true, wardrobe: true, sea: true, visit: true, mail: true, qtgate: true, teachervillage: true, beach: true, skip: true, ark: true, petname: true, farm: true, arkboard: true, pets3: true, hair: true, breeds: true, skip2: true, volley: true, expand: true, houses: true, hide: true, nbr: true, rewards: this.rewards(), jrope: true, jr2: true, bath: true, hlock: true, ropes: true, dungeon: true, arcade: true, pethouse: true, arcoop: true, arclevel: true }; }
   // 쪽지함: 친구별 마지막 쪽지와 안 읽은 수 (최근 30일)
   kids_dm_box({ p_token }) {
     const me = this.session(p_token, 'child');
@@ -596,7 +596,7 @@ export class DemoBackend {
     return [...best.values()].map((x) => ({ x, c: this.db.children.find((k) => k.id === x.child) }))
       .filter(({ c }) => c && c.village_name)
       .sort((a, b) => b.x.score - a.x.score || a.x.at.localeCompare(b.x.at))
-      .map(({ x, c }) => ({ name: c.village_name, avatar: c.avatar, score: x.score, wave: x.wave, party: x.party || 1, me: c.id === me, teacher: !!c.teacher }));
+      .map(({ x, c }) => ({ name: c.village_name, avatar: c.avatar, score: x.score, wave: x.wave, party: x.party || 1, lvl: x.lvl ?? 1, me: c.id === me, teacher: !!c.teacher }));
   }
   // 오늘 한 도전 수 (시작한 수와 끝난 기록 수 가운데 큰 쪽, 서버 kids__arc_plays와 같다)
   arcPlays(me) {
@@ -623,10 +623,12 @@ export class DemoBackend {
   }
   // p_wave: 이긴 물결 수. 5개 넘으면 열매 1, 10개 넘으면 2 (동굴 열매와 함께 하루 5개까지)
   // p_party: 함께 한 사람 수 (없으면 1). 팀 점수라 점수 상한도 사람 수만큼
-  kids_arcade_end({ p_token, p_score, p_wave, p_ms, p_party = 1 }) {
+  // p_level: 난이도 (0 쉬움, 1 보통, 2 어려움. 어려움은 점수 1.5배라 상한도 1.5배)
+  kids_arcade_end({ p_token, p_score, p_wave, p_ms, p_party = 1, p_level = 1 }) {
     const me = this.session(p_token, 'child');
-    if (!Number.isInteger(p_score) || !Number.isInteger(p_wave) || !Number.isInteger(p_ms) || !Number.isInteger(p_party) || p_party < 1 || p_party > 4 || p_wave < 0 || p_wave > 500 || p_ms < 0 || p_ms > 4 * 3600000
-      || p_ms < p_wave * 4000 || p_score < 0 || p_score > (p_wave + 1) * 40000 * p_party + p_ms) fail('BAD_ARC');
+    if (!Number.isInteger(p_score) || !Number.isInteger(p_wave) || !Number.isInteger(p_ms) || !Number.isInteger(p_party) || p_party < 1 || p_party > 4 || !Number.isInteger(p_level) || p_level < 0 || p_level > 2
+      || p_wave < 0 || p_wave > 500 || p_ms < 0 || p_ms > 4 * 3600000
+      || p_ms < p_wave * 4000 || p_score < 0 || p_score > (p_wave + 1) * 40000 * p_party * (p_level === 2 ? 1.5 : 1) + p_ms) fail('BAD_ARC');
     this.gate(me);
     const list = this.arcRuns();
     const mine = list.filter((x) => x.child === me);
@@ -640,7 +642,7 @@ export class DemoBackend {
     const c = this.child(me);
     c.fruits += got;
     const wk = weekOf(iso(new Date()));
-    list.push({ child: me, score: p_score, wave: p_wave, ms: p_ms, got, week: wk, party: p_party, at: nowIso() });
+    list.push({ child: me, score: p_score, wave: p_wave, ms: p_ms, got, week: wk, party: p_party, lvl: p_level, at: nowIso() });
     const rows = this.arcRows(me, wk);
     const ri = rows.findIndex((r) => r.me);
     return { got, fruits: c.fruits, today: today + got, cap: 5, best: this.arcBest(me), week_best: this.arcBest(me, wk),

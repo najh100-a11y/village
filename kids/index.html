@@ -531,6 +531,13 @@ body.dg-arcade #toast { top: calc(64px + env(safe-area-inset-top)); }
 .dg-brow b { font-family: var(--display); font-weight: 400; color: #8E7BC4; text-align: center; }
 .dg-brow em { font-style: normal; font-family: var(--display); color: #6A55B0; }
 .dg-brow.me { background: #FFF3C4; border-radius: 8px; }
+.dg-lvls { display: flex; gap: 6px; margin: 4px 0 2px; }
+.dg-lvl { flex: 1 1 0; min-width: 0; border: 2px solid var(--line); border-radius: 14px; background: #FFFDF7; color: var(--ink); padding: 6px 4px; font-family: var(--display); font-size: 15px; cursor: pointer; line-height: 1.25; }
+.dg-lvl small { display: block; font-family: var(--body, inherit); font-size: 11px; color: var(--ink-soft); margin-top: 2px; }
+.dg-lvl.on { background: #FFE58A; border-color: #E8B04A; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .08); }
+.dg-lvl:disabled { cursor: default; opacity: .85; }
+.dg-lvl:disabled:not(.on) { opacity: .5; }
+.dg-lvl:focus-visible { outline: 3px solid #6A55B0; outline-offset: 1px; }
 .dg-more { justify-self: end; border: 0; background: none; color: #6A55B0; font-family: var(--display); font-size: 13px; cursor: pointer; padding: 2px 4px; text-decoration: underline; }
 .dg-score { margin: 4px 0; font-family: var(--display); font-size: 26px; color: #4A3B78; }
 .dg-score small { margin-left: 8px; font-size: 15px; color: var(--ink-soft); }
